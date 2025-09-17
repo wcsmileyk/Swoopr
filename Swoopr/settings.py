@@ -21,17 +21,14 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY:
-    # Allow build phase to proceed without SECRET_KEY
-    if os.getenv('NIXPACKS_BUILD_PHASE'):
-        SECRET_KEY = 'build-time-secret-key-not-for-production'
-    else:
-        raise ValueError("SECRET_KEY environment variable must be set")
+    raise ValueError("SECRET_KEY environment variable must be set")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
@@ -49,13 +46,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.gis',
     'users',
     'flights'
 ]
-
-# Add GIS support if not in build phase
-if not os.getenv('NIXPACKS_BUILD_PHASE'):
-    INSTALLED_APPS.append('django.contrib.gis')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -92,17 +86,10 @@ WSGI_APPLICATION = 'Swoopr.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Use PostGIS if GIS is available, otherwise regular PostgreSQL
-if os.getenv('NIXPACKS_BUILD_PHASE'):
-    # Use regular PostgreSQL during build
-    DATABASE_ENGINE = 'django.db.backends.postgresql'
-else:
-    # Use PostGIS in runtime
-    DATABASE_ENGINE = 'django.contrib.gis.db.backends.postgis'
-
+# Use PostGIS for geographic data support
 DATABASES = {
     'default': {
-        'ENGINE': DATABASE_ENGINE,
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
         'NAME': os.getenv('DB_NAME', 'swoopr_dev'),
         'USER': os.getenv('DB_USER', 'swoopr_user'),
         'PASSWORD': os.getenv('DB_PASSWORD'),
@@ -111,8 +98,8 @@ DATABASES = {
     }
 }
 
-# Only require DB_PASSWORD if not in build phase
-if not os.getenv('DB_PASSWORD') and not os.getenv('NIXPACKS_BUILD_PHASE'):
+# Require DB_PASSWORD in production
+if not os.getenv('DB_PASSWORD'):
     raise ValueError("DB_PASSWORD environment variable must be set")
 
 
@@ -198,11 +185,11 @@ LOGIN_URL = '/users/login/'
 LOGIN_REDIRECT_URL = '/users/dashboard/'
 LOGOUT_REDIRECT_URL = '/users/login/'
 
-# Railway.app specific settings
-if os.getenv('RAILWAY_ENVIRONMENT'):
-    # Production settings for Railway
+# Render.com production settings
+if os.getenv('RENDER'):
+    # Production settings for Render
     DEBUG = False
-    ALLOWED_HOSTS = ['.railway.app', '.up.railway.app']
+    ALLOWED_HOSTS = ['.onrender.com']
 
     # Force HTTPS in production
     SECURE_SSL_REDIRECT = True
