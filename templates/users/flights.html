@@ -1,0 +1,376 @@
+{% extends 'base.html' %}
+
+{% block title %}Flight History - Swoopr{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-list-ul"></i> Flight History
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary">
+            <i class="bi bi-upload"></i> Upload Flight
+        </a>
+    </div>
+</div>
+
+<!-- Filter Controls -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-3">
+                        <label for="type" class="form-label">Flight Type</label>
+                        <select name="type" id="type" class="form-control">
+                            <option value="all" {% if current_filter == 'all' %}selected{% endif %}>All Flights</option>
+                            <option value="swoops" {% if current_filter == 'swoops' %}selected{% endif %}>Swoops Only</option>
+                            <option value="successful" {% if current_filter == 'successful' %}selected{% endif %}>Successful Analysis</option>
+                            <option value="failed" {% if current_filter == 'failed' %}selected{% endif %}>Failed Analysis</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="canopy" class="form-label">Canopy</label>
+                        <select name="canopy" id="canopy" class="form-control">
+                            <option value="">All Canopies</option>
+                            {% for canopy in canopies %}
+                                <option value="{{ canopy.id }}" {% if current_canopy == canopy.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ canopy.manufacturer }} {{ canopy.model }} ({{ canopy.size }} sq ft)
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="sort" class="form-label">Sort By</label>
+                        <select name="sort" id="sort" class="form-control">
+                            <option value="-created_at" {% if current_sort == '-created_at' %}selected{% endif %}>Newest First</option>
+                            <option value="created_at" {% if current_sort == 'created_at' %}selected{% endif %}>Oldest First</option>
+                            <option value="-turn_rotation" {% if current_sort == '-turn_rotation' %}selected{% endif %}>Highest Rotation</option>
+                            <option value="turn_rotation" {% if current_sort == 'turn_rotation' %}selected{% endif %}>Lowest Rotation</option>
+                            <option value="-max_vertical_speed_mph" {% if current_sort == '-max_vertical_speed_mph' %}selected{% endif %}>Highest Speed</option>
+                            <option value="max_vertical_speed_mph" {% if current_sort == 'max_vertical_speed_mph' %}selected{% endif %}>Lowest Speed</option>
+                            <option value="-performance_grade" {% if current_sort == '-performance_grade' %}selected{% endif %}>Best Grade</option>
+                            <option value="performance_grade" {% if current_sort == 'performance_grade' %}selected{% endif %}>Worst Grade</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-outline-primary me-2">
+                            <i class="bi bi-funnel"></i> Apply
+                        </button>
+                        <a href="{% url 'flights' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Clear
+                        </a>
+                    </div>
+                    <!-- Preserve other parameters -->
+                    {% if page_obj.number %}
+                        <input type="hidden" name="page" value="{{ page_obj.number }}">
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Flight List -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-airplane"></i>
+                    {% if page_obj %}
+                        {{ page_obj.paginator.count }} Flight{{ page_obj.paginator.count|pluralize }}
+                        {% if current_filter != 'all' %}
+                            ({{ current_filter }})
+                        {% endif %}
+                    {% else %}
+                        No Flights Found
+                    {% endif %}
+                </h5>
+
+                {% if page_obj.object_list %}
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="toggleBulkDelete()">
+                        <i class="bi bi-trash"></i> Bulk Delete
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if page_obj.object_list %}
+                    <form id="bulkDeleteForm" method="post" action="{% url 'bulk_delete_flights' %}" style="display: none;">
+                        {% csrf_token %}
+                        <div class="alert alert-warning">
+                            <strong>Bulk Delete Mode:</strong> Select flights to delete, then click "Delete Selected" below.
+                            <button type="button" class="btn btn-sm btn-secondary ms-2" onclick="toggleBulkDelete()">Cancel</button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th width="40">
+                                            <input type="checkbox" id="selectAll" onchange="toggleAllCheckboxes()">
+                                        </th>
+                                        <th>Date & Time</th>
+                                        <th>Type</th>
+                                        <th>Canopy</th>
+                                        <th>Rotation</th>
+                                        <th>Max Vertical Speed</th>
+                                        <th>Grade</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for flight in page_obj %}
+                                    <tr class="{% if not flight.analysis_successful %}table-warning{% endif %}">
+                                        <td>
+                                            <input type="checkbox" name="flight_ids" value="{{ flight.id }}" class="flight-checkbox">
+                                        </td>
+                                        <td>
+                                            {% if flight.swoop_start_time %}
+                                                {{ flight.swoop_start_time|date:"M d, Y" }}<br>
+                                                <small class="text-muted">{{ flight.swoop_start_time|time:"H:i" }}</small>
+                                            {% else %}
+                                                {{ flight.created_at|date:"M d, Y" }}<br>
+                                                <small class="text-muted">{{ flight.created_at|time:"H:i" }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.is_swoop %}
+                                                <span class="badge bg-success">Swoop</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Flight</span>
+                                            {% endif %}
+                                            {% if not flight.analysis_successful %}
+                                                <br><span class="badge bg-warning">Failed</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.canopy %}
+                                                {{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
+                                                <small class="text-muted">{{ flight.canopy.size }} sq ft</small>
+                                            {% else %}
+                                                <span class="text-muted">Unknown</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.turn_rotation %}
+                                                {{ flight.rotation_magnitude|floatformat:0 }}° {{ flight.turn_direction|title }}
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.max_vertical_speed_mph %}
+                                                {{ flight.max_vertical_speed_mph|floatformat:1 }} mph
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.performance_grade %}
+                                                <span class="performance-grade-{{ flight.performance_grade }}">
+                                                    <strong>{{ flight.performance_grade }}</strong>
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="{% url 'flight_detail' flight.id %}" class="btn btn-sm btn-outline-primary" title="View Details">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete the selected flights? This action cannot be undone.')">
+                                <i class="bi bi-trash"></i> Delete Selected
+                            </button>
+                            <span id="selectedCount" class="ms-3 text-muted">0 flights selected</span>
+                        </div>
+                    </form>
+
+                    <div id="normalView">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Date & Time</th>
+                                        <th>Type</th>
+                                        <th>Canopy</th>
+                                        <th>Rotation</th>
+                                        <th>Max Vertical Speed</th>
+                                        <th>Grade</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for flight in page_obj %}
+                                    <tr class="{% if not flight.analysis_successful %}table-warning{% endif %}" onclick="window.location='{% url 'flight_detail' flight.id %}'" style="cursor: pointer;">
+                                        <td>
+                                            {% if flight.swoop_start_time %}
+                                                {{ flight.swoop_start_time|date:"M d, Y" }}<br>
+                                                <small class="text-muted">{{ flight.swoop_start_time|time:"H:i" }}</small>
+                                            {% else %}
+                                                {{ flight.created_at|date:"M d, Y" }}<br>
+                                                <small class="text-muted">{{ flight.created_at|time:"H:i" }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.is_swoop %}
+                                                <span class="badge bg-success">Swoop</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Flight</span>
+                                            {% endif %}
+                                            {% if not flight.analysis_successful %}
+                                                <br><span class="badge bg-warning">Failed</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.canopy %}
+                                                {{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
+                                                <small class="text-muted">{{ flight.canopy.size }} sq ft</small>
+                                            {% else %}
+                                                <span class="text-muted">Unknown</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.turn_rotation %}
+                                                {{ flight.rotation_magnitude|floatformat:0 }}° {{ flight.turn_direction|title }}
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.max_vertical_speed_mph %}
+                                                {{ flight.max_vertical_speed_mph|floatformat:1 }} mph
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.performance_grade %}
+                                                <span class="performance-grade-{{ flight.performance_grade }}">
+                                                    <strong>{{ flight.performance_grade }}</strong>
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td onclick="event.stopPropagation();">
+                                            <a href="{% url 'flight_detail' flight.id %}" class="btn btn-sm btn-outline-primary" title="View Details">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if page_obj.has_other_pages %}
+                    <nav aria-label="Flight pagination" class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{% if current_filter != 'all' %}type={{ current_filter }}&{% endif %}{% if current_canopy %}canopy={{ current_canopy }}&{% endif %}{% if current_sort %}sort={{ current_sort }}&{% endif %}page={{ page_obj.previous_page_number }}">
+                                        <i class="bi bi-chevron-left"></i> Previous
+                                    </a>
+                                </li>
+                            {% endif %}
+
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ num }}</span>
+                                    </li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?{% if current_filter != 'all' %}type={{ current_filter }}&{% endif %}{% if current_canopy %}canopy={{ current_canopy }}&{% endif %}{% if current_sort %}sort={{ current_sort }}&{% endif %}page={{ num }}">{{ num }}</a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{% if current_filter != 'all' %}type={{ current_filter }}&{% endif %}{% if current_canopy %}canopy={{ current_canopy }}&{% endif %}{% if current_sort %}sort={{ current_sort }}&{% endif %}page={{ page_obj.next_page_number }}">
+                                        Next <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+
+                        <div class="text-center text-muted">
+                            Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }} flights
+                        </div>
+                    </nav>
+                    {% endif %}
+
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-airplane text-muted" style="font-size: 4rem;"></i>
+                        <h4 class="text-muted mt-3">No Flights Found</h4>
+                        {% if current_filter != 'all' or current_canopy %}
+                            <p class="text-muted">
+                                Try adjusting your filters or
+                                <a href="{% url 'flights' %}">view all flights</a>
+                            </p>
+                        {% else %}
+                            <p class="text-muted">Upload your first FlySight file to get started!</p>
+                            <a href="{% url 'upload_flight' %}" class="btn btn-primary">
+                                <i class="bi bi-upload"></i> Upload Flight
+                            </a>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleBulkDelete() {
+    const bulkForm = document.getElementById('bulkDeleteForm');
+    const normalView = document.getElementById('normalView');
+
+    if (bulkForm.style.display === 'none') {
+        bulkForm.style.display = 'block';
+        normalView.style.display = 'none';
+    } else {
+        bulkForm.style.display = 'none';
+        normalView.style.display = 'block';
+        // Reset checkboxes
+        document.getElementById('selectAll').checked = false;
+        document.querySelectorAll('.flight-checkbox').forEach(cb => cb.checked = false);
+        updateSelectedCount();
+    }
+}
+
+function toggleAllCheckboxes() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.flight-checkbox');
+    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const checked = document.querySelectorAll('.flight-checkbox:checked').length;
+    document.getElementById('selectedCount').textContent = `${checked} flight${checked !== 1 ? 's' : ''} selected`;
+}
+
+// Add event listeners to flight checkboxes
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.flight-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+});
+</script>
+{% endblock %}

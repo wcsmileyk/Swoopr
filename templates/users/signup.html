@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign Up - Swoopr{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="card-title mb-0">
+                        <i class="bi bi-person-plus"></i> Create Your Swoopr Account
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">Join the community and start tracking your swoops!</p>
+
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <!-- Account Information -->
+                        <h5 class="mb-3">Account Information</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">Username *</label>
+                                {{ form.username }}
+                                {% if form.username.errors %}
+                                    <div class="text-danger small">{{ form.username.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.email.id_for_label }}" class="form-label">Email *</label>
+                                {{ form.email }}
+                                {% if form.email.errors %}
+                                    <div class="text-danger small">{{ form.email.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.first_name.id_for_label }}" class="form-label">First Name</label>
+                                {{ form.first_name }}
+                                {% if form.first_name.errors %}
+                                    <div class="text-danger small">{{ form.first_name.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.last_name.id_for_label }}" class="form-label">Last Name</label>
+                                {{ form.last_name }}
+                                {% if form.last_name.errors %}
+                                    <div class="text-danger small">{{ form.last_name.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password1.id_for_label }}" class="form-label">Password *</label>
+                                {{ form.password1 }}
+                                {% if form.password1.errors %}
+                                    <div class="text-danger small">{{ form.password1.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password2.id_for_label }}" class="form-label">Confirm Password *</label>
+                                {{ form.password2 }}
+                                {% if form.password2.errors %}
+                                    <div class="text-danger small">{{ form.password2.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Pilot Information -->
+                        <hr class="my-4">
+                        <h5 class="mb-3">Pilot Information <small class="text-muted">(Optional)</small></h5>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.license_number.id_for_label }}" class="form-label">License Number</label>
+                                {{ form.license_number }}
+                                {% if form.license_number.errors %}
+                                    <div class="text-danger small">{{ form.license_number.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.uspa_number.id_for_label }}" class="form-label">USPA Number</label>
+                                {{ form.uspa_number }}
+                                {% if form.uspa_number.errors %}
+                                    <div class="text-danger small">{{ form.uspa_number.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.license_level.id_for_label }}" class="form-label">License Level</label>
+                                {{ form.license_level }}
+                                {% if form.license_level.errors %}
+                                    <div class="text-danger small">{{ form.license_level.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.home_dz.id_for_label }}" class="form-label">Home Drop Zone</label>
+                                {{ form.home_dz }}
+                                {% if form.home_dz.errors %}
+                                    <div class="text-danger small">{{ form.home_dz.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="{{ form.total_jumps.id_for_label }}" class="form-label">Total Jumps</label>
+                                {{ form.total_jumps }}
+                                {% if form.total_jumps.errors %}
+                                    <div class="text-danger small">{{ form.total_jumps.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="{{ form.swoop_jumps.id_for_label }}" class="form-label">Swoop Jumps</label>
+                                {{ form.swoop_jumps }}
+                                {% if form.swoop_jumps.errors %}
+                                    <div class="text-danger small">{{ form.swoop_jumps.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="{{ form.exit_weight.id_for_label }}" class="form-label">Exit Weight (lbs)</label>
+                                {{ form.exit_weight }}
+                                {% if form.exit_weight.errors %}
+                                    <div class="text-danger small">{{ form.exit_weight.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-person-plus"></i> Create Account
+                            </button>
+                        </div>
+                    </form>
+
+                    <hr class="my-4">
+                    <div class="text-center">
+                        <p class="mb-0">Already have an account?
+                            <a href="{% url 'login' %}" class="text-primary">Sign in here</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,983 @@
+{% extends 'base.html' %}
+
+{% block title %}Flight Detail - Swoopr{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Leaflet CSS for map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-airplane"></i> Flight Analysis
+        {% if flight.is_swoop %}
+            <span class="badge bg-success ms-2">Swoop</span>
+        {% else %}
+            <span class="badge bg-secondary ms-2">Flight</span>
+        {% endif %}
+        {% if flight.performance_grade %}
+            <span class="badge bg-primary ms-1">Grade {{ flight.performance_grade }}</span>
+        {% endif %}
+        {% if flight.data_incorrect %}
+            <span class="badge bg-warning ms-1">
+                <i class="bi bi-flag"></i> Flagged
+            </span>
+        {% endif %}
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleDataIncorrect()">
+                <i class="bi bi-flag"></i>
+                {% if flight.data_incorrect %}
+                    Remove Flag
+                {% else %}
+                    Flag as Incorrect
+                {% endif %}
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete()">
+                <i class="bi bi-trash"></i> Delete
+            </button>
+        </div>
+        <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Flights
+        </a>
+    </div>
+</div>
+
+<!-- Flight Info Header -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <h6 class="text-muted">Date & Time</h6>
+                        <p>
+                            {% if flight.swoop_start_time %}
+                                {{ flight.swoop_start_time|date:"M d, Y" }}<br>
+                                <small>{{ flight.swoop_start_time|time:"H:i" }}</small>
+                            {% else %}
+                                {{ flight.created_at|date:"M d, Y" }}<br>
+                                <small>{{ flight.created_at|time:"H:i" }}</small>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted">Canopy</h6>
+                        <p>
+                            {% if flight.canopy %}
+                                {{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
+                                <small>{{ flight.canopy.size }} sq ft</small>
+                                {% if flight.wing_loading %}
+                                    <small>({{ flight.wing_loading }} lbs/sq ft)</small>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">Unknown</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted">Analysis Status</h6>
+                        <p>
+                            {% if flight.analysis_successful %}
+                                <span class="text-success"><i class="bi bi-check-circle"></i> Successful</span><br>
+                                <small>{{ flight.analyzed_at|date:"M d, H:i" }}</small>
+                            {% else %}
+                                <span class="text-danger"><i class="bi bi-x-circle"></i> Failed</span><br>
+                                {% if flight.analysis_error %}
+                                    <small class="text-danger">{{ flight.analysis_error }}</small>
+                                {% endif %}
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted">Flight ID</h6>
+                        <p>
+                            {{ flight.session_id|truncatechars:12 }}<br>
+                            <small>{{ flight.device_id }}</small>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if chart_data and flight.analysis_successful %}
+<!-- Time Series Visualizer -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up"></i> Flight Profile
+                </h5>
+                <small class="text-muted">Time series data showing altitude, vertical speed, and ground speed</small>
+            </div>
+            <div class="card-body">
+                <div style="height: 400px; position: relative;">
+                    <canvas id="flightChart"></canvas>
+                </div>
+                <div class="mt-3">
+                    <div class="row text-center">
+                        <div class="col-md-2">
+                            <div class="border-end">
+                                <span style="background-color: #1f77b4; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">Altitude AGL</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="border-end">
+                                <span style="background-color: #ff7f0e; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">Vertical Speed</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="border-end">
+                                <span style="background-color: #2ca02c; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">Ground Speed</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="border-end">
+                                <span style="color: #d62728; font-size: 0.8rem;">● Flare</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="border-end">
+                                <span style="color: #9467bd; font-size: 0.8rem;">● Max VSpeed</span>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <span style="color: #8c564b; font-size: 0.8rem;">● Max GSpeed</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if flight.is_swoop and flight.analysis_successful %}
+<!-- Swoop Summary Data -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-bar-chart-line"></i> Swoop Analysis Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Turn Analysis -->
+                    <div class="col-md-6 mb-4">
+                        <h6 class="text-primary">Turn Analysis</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Rotation:</strong><br>
+                                {% if flight.turn_rotation %}
+                                    {{ flight.turn_rotation|floatformat:0 }}° {{ flight.turn_direction|title }}
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-6">
+                                <strong>Flare Altitude:</strong><br>
+                                {% if flight.flare_altitude_agl %}
+                                    {% widthratio flight.flare_altitude_agl 1 3.28084 %} ft AGL
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Speed Analysis -->
+                    <div class="col-md-6 mb-4">
+                        <h6 class="text-success">Speed Analysis</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Max Vertical Speed:</strong><br>
+                                {% if flight.max_vertical_speed_mph %}
+                                    {{ flight.max_vertical_speed_mph|floatformat:1 }} mph<br>
+                                    <small class="text-muted">@ {% widthratio flight.max_vspeed_altitude_agl 1 3.28084 %} ft AGL</small>
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-6">
+                                <strong>Max Ground Speed:</strong><br>
+                                {% if flight.max_ground_speed_mph %}
+                                    {{ flight.max_ground_speed_mph|floatformat:1 }} mph<br>
+                                    <small class="text-muted">@ {% widthratio flight.max_gspeed_altitude_agl 1 3.28084 %} ft AGL</small>
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rollout Analysis -->
+                    <div class="col-md-6 mb-4">
+                        <h6 class="text-warning">Rollout Analysis</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Rollout Time:</strong><br>
+                                {% if flight.rollout_time %}
+                                    {{ flight.rollout_time|floatformat:1 }}s
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-6">
+                                <strong>Swoop Distance:</strong><br>
+                                {% if swoop_distance %}
+                                    {{ swoop_distance|floatformat:0 }} ft
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-6">
+                                <strong>Rollout Start:</strong><br>
+                                {% if rollout_start_altitude %}
+                                    {{ rollout_start_altitude|floatformat:0 }} ft AGL
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-6">
+                                <strong>Rollout End:</strong><br>
+                                {% if rollout_end_altitude %}
+                                    {{ rollout_end_altitude|floatformat:0 }} ft AGL
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Additional Metrics -->
+                    <div class="col-md-6 mb-4">
+                        <h6 class="text-info">Additional Metrics</h6>
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Avg Swoop Altitude:</strong><br>
+                                {% if swoop_avg_altitude %}
+                                    {{ swoop_avg_altitude|floatformat:0 }} ft AGL
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-6">
+                                <strong>Initial Speed:</strong><br>
+                                {% if horizontal_speed_at_start %}
+                                    {{ horizontal_speed_at_start|floatformat:1 }} mph
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GPS Accuracy -->
+                    <div class="col-md-6 mb-4">
+                        <h6 class="text-secondary">GPS Accuracy</h6>
+                        <div class="row">
+                            <div class="col-4">
+                                <strong>Horizontal:</strong><br>
+                                {% if flight.swoop_avg_horizontal_accuracy %}
+                                    {% widthratio flight.swoop_avg_horizontal_accuracy 1 3.28084 %} ft
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-4">
+                                <strong>Vertical:</strong><br>
+                                {% if flight.swoop_avg_vertical_accuracy %}
+                                    {% widthratio flight.swoop_avg_vertical_accuracy 1 3.28084 %} ft
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-4">
+                                <strong>Speed:</strong><br>
+                                {% if flight.swoop_avg_speed_accuracy %}
+                                    {{ flight.swoop_avg_speed_accuracy|floatformat:2 }} m/s
+                                {% else %}
+                                    <span class="text-muted">--</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if viz_3d_data and flight.analysis_successful %}
+<!-- 3D Visualizations -->
+<div class="row mb-4">
+    <!-- Side View Chart -->
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-bar-chart"></i> Side View (Elevation Profile)
+                </h6>
+                <small class="text-muted">Distance vs altitude profile</small>
+            </div>
+            <div class="card-body">
+                <div style="height: 300px; position: relative;">
+                    <canvas id="sideViewChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top View Chart -->
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-diagram-2"></i> Top View (Plan View)
+                </h6>
+                <small class="text-muted">Bird's eye view of flight path</small>
+            </div>
+            <div class="card-body">
+                <div style="height: 300px; position: relative;">
+                    <canvas id="topViewChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Map View -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-geo"></i> Map View
+                </h6>
+                <small class="text-muted">Flight path on OpenStreetMap</small>
+            </div>
+            <div class="card-body">
+                <div id="mapView" style="height: 400px; width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Performance Grade Explanation -->
+{% if flight.performance_grade %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0">
+                    <i class="bi bi-award"></i> Performance Grade: {{ flight.performance_grade }}
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">
+                    {% if flight.performance_grade == 'A' %}
+                        <strong>Excellent:</strong> Within 1% of your personal best performance. Outstanding swoop!
+                    {% elif flight.performance_grade == 'B' %}
+                        <strong>Very Good:</strong> Within 10% of your personal best. Strong swoop execution.
+                    {% elif flight.performance_grade == 'C' %}
+                        <strong>Good:</strong> Within 30% of your personal best. Solid swoop performance.
+                    {% elif flight.performance_grade == 'D' %}
+                        <strong>Developing:</strong> Within 50% of your personal best. Room for improvement.
+                    {% elif flight.performance_grade == 'F' %}
+                        <strong>Needs Work:</strong> More than 50% off your personal best. Focus on consistency.
+                    {% else %}
+                        <strong>No Grade:</strong> Need more flights for comparison data.
+                    {% endif %}
+                </p>
+                <small class="text-muted">
+                    Grading based on your personal best vertical speed and swoop distance achievements.
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+{% if chart_data and flight.analysis_successful %}
+<script>
+const chartData = {{ chart_data|safe }};
+
+// Create the chart
+const ctx = document.getElementById('flightChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: chartData.timestamps,
+        datasets: [
+            {
+                label: 'Altitude AGL (ft)',
+                data: chartData.altitude_agl.map(alt => alt * 3.28084), // Convert to feet
+                borderColor: '#1f77b4',
+                backgroundColor: 'rgba(31, 119, 180, 0.1)',
+                tension: 0.1,
+                pointRadius: 0,
+                yAxisID: 'y'
+            },
+            {
+                label: 'Vertical Speed (mph)',
+                data: chartData.vertical_speed,
+                borderColor: '#ff7f0e',
+                backgroundColor: 'rgba(255, 127, 14, 0.1)',
+                tension: 0.1,
+                pointRadius: 0,
+                yAxisID: 'y1'
+            },
+            {
+                label: 'Ground Speed (mph)',
+                data: chartData.ground_speed,
+                borderColor: '#2ca02c',
+                backgroundColor: 'rgba(44, 160, 44, 0.1)',
+                tension: 0.1,
+                pointRadius: 0,
+                yAxisID: 'y1'
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    title: function(context) {
+                        return 'Time: ' + context[0].label + 's';
+                    },
+                    label: function(context) {
+                        return context.dataset.label + ': ' + context.parsed.y.toFixed(1);
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'Time (seconds)'
+                }
+            },
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                    display: true,
+                    text: 'Altitude (ft)'
+                },
+                grid: {
+                    drawOnChartArea: false,
+                },
+            },
+            y1: {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: {
+                    display: true,
+                    text: 'Speed (mph)'
+                },
+                grid: {
+                    drawOnChartArea: false,
+                },
+            },
+        }
+    }
+});
+
+// Add vertical lines for important events by overlaying datasets
+if (chartData.important_points.flare) {
+    const flareData = chartData.timestamps.map((time, index) => {
+        return time === chartData.important_points.flare ? chartData.altitude_agl[index] * 3.28084 : null;
+    });
+    chart.data.datasets.push({
+        label: 'Flare',
+        data: flareData,
+        borderColor: '#d62728',
+        backgroundColor: '#d62728',
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        showLine: false,
+        yAxisID: 'y'
+    });
+}
+
+if (chartData.important_points.max_vspeed) {
+    const maxVSpeedData = chartData.timestamps.map((time, index) => {
+        return time === chartData.important_points.max_vspeed ? chartData.altitude_agl[index] * 3.28084 : null;
+    });
+    chart.data.datasets.push({
+        label: 'Max VSpeed',
+        data: maxVSpeedData,
+        borderColor: '#9467bd',
+        backgroundColor: '#9467bd',
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        showLine: false,
+        yAxisID: 'y'
+    });
+}
+
+if (chartData.important_points.max_gspeed) {
+    const maxGSpeedData = chartData.timestamps.map((time, index) => {
+        return time === chartData.important_points.max_gspeed ? chartData.altitude_agl[index] * 3.28084 : null;
+    });
+    chart.data.datasets.push({
+        label: 'Max GSpeed',
+        data: maxGSpeedData,
+        borderColor: '#8c564b',
+        backgroundColor: '#8c564b',
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        showLine: false,
+        yAxisID: 'y'
+    });
+}
+
+// Focus chart on swoop area if we have flare and landing points
+if (chartData.important_points.flare && chartData.important_points.landing) {
+    const swoopStart = Math.max(0, chartData.important_points.flare - 5);
+    const swoopEnd = chartData.important_points.landing + 2;
+    chart.options.scales.x.min = swoopStart;
+    chart.options.scales.x.max = swoopEnd;
+    chart.update();
+}
+</script>
+{% endif %}
+
+{% if viz_3d_data and flight.analysis_successful %}
+<script>
+const viz3DData = {{ viz_3d_data|safe }};
+
+// 1. Side View Chart (Distance vs Altitude)
+const sideViewCtx = document.getElementById('sideViewChart').getContext('2d');
+const sideViewChart = new Chart(sideViewCtx, {
+    type: 'line',
+    data: {
+        labels: viz3DData.cumulative_distances.map(d => Math.round(d)),
+        datasets: [{
+            label: 'Altitude AGL (ft)',
+            data: viz3DData.altitudes_agl_ft,
+            borderColor: '#2ca02c',
+            backgroundColor: 'rgba(44, 160, 44, 0.1)',
+            tension: 0.1,
+            pointRadius: 1,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    title: function(context) {
+                        return 'Distance: ' + context[0].label + ' ft';
+                    },
+                    label: function(context) {
+                        return 'Altitude: ' + context.parsed.y.toFixed(0) + ' ft AGL';
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'Distance (feet)'
+                }
+            },
+            y: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'Altitude AGL (feet)'
+                }
+            }
+        }
+    }
+});
+
+// Add important points to side view
+if (viz3DData.important_indices.flare !== undefined) {
+    const flareDistance = viz3DData.cumulative_distances[viz3DData.important_indices.flare];
+    const flareAlt = viz3DData.altitudes_agl_ft[viz3DData.important_indices.flare];
+    sideViewChart.data.datasets.push({
+        label: 'Flare',
+        data: [{x: flareDistance, y: flareAlt}],
+        borderColor: '#d62728',
+        backgroundColor: '#d62728',
+        pointRadius: 6,
+        showLine: false
+    });
+}
+
+if (viz3DData.important_indices.landing !== undefined) {
+    const landingDistance = viz3DData.cumulative_distances[viz3DData.important_indices.landing];
+    const landingAlt = viz3DData.altitudes_agl_ft[viz3DData.important_indices.landing];
+    sideViewChart.data.datasets.push({
+        label: 'Landing',
+        data: [{x: landingDistance, y: landingAlt}],
+        borderColor: '#8c564b',
+        backgroundColor: '#8c564b',
+        pointRadius: 6,
+        showLine: false
+    });
+}
+
+sideViewChart.update();
+
+// 2. Top View Chart (XY Plan View)
+const topViewCtx = document.getElementById('topViewChart').getContext('2d');
+const topViewChart = new Chart(topViewCtx, {
+    type: 'scatter',
+    data: {
+        datasets: [{
+            label: 'Flight Path',
+            data: viz3DData.top_view_coords.map(coord => ({x: coord[0], y: coord[1]})),
+            borderColor: '#1f77b4',
+            backgroundColor: 'rgba(31, 119, 180, 0.6)',
+            pointRadius: 2,
+            showLine: true,
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    title: function(context) {
+                        return 'Position';
+                    },
+                    label: function(context) {
+                        return 'X: ' + context.parsed.x.toFixed(0) + ' ft, Y: ' + context.parsed.y.toFixed(0) + ' ft';
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'East-West (feet)'
+                }
+            },
+            y: {
+                display: true,
+                title: {
+                    display: true,
+                    text: 'North-South (feet)'
+                }
+            }
+        }
+    }
+});
+
+// Add important points to top view
+if (viz3DData.important_indices.flare !== undefined) {
+    const flareCoord = viz3DData.top_view_coords[viz3DData.important_indices.flare];
+    topViewChart.data.datasets.push({
+        label: 'Flare',
+        data: [{x: flareCoord[0], y: flareCoord[1]}],
+        borderColor: '#d62728',
+        backgroundColor: '#d62728',
+        pointRadius: 8,
+        showLine: false
+    });
+}
+
+if (viz3DData.important_indices.landing !== undefined) {
+    const landingCoord = viz3DData.top_view_coords[viz3DData.important_indices.landing];
+    topViewChart.data.datasets.push({
+        label: 'Landing',
+        data: [{x: landingCoord[0], y: landingCoord[1]}],
+        borderColor: '#8c564b',
+        backgroundColor: '#8c564b',
+        pointRadius: 8,
+        showLine: false
+    });
+}
+
+topViewChart.update();
+
+// 3. Map View (Leaflet.js)
+const map = L.map('mapView').setView(viz3DData.center_point, 16);
+
+// Add OpenStreetMap tiles
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+// Add flight path
+const flightPath = L.polyline(viz3DData.coordinates, {
+    color: '#1f77b4',
+    weight: 3,
+    opacity: 0.8
+}).addTo(map);
+
+// Fit map to flight path bounds
+if (viz3DData.bounds) {
+    map.fitBounds(viz3DData.bounds, {padding: [20, 20]});
+}
+
+// Add important point markers
+if (viz3DData.important_indices.flare !== undefined) {
+    const flareCoord = viz3DData.coordinates[viz3DData.important_indices.flare];
+    L.marker(flareCoord, {
+        title: 'Flare Point'
+    }).addTo(map).bindPopup('<b>Flare Point</b><br>Turn initiation');
+}
+
+if (viz3DData.important_indices.max_vspeed !== undefined) {
+    const maxVSpeedCoord = viz3DData.coordinates[viz3DData.important_indices.max_vspeed];
+    L.marker(maxVSpeedCoord, {
+        title: 'Max Vertical Speed'
+    }).addTo(map).bindPopup('<b>Max Vertical Speed</b><br>{{ flight.max_vertical_speed_mph|floatformat:1 }} mph');
+}
+
+if (viz3DData.important_indices.landing !== undefined) {
+    const landingCoord = viz3DData.coordinates[viz3DData.important_indices.landing];
+    L.marker(landingCoord, {
+        title: 'Landing Point'
+    }).addTo(map).bindPopup('<b>Landing Point</b><br>Touchdown');
+}
+
+// Add a custom control for layer information
+const info = L.control();
+info.onAdd = function (map) {
+    this._div = L.DomUtil.create('div', 'info');
+    this._div.innerHTML = '<h6>Flight Path</h6>' +
+        '<small>Total Distance: ' + Math.round(viz3DData.total_distance_ft) + ' ft</small>';
+    return this._div;
+};
+info.addTo(map);
+
+// Style the info control
+const style = document.createElement('style');
+style.textContent = `
+    .info {
+        padding: 6px 8px;
+        font: 14px/16px Arial, Helvetica, sans-serif;
+        background: white;
+        background: rgba(255,255,255,0.8);
+        box-shadow: 0 0 15px rgba(0,0,0,0.2);
+        border-radius: 5px;
+    }
+    .info h6 {
+        margin: 0 0 5px;
+        color: #777;
+    }
+`;
+document.head.appendChild(style);
+
+// Chart synchronization for hover effects
+let currentHoverIndex = -1;
+let hoverMarkers = {
+    side: null,
+    top: null,
+    map: null
+};
+
+// Function to update all charts when hovering over a data point
+function updateChartHover(activeIndex) {
+    if (activeIndex === currentHoverIndex) return;
+    currentHoverIndex = activeIndex;
+
+    // Clear existing hover markers
+    clearHoverMarkers();
+
+    if (activeIndex >= 0 && activeIndex < viz3DData.cumulative_distances.length) {
+        // Add hover marker to side view
+        const sideCoord = {
+            x: viz3DData.cumulative_distances[activeIndex],
+            y: viz3DData.altitudes_agl_ft[activeIndex]
+        };
+        sideViewChart.data.datasets.push({
+            label: 'Hover Position',
+            data: [sideCoord],
+            borderColor: '#ff6b6b',
+            backgroundColor: '#ff6b6b',
+            pointRadius: 8,
+            showLine: false,
+            order: 1000
+        });
+        sideViewChart.update('none');
+
+        // Add hover marker to top view
+        const topCoord = {
+            x: viz3DData.top_view_coords[activeIndex][0],
+            y: viz3DData.top_view_coords[activeIndex][1]
+        };
+        topViewChart.data.datasets.push({
+            label: 'Hover Position',
+            data: [topCoord],
+            borderColor: '#ff6b6b',
+            backgroundColor: '#ff6b6b',
+            pointRadius: 8,
+            showLine: false,
+            order: 1000
+        });
+        topViewChart.update('none');
+
+        // Add hover marker to map
+        const mapCoord = viz3DData.coordinates[activeIndex];
+        hoverMarkers.map = L.circleMarker(mapCoord, {
+            color: '#ff6b6b',
+            fillColor: '#ff6b6b',
+            fillOpacity: 0.8,
+            radius: 8
+        }).addTo(map);
+    }
+}
+
+function clearHoverMarkers() {
+    // Remove hover markers from charts
+    [sideViewChart, topViewChart].forEach(chart => {
+        chart.data.datasets = chart.data.datasets.filter(dataset => dataset.label !== 'Hover Position');
+        chart.update('none');
+    });
+
+    // Remove hover marker from map
+    if (hoverMarkers.map) {
+        map.removeLayer(hoverMarkers.map);
+        hoverMarkers.map = null;
+    }
+}
+
+// Add hover event listeners to main chart
+chart.options.onHover = function(event, elements) {
+    if (elements.length > 0) {
+        const index = elements[0].index;
+        updateChartHover(index);
+    } else {
+        clearHoverMarkers();
+        currentHoverIndex = -1;
+    }
+};
+
+// Add hover event listeners to side view chart
+sideViewChart.options.onHover = function(event, elements) {
+    if (elements.length > 0) {
+        const index = elements[0].index;
+        updateChartHover(index);
+    } else {
+        clearHoverMarkers();
+        currentHoverIndex = -1;
+    }
+};
+
+// Add hover event listeners to top view chart
+topViewChart.options.onHover = function(event, elements) {
+    if (elements.length > 0) {
+        const index = elements[0].index;
+        updateChartHover(index);
+    } else {
+        clearHoverMarkers();
+        currentHoverIndex = -1;
+    }
+};
+
+// Add click event to map for hover synchronization
+map.on('mousemove', function(e) {
+    const clickedPoint = e.latlng;
+    let closestIndex = 0;
+    let minDistance = Infinity;
+
+    // Find the closest point in the flight path
+    viz3DData.coordinates.forEach((coord, index) => {
+        const distance = Math.sqrt(
+            Math.pow(coord[0] - clickedPoint.lat, 2) +
+            Math.pow(coord[1] - clickedPoint.lng, 2)
+        );
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = index;
+        }
+    });
+
+    if (minDistance < 0.0001) { // Only if very close to the path
+        updateChartHover(closestIndex);
+    }
+});
+
+map.on('mouseout', function() {
+    clearHoverMarkers();
+    currentHoverIndex = -1;
+});
+
+</script>
+{% endif %}
+
+<script>
+function toggleDataIncorrect() {
+    if (confirm('Are you sure you want to toggle the data incorrect flag for this flight?')) {
+        const form = document.createElement('form');
+        form.method = 'post';
+        form.action = '{% url "toggle_data_incorrect" flight.id %}';
+
+        const csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = 'csrfmiddlewaretoken';
+        csrfToken.value = '{{ csrf_token }}';
+        form.appendChild(csrfToken);
+
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function confirmDelete() {
+    if (confirm('Are you sure you want to delete this flight? This action cannot be undone.')) {
+        const form = document.createElement('form');
+        form.method = 'post';
+        form.action = '{% url "delete_flight" flight.id %}';
+
+        const csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = 'csrfmiddlewaretoken';
+        csrfToken.value = '{{ csrf_token }}';
+        form.appendChild(csrfToken);
+
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

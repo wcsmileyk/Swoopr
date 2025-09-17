@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+
+{% block title %}Add Canopy - Swoopr{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-plus-circle"></i> Add Canopy
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{% url 'dashboard' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear"></i> Canopy Details
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.manufacturer.id_for_label }}" class="form-label">Manufacturer *</label>
+                            {{ form.manufacturer }}
+                            {% if form.manufacturer.errors %}
+                                <div class="text-danger small">{{ form.manufacturer.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.model.id_for_label }}" class="form-label">Model *</label>
+                            {{ form.model }}
+                            {% if form.model.errors %}
+                                <div class="text-danger small">{{ form.model.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.size.id_for_label }}" class="form-label">Size (sq ft) *</label>
+                            {{ form.size }}
+                            {% if form.size.errors %}
+                                <div class="text-danger small">{{ form.size.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.year_manufactured.id_for_label }}" class="form-label">Year Manufactured</label>
+                            {{ form.year_manufactured }}
+                            {% if form.year_manufactured.errors %}
+                                <div class="text-danger small">{{ form.year_manufactured.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.line_set.id_for_label }}" class="form-label">Line Set</label>
+                        {{ form.line_set }}
+                        {% if form.line_set.errors %}
+                            <div class="text-danger small">{{ form.line_set.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.modifications.id_for_label }}" class="form-label">Modifications</label>
+                        {{ form.modifications }}
+                        {% if form.modifications.errors %}
+                            <div class="text-danger small">{{ form.modifications.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            {{ form.is_primary }}
+                            <label class="form-check-label" for="{{ form.is_primary.id_for_label }}">
+                                Set as primary canopy
+                            </label>
+                        </div>
+                        <small class="text-muted">Your primary canopy will be selected by default when uploading flights.</small>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Add Canopy
+                        </button>
+                        <a href="{% url 'dashboard' %}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+{#        <!-- Wing Loading Calculator -->#}
+{#        {% if user.profile.exit_weight %}#}
+{#        <div class="card mt-4">#}
+{#            <div class="card-header">#}
+{#                <h6 class="mb-0">#}
+{#                    <i class="bi bi-calculator"></i> Wing Loading Calculator#}
+{#                </h6>#}
+{#            </div>#}
+{#            <div class="card-body">#}
+{#                {% if user.profile.exit_weight %}#}
+{#                    <p class="text-muted mb-2">Based on your exit weight of {{ user.profile.exit_weight }} lbs:</p>#}
+{#                    <div class="row text-center">#}
+{#                        <div class="col-md-3">#}
+{#                            <strong>120 sq ft</strong><br>#}
+{#                            <span class="text-primary">{{ user.profile.exit_weight|floatformat:1|div:120|floatformat:2 }} lbs/sq ft</span>#}
+{#                        </div>#}
+{#                        <div class="col-md-3">#}
+{#                            <strong>135 sq ft</strong><br>#}
+{#                            <span class="text-success">{{ user.profile.exit_weight|floatformat:1|div:135|floatformat:2 }} lbs/sq ft</span>#}
+{#                        </div>#}
+{#                        <div class="col-md-3">#}
+{#                            <strong>150 sq ft</strong><br>#}
+{#                            <span class="text-info">{{ user.profile.exit_weight|floatformat:1|div:150|floatformat:2 }} lbs/sq ft</span>#}
+{#                        </div>#}
+{#                        <div class="col-md-3">#}
+{#                            <strong>170 sq ft</strong><br>#}
+{#                            <span class="text-warning">{{ user.profile.exit_weight|floatformat:1|div:170|floatformat:2 }} lbs/sq ft</span>#}
+{#                        </div>#}
+{#                    </div>#}
+{#                {% else %}#}
+{#                    <p class="text-muted mb-2">You haven't submited an exit weight so we cnanot calculate wing loading. Update your user profile to automatically calculate.</p>#}
+{#                {% endif %}#}
+{#            </div>#}
+{#        </div>#}
+{#        {% endif %}#}
+    </div>
+</div>
+{% endblock %}

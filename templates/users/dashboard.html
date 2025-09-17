@@ -1,0 +1,276 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Swoopr{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-speedometer2"></i> Dashboard
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{% url 'add_canopy' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-circle"></i> Add Canopy
+            </a>
+            <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-upload"></i> Upload Flight
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Welcome Message -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-primary" role="alert">
+            <h4 class="alert-heading">
+                <i class="bi bi-person-circle"></i> Welcome, {{ user.get_full_name|default:user.username }}!
+            </h4>
+            <p class="mb-0">
+                {% if stats.total_flights > 0 %}
+                    You have {{ stats.total_swoops }} swoops out of {{ stats.total_flights }} total flights.
+                    {% if stats.success_rate > 0 %}
+                        Your analysis success rate is {{ stats.success_rate|floatformat:1 }}%.
+                    {% endif %}
+                {% else %}
+                    Ready to start tracking your swoops? Add a canopy and upload your first flight!
+                {% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-primary">{{ stats.total_flights }}</h5>
+                <p class="card-text text-muted">Total Flights</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-success">{{ stats.total_swoops }}</h5>
+                <p class="card-text text-muted">Swoops Detected</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-info">
+                    {% if stats.avg_rotation %}{{ stats.avg_rotation|floatformat:0 }}°{% else %}--{% endif %}
+                </h5>
+                <p class="card-text text-muted">Avg Rotation</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-warning">
+                    {% if stats.avg_speed %}{{ stats.avg_speed|floatformat:1 }} mph{% else %}--{% endif %}
+                </h5>
+                <p class="card-text text-muted">Avg Speed</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Flights -->
+    <div class="col-md-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history"></i> Recent Flights
+                </h5>
+                <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_flights %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Rotation</th>
+                                    <th>Speed</th>
+                                    <th>Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for flight in recent_flights %}
+                                <tr onclick="window.location='{% url 'flight_detail' flight.id %}'" style="cursor: pointer;">
+                                    <td>
+                                        {% if flight.swoop_start_time %}
+                                            {{ flight.swoop_start_time|date:"M d, Y" }}
+                                        {% else %}
+                                            {{ flight.created_at|date:"M d, Y" }}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if flight.is_swoop %}
+                                            <span class="badge bg-success">Swoop</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Flight</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if flight.turn_rotation %}
+                                            {{ flight.rotation_magnitude|floatformat:0 }}° {{ flight.turn_direction }}
+                                        {% else %}
+                                            --
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if flight.max_vertical_speed_mph %}
+                                            {{ flight.max_vertical_speed_mph|floatformat:1 }} mph
+                                        {% else %}
+                                            --
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if flight.performance_grade %}
+                                            <span class="performance-grade-{{ flight.performance_grade }}">
+                                                <strong>{{ flight.performance_grade }}</strong>
+                                            </span>
+                                        {% else %}
+                                            --
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-airplane text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-2">No flights yet. Upload your first FlySight file to get started!</p>
+                        <a href="{% url 'upload_flight' %}" class="btn btn-primary">
+                            <i class="bi bi-upload"></i> Upload Flight
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Canopies -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear"></i> My Canopies
+                </h5>
+                <a href="{% url 'add_canopy' %}" class="btn btn-sm btn-outline-primary">Add</a>
+            </div>
+            <div class="card-body">
+                {% if canopies %}
+                    {% for canopy in canopies %}
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <strong>{{ canopy.manufacturer }} {{ canopy.model }}</strong>
+                            {% if canopy.is_primary %}
+                                <i class="bi bi-star-fill text-warning" title="Primary canopy"></i>
+                            {% endif %}
+                            <br>
+                            <small class="text-muted">
+                                {{ canopy.size }} sq ft
+                                {% if canopy.wing_loading %}
+                                    • {{ canopy.wing_loading }} lbs/sq ft
+                                {% endif %}
+                            </small>
+                        </div>
+                        <div>
+                            <a href="{% url 'edit_canopy' canopy.id %}" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-3">
+                        <i class="bi bi-gear text-muted" style="font-size: 2rem;"></i>
+                        <p class="text-muted mt-2 mb-3">No canopies added yet.</p>
+                        <a href="{% url 'add_canopy' %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-plus-circle"></i> Add Your First Canopy
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Performance Stats -->
+        {% if stats.total_swoops > 0 %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-bar-chart"></i> Performance Records
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="border-end">
+                            {% if stats.personal_bests.max_rotation_flight_id %}
+                                <a href="{% url 'flight_detail' stats.personal_bests.max_rotation_flight_id %}" class="text-decoration-none">
+                                    <h6 class="text-primary">{{ stats.max_rotation|floatformat:0 }}°</h6>
+                                </a>
+                            {% else %}
+                                <h6 class="text-primary">{{ stats.max_rotation|floatformat:0 }}°</h6>
+                            {% endif %}
+                            <small class="text-muted">Max Rotation</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="border-end">
+                            {% if stats.personal_bests.max_speed_flight_id %}
+                                <a href="{% url 'flight_detail' stats.personal_bests.max_speed_flight_id %}" class="text-decoration-none">
+                                    <h6 class="text-success">{{ stats.max_speed|floatformat:1 }}</h6>
+                                </a>
+                            {% else %}
+                                <h6 class="text-success">{{ stats.max_speed|floatformat:1 }}</h6>
+                            {% endif %}
+                            <small class="text-muted">Max Vertical (mph)</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        {% if stats.personal_bests.max_ground_speed_flight_id %}
+                            <a href="{% url 'flight_detail' stats.personal_bests.max_ground_speed_flight_id %}" class="text-decoration-none">
+                                <h6 class="text-warning">
+                                    {% if stats.max_ground_speed %}{{ stats.max_ground_speed|floatformat:1 }}{% else %}--{% endif %}
+                                </h6>
+                            </a>
+                        {% else %}
+                            <h6 class="text-warning">
+                                {% if stats.max_ground_speed %}{{ stats.max_ground_speed|floatformat:1 }}{% else %}--{% endif %}
+                            </h6>
+                        {% endif %}
+                        <small class="text-muted">Max Ground (mph)</small>
+                    </div>
+                </div>
+                {% if stats.max_swoop_distance %}
+                <hr class="my-3">
+                <div class="text-center">
+                    {% if stats.personal_bests.max_distance_flight_id %}
+                        <a href="{% url 'flight_detail' stats.personal_bests.max_distance_flight_id %}" class="text-decoration-none">
+                            <h6 class="text-info">{{ stats.max_swoop_distance|floatformat:0 }} ft</h6>
+                        </a>
+                    {% else %}
+                        <h6 class="text-info">{{ stats.max_swoop_distance|floatformat:0 }} ft</h6>
+                    {% endif %}
+                    <small class="text-muted">Max Swoop Distance</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
