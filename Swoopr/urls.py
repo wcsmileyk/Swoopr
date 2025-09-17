@@ -20,6 +20,6 @@ from django.shortcuts import redirect
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', lambda request: redirect('dashboard')),  # Redirect root to dashboard
-    path('', include('users.urls')),
+    path('', lambda request: redirect('/users/dashboard/')),  # Redirect root to dashboard
+    path('users/', include('users.urls')),
 ]
