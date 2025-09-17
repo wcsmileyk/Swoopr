@@ -1,1 +1,1 @@
-web: gunicorn Swoopr.wsgi --log-file -
+web: gunicorn Swoopr.wsgi:application --bind 0.0.0.0:$PORT

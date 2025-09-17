@@ -2,27 +2,25 @@ services:
   - type: web
     name: swoopr
     env: python
-    buildCommand: |
-      pip install -r requirements.txt
-      python manage.py collectstatic --noinput
-    startCommand: |
-      python manage.py migrate
-      gunicorn Swoopr.wsgi:application
+    buildCommand: ./build.sh
+    startCommand: python manage.py migrate && gunicorn Swoopr.wsgi:application
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: SECRET_KEY
         generateValue: true
       - key: DEBUG
-        value: false
+        value: "false"
+      - key: RENDER
+        value: "true"
       - key: ALLOWED_HOSTS
-        value: .onrender.com
+        value: ".onrender.com"
       - key: SECURE_SSL_REDIRECT
-        value: true
+        value: "true"
       - key: CSRF_COOKIE_SECURE
-        value: true
+        value: "true"
       - key: SESSION_COOKIE_SECURE
-        value: true
+        value: "true"
 
   - type: pserv
     name: swoopr-db
