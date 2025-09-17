@@ -117,6 +117,7 @@
                                         <th>Canopy</th>
                                         <th>Rotation</th>
                                         <th>Max Vertical Speed</th>
+                                        <th>Distance</th>
                                         <th>Grade</th>
                                         <th>Actions</th>
                                     </tr>
@@ -169,6 +170,13 @@
                                             {% endif %}
                                         </td>
                                         <td>
+                                            {% if flight.swoop_distance_ft %}
+                                                {{ flight.swoop_distance_ft|floatformat:0 }} ft
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
                                             {% if flight.performance_grade %}
                                                 <span class="performance-grade-{{ flight.performance_grade }}">
                                                     <strong>{{ flight.performance_grade }}</strong>
@@ -206,6 +214,7 @@
                                         <th>Canopy</th>
                                         <th>Rotation</th>
                                         <th>Max Vertical Speed</th>
+                                        <th>Distance</th>
                                         <th>Grade</th>
                                         <th>Actions</th>
                                     </tr>
@@ -250,6 +259,13 @@
                                         <td>
                                             {% if flight.max_vertical_speed_mph %}
                                                 {{ flight.max_vertical_speed_mph|floatformat:1 }} mph
+                                            {% else %}
+                                                <span class="text-muted">--</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if flight.swoop_distance_ft %}
+                                                {{ flight.swoop_distance_ft|floatformat:0 }} ft
                                             {% else %}
                                                 <span class="text-muted">--</span>
                                             {% endif %}

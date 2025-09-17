@@ -336,6 +336,10 @@ class FlightManager:
             # Calculate accuracy metrics after all data is saved
             flight.update_accuracy_metrics()
 
+            # Calculate and store swoop distance for dashboard performance
+            flight.calculate_and_store_swoop_distance()
+            flight.save()
+
         except Exception as e:
             flight.is_swoop = False
             flight.analysis_successful = False

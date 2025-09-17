@@ -155,6 +155,14 @@ def dashboard_view(request):
             if ground_speed_stats['max_ground_speed']:
                 stats['max_ground_speed'] = ground_speed_stats['max_ground_speed']
 
+            # Get swoop distance stats using the stored field
+            distance_stats = successful_swoops.filter(swoop_distance_ft__isnull=False).aggregate(
+                max_distance=Max('swoop_distance_ft')
+            )
+
+            if distance_stats['max_distance']:
+                stats['max_swoop_distance'] = distance_stats['max_distance']
+
             # Find flights that achieved personal bests (efficient queries)
             personal_bests = {}
 
@@ -182,8 +190,13 @@ def dashboard_view(request):
                 if max_ground_speed_flight:
                     personal_bests['max_ground_speed_flight_id'] = max_ground_speed_flight.id
 
-            # Skip max swoop distance calculation for now (requires complex GPS queries)
-            # This was the biggest performance killer - can be calculated on-demand later
+            # Max swoop distance flight
+            if distance_stats['max_distance']:
+                max_distance_flight = successful_swoops.filter(
+                    swoop_distance_ft=distance_stats['max_distance']
+                ).first()
+                if max_distance_flight:
+                    personal_bests['max_distance_flight_id'] = max_distance_flight.id
 
             stats['personal_bests'] = personal_bests
 

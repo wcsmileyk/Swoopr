@@ -51,6 +51,7 @@ class Flight(models.Model):
     max_ground_speed_ms = models.FloatField(null=True, blank=True)
     turn_time = models.FloatField(null=True, blank=True, help_text="Turn time in seconds")
     rollout_time = models.FloatField(null=True, blank=True, help_text="Rollout time in seconds")
+    swoop_distance_ft = models.FloatField(null=True, blank=True, help_text="Swoop distance from rollout end to landing in feet")
 
     # Altitudes at key points (in meters AGL)
     exit_altitude_agl = models.FloatField(null=True, blank=True)
@@ -93,6 +94,7 @@ class Flight(models.Model):
             models.Index(fields=['rollout_end_idx']),  # Flight detail calculations
             models.Index(fields=['landing_idx']),  # Flight detail calculations
             models.Index(fields=['flare_idx']),  # Flight detail calculations
+            models.Index(fields=['swoop_distance_ft']),  # Dashboard personal bests
         ]
         ordering = ['-created_at']
 
@@ -404,6 +406,30 @@ class Flight(models.Model):
         avg_s_acc = sum(s_acc_values) / len(s_acc_values) if s_acc_values else None
 
         return avg_h_acc, avg_v_acc, avg_s_acc
+
+    def calculate_and_store_swoop_distance(self):
+        """Calculate and store swoop distance for efficient access"""
+        if not self.is_swoop or not self.rollout_end_idx or not self.landing_idx:
+            self.swoop_distance_ft = None
+            return None
+
+        try:
+            # Get GPS points ordered by timestamp for direct indexing
+            gps_points = list(self.gps_points.order_by('timestamp'))
+
+            if len(gps_points) > max(self.rollout_end_idx, self.landing_idx):
+                rollout_end_point = gps_points[self.rollout_end_idx]
+                landing_point = gps_points[self.landing_idx]
+
+                # Calculate distance between rollout end and landing
+                distance_m = rollout_end_point.location.distance(landing_point.location) * 111000  # Convert degrees to meters
+                distance_ft = distance_m * 3.28084  # Convert to feet
+
+                self.swoop_distance_ft = distance_ft
+                return distance_ft
+        except (IndexError, TypeError):
+            self.swoop_distance_ft = None
+            return None
 
     def update_accuracy_metrics(self):
         """Update the stored accuracy metrics for this flight"""
