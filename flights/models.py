@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 import json
 import gzip
 import base64
+from .units import *
 
 
 class Flight(models.Model):
@@ -55,14 +56,21 @@ class Flight(models.Model):
     turn_time = models.FloatField(null=True, blank=True, help_text="Turn time in seconds")
     rollout_time = models.FloatField(null=True, blank=True, help_text="Rollout time in seconds")
     swoop_distance_ft = models.FloatField(null=True, blank=True, help_text="Swoop distance from rollout end to landing in feet")
+    swoop_distance_m = models.FloatField(null=True, blank=True, help_text="Swoop distance from rollout end to landing in meters")
 
     # Altitudes at key points (in meters AGL)
     exit_altitude_agl = models.FloatField(null=True, blank=True)
     flare_altitude_agl = models.FloatField(null=True, blank=True)
     max_vspeed_altitude_agl = models.FloatField(null=True, blank=True)
     max_gspeed_altitude_agl = models.FloatField(null=True, blank=True)
+    rollout_start_altitude_agl = models.FloatField(null=True, blank=True)
+    rollout_end_altitude_agl = models.FloatField(null=True, blank=True)
     landing_altitude_agl = models.FloatField(null=True, blank=True)
     swoop_avg_altitude_agl = models.FloatField(null=True, blank=True, help_text="Average altitude during swoop (flare to landing) in meters AGL")
+
+    # Speed metrics (stored in metric units)
+    entry_gate_speed_mps = models.FloatField(null=True, blank=True, help_text="Speed at entry gate (flare initiation) in m/s")
+    entry_gate_speed_mph = models.FloatField(null=True, blank=True, help_text="Speed at entry gate (flare initiation) in mph (legacy)")
 
     # Flight duration and timing
     total_flight_time = models.FloatField(null=True, blank=True, help_text="Total flight time in seconds")
@@ -322,25 +330,45 @@ class Flight(models.Model):
         """Get GPS data formatted for 3D visualization (side view, top view, map) - focused on swoop portion"""
         import math
 
-        # Get GPS points for this flight, ordered by time
-        points = self.gps_points.all().order_by('timestamp')
+        # Try JSON data first (new method), fallback to GPS points (legacy)
+        gps_data = self.get_gps_data()
 
-        if not points:
-            return None
-
-        # If this is a swoop with valid indices, filter to just the swoop portion
-        if self.is_swoop and self.flare_idx is not None and self.landing_idx is not None:
-            # Get only the swoop portion (flare to landing)
-            points = points[self.flare_idx:self.landing_idx + 1]
-            # Adjust indices to be relative to the filtered dataset
-            flare_offset = 0  # Flare is now the first point
-            landing_offset = len(points) - 1  # Landing is now the last point
+        if gps_data:
+            # Use JSON data (preferred for performance)
+            if self.is_swoop and self.flare_idx is not None and self.landing_idx is not None:
+                # Get only the swoop portion (flare to landing)
+                points_data = gps_data[self.flare_idx:self.landing_idx + 1]
+                flare_offset = 0
+                landing_offset = len(points_data) - 1
+            else:
+                # Use all points for non-swoop flights
+                points_data = gps_data
+                flare_offset = self.flare_idx
+                landing_offset = self.landing_idx
         else:
-            # Use all points for non-swoop flights
-            flare_offset = self.flare_idx
-            landing_offset = self.landing_idx
+            # Legacy fallback using GPS points
+            points = self.gps_points.all().order_by('timestamp')
+            if not points:
+                return None
 
-        if not points:
+            if self.is_swoop and self.flare_idx is not None and self.landing_idx is not None:
+                points = points[self.flare_idx:self.landing_idx + 1]
+                flare_offset = 0
+                landing_offset = len(points) - 1
+            else:
+                flare_offset = self.flare_idx
+                landing_offset = self.landing_idx
+
+            # Convert GPS points to data format
+            points_data = []
+            for point in points:
+                points_data.append({
+                    'lat': float(point.location.y),
+                    'lon': float(point.location.x),
+                    'altitude_agl': float(point.altitude_agl) if point.altitude_agl else 0
+                })
+
+        if not points_data:
             return None
 
         # Calculate cumulative distances and extract coordinates
@@ -351,17 +379,17 @@ class Flight(models.Model):
         prev_point = None
         total_distance = 0
 
-        for point in points:
-            lat = float(point.location.y)
-            lon = float(point.location.x)
-            alt_ft = point.altitude_agl * 3.28084  # Convert to feet
+        for point_data in points_data:
+            lat = point_data['lat']
+            lon = point_data['lon']
+            alt_ft = point_data['altitude_agl'] * 3.28084  # Convert to feet
 
             coordinates.append([lat, lon])
             altitudes_agl_ft.append(alt_ft)
 
             if prev_point:
                 # Calculate distance using Haversine formula
-                lat1, lon1 = math.radians(prev_point.location.y), math.radians(prev_point.location.x)
+                lat1, lon1 = math.radians(prev_point['lat']), math.radians(prev_point['lon'])
                 lat2, lon2 = math.radians(lat), math.radians(lon)
 
                 dlat = lat2 - lat1
@@ -374,7 +402,7 @@ class Flight(models.Model):
                 total_distance += distance_ft
                 cumulative_distances.append(total_distance)
 
-            prev_point = point
+            prev_point = point_data
 
         # Calculate center point for top view
         if coordinates:
@@ -579,6 +607,35 @@ class Flight(models.Model):
         This will be removed after migration
         """
         return self.gps_points.all().order_by('timestamp')
+
+    # Unit conversion properties
+    def get_max_vertical_speed(self, units='imperial'):
+        """Get max vertical speed in requested units"""
+        if self.max_vertical_speed_ms is None:
+            return None
+        return format_speed(self.max_vertical_speed_ms, units)
+
+    def get_max_ground_speed(self, units='imperial'):
+        """Get max ground speed in requested units"""
+        if self.max_ground_speed_ms is None:
+            return None
+        return format_speed(self.max_ground_speed_ms, units)
+
+    def get_entry_gate_speed(self, units='imperial'):
+        """Get entry gate speed in requested units"""
+        if self.entry_gate_speed_mps is None:
+            return None
+        return format_speed(self.entry_gate_speed_mps, units)
+
+    def get_swoop_distance(self, units='imperial'):
+        """Get swoop distance in requested units"""
+        if self.swoop_distance_m is None:
+            return None
+        return format_distance(self.swoop_distance_m, units)
+
+    def get_altitude_display(self, altitude_meters, units='imperial'):
+        """Get altitude in requested units"""
+        return format_altitude(altitude_meters, units)
 
     def update_accuracy_metrics(self):
         """Update the stored accuracy metrics for this flight"""

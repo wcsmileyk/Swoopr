@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load unit_filters %}
 
 {% block title %}Flight Detail - Swoopr{% endblock %}
 
@@ -73,9 +74,9 @@
                         <p>
                             {% if flight.canopy %}
                                 {{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
-                                <small>{{ flight.canopy.size }} sq ft</small>
+                                <small>{{ flight.canopy.size|area_display:user_units }}</small>
                                 {% if flight.wing_loading %}
-                                    <small>({{ flight.wing_loading }} lbs/sq ft)</small>
+                                    <small>({{ flight.wing_loading|wing_loading_display:user_units }})</small>
                                 {% endif %}
                             {% else %}
                                 <span class="text-muted">Unknown</span>
@@ -188,11 +189,7 @@
                             </div>
                             <div class="col-6">
                                 <strong>Flare Altitude:</strong><br>
-                                {% if flight.flare_altitude_agl %}
-                                    {% widthratio flight.flare_altitude_agl 1 3.28084 %} ft AGL
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {% flight_altitude flight 'flare_altitude_agl' user_units %}
                             </div>
                         </div>
                     </div>
@@ -203,20 +200,16 @@
                         <div class="row">
                             <div class="col-6">
                                 <strong>Max Vertical Speed:</strong><br>
-                                {% if flight.max_vertical_speed_mph %}
-                                    {{ flight.max_vertical_speed_mph|floatformat:1 }} mph<br>
-                                    <small class="text-muted">@ {% widthratio flight.max_vspeed_altitude_agl 1 3.28084 %} ft AGL</small>
-                                {% else %}
-                                    <span class="text-muted">--</span>
+                                {% flight_max_vertical_speed flight user_units %}
+                                {% if flight.max_vspeed_altitude_agl %}
+                                    <br><small class="text-muted">@ {% flight_altitude flight 'max_vspeed_altitude_agl' user_units %}</small>
                                 {% endif %}
                             </div>
                             <div class="col-6">
                                 <strong>Max Ground Speed:</strong><br>
-                                {% if flight.max_ground_speed_mph %}
-                                    {{ flight.max_ground_speed_mph|floatformat:1 }} mph<br>
-                                    <small class="text-muted">@ {% widthratio flight.max_gspeed_altitude_agl 1 3.28084 %} ft AGL</small>
-                                {% else %}
-                                    <span class="text-muted">--</span>
+                                {% flight_max_ground_speed flight user_units %}
+                                {% if flight.max_gspeed_altitude_agl %}
+                                    <br><small class="text-muted">@ {% flight_altitude flight 'max_gspeed_altitude_agl' user_units %}</small>
                                 {% endif %}
                             </div>
                         </div>
@@ -236,29 +229,17 @@
                             </div>
                             <div class="col-6">
                                 <strong>Swoop Distance:</strong><br>
-                                {% if swoop_distance %}
-                                    {{ swoop_distance|floatformat:0 }} ft
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {% flight_swoop_distance flight user_units %}
                             </div>
                         </div>
                         <div class="row mt-2">
                             <div class="col-6">
                                 <strong>Rollout Start:</strong><br>
-                                {% if rollout_start_altitude %}
-                                    {{ rollout_start_altitude|floatformat:0 }} ft AGL
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {% flight_altitude flight 'rollout_start_altitude_agl' user_units %}
                             </div>
                             <div class="col-6">
                                 <strong>Rollout End:</strong><br>
-                                {% if rollout_end_altitude %}
-                                    {{ rollout_end_altitude|floatformat:0 }} ft AGL
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {% flight_altitude flight 'rollout_end_altitude_agl' user_units %}
                             </div>
                         </div>
                     </div>
@@ -269,19 +250,11 @@
                         <div class="row">
                             <div class="col-6">
                                 <strong>Avg Swoop Altitude:</strong><br>
-                                {% if swoop_avg_altitude %}
-                                    {{ swoop_avg_altitude|floatformat:0 }} ft AGL
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {% flight_altitude flight 'swoop_avg_altitude_agl' user_units %}
                             </div>
                             <div class="col-6">
-                                <strong>Initial Speed:</strong><br>
-                                {% if horizontal_speed_at_start %}
-                                    {{ horizontal_speed_at_start|floatformat:1 }} mph
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                <strong>Entry Gate Speed:</strong><br>
+                                {% flight_entry_gate_speed flight user_units %}
                             </div>
                         </div>
                     </div>
@@ -292,27 +265,15 @@
                         <div class="row">
                             <div class="col-4">
                                 <strong>Horizontal:</strong><br>
-                                {% if flight.swoop_avg_horizontal_accuracy %}
-                                    {% widthratio flight.swoop_avg_horizontal_accuracy 1 3.28084 %} ft
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {{ flight.swoop_avg_horizontal_accuracy|distance_display:user_units }}
                             </div>
                             <div class="col-4">
                                 <strong>Vertical:</strong><br>
-                                {% if flight.swoop_avg_vertical_accuracy %}
-                                    {% widthratio flight.swoop_avg_vertical_accuracy 1 3.28084 %} ft
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {{ flight.swoop_avg_vertical_accuracy|distance_display:user_units }}
                             </div>
                             <div class="col-4">
                                 <strong>Speed:</strong><br>
-                                {% if flight.swoop_avg_speed_accuracy %}
-                                    {{ flight.swoop_avg_speed_accuracy|floatformat:2 }} m/s
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
+                                {{ flight.swoop_avg_speed_accuracy|speed_display:user_units }}
                             </div>
                         </div>
                     </div>

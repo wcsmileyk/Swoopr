@@ -346,12 +346,14 @@ class FlightManager:
             flight.rollout_start_idx = rollout_start_idx
             flight.rollout_end_idx = rollout_end_idx
 
-            # Store calculated metrics
+            # Store calculated metrics (in metric units)
             flight.turn_rotation = turn_rotation
             flight.turn_direction = "left" if turn_rotation < 0 else "right"
             flight.max_vertical_speed_ms = max_vspeed_ms
-            flight.max_vertical_speed_mph = max_vspeed_ms * MPH_PER_MPS
             flight.max_ground_speed_ms = max_gspeed_ms
+
+            # Store legacy imperial values for migration compatibility
+            flight.max_vertical_speed_mph = max_vspeed_ms * MPH_PER_MPS
             flight.max_ground_speed_mph = max_gspeed_ms * MPH_PER_MPS
             flight.turn_time = max_gspeed_time - flare_time
             flight.rollout_time = rollout_time
@@ -361,11 +363,18 @@ class FlightManager:
             flight.flare_altitude_agl = df.iloc[flare_idx]['AGL']
             flight.max_vspeed_altitude_agl = df.iloc[max_vspeed_idx]['AGL']
             flight.max_gspeed_altitude_agl = df.iloc[max_gspeed_idx]['AGL']
+            flight.rollout_start_altitude_agl = df.iloc[rollout_start_idx]['AGL'] if rollout_start_idx is not None else None
+            flight.rollout_end_altitude_agl = df.iloc[rollout_end_idx]['AGL'] if rollout_end_idx is not None else None
             flight.landing_altitude_agl = df.iloc[landing_idx]['AGL']
 
             # Calculate average altitude during swoop (flare to landing)
-            swoop_altitudes = df.iloc[flare_idx:landing_idx+1]['AGL']
+            swoop_altitudes = df.iloc[rollout_end_idx:landing_idx+1]['AGL']
             flight.swoop_avg_altitude_agl = swoop_altitudes.mean()
+
+            # Calculate entry gate speed (speed at flare initiation) - store in metric
+            flare_gspeed_ms = df.iloc[flare_idx]['gspeed']
+            flight.entry_gate_speed_mps = flare_gspeed_ms
+            flight.entry_gate_speed_mph = flare_gspeed_ms * MPH_PER_MPS  # Legacy
 
             # Store timing
             flight.total_flight_time = landing_time - df.iloc[0]['t_s']
@@ -404,10 +413,12 @@ class FlightManager:
                     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
                     c = 2 * math.asin(math.sqrt(a))
                     distance_m = 6371000 * c  # Earth radius in meters
-                    distance_ft = distance_m * 3.28084  # Convert to feet
 
-                    flight.swoop_distance_ft = distance_ft
+                    # Store in metric units
+                    flight.swoop_distance_m = distance_m
+                    flight.swoop_distance_ft = distance_m * 3.28084  # Legacy
                 except (IndexError, TypeError, KeyError):
+                    flight.swoop_distance_m = None
                     flight.swoop_distance_ft = None
 
             flight.save()
