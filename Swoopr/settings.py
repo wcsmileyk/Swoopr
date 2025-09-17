@@ -27,7 +27,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY')
 if not SECRET_KEY:
-    raise ValueError("SECRET_KEY environment variable must be set")
+    # Allow build phase to proceed without SECRET_KEY
+    if os.getenv('NIXPACKS_BUILD_PHASE'):
+        SECRET_KEY = 'build-time-secret-key-not-for-production'
+    else:
+        raise ValueError("SECRET_KEY environment variable must be set")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
@@ -96,7 +100,8 @@ DATABASES = {
     }
 }
 
-if not os.getenv('DB_PASSWORD'):
+# Only require DB_PASSWORD if not in build phase
+if not os.getenv('DB_PASSWORD') and not os.getenv('NIXPACKS_BUILD_PHASE'):
     raise ValueError("DB_PASSWORD environment variable must be set")
 
 

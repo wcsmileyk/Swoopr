@@ -1,2 +1,1 @@
-web: gunicorn Swoopr.wsgi --log-file -
-release: python manage.py migrate
+web: python manage.py migrate && gunicorn Swoopr.wsgi --log-file -
