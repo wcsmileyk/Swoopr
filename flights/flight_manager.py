@@ -278,10 +278,6 @@ class FlightManager:
         # Store as compressed JSON
         flight.store_gps_data(gps_data_list)
 
-        # PERFORMANCE OPTIMIZATION: Skip legacy GPS points for new flights
-        # Only use JSON storage going forward to reduce database load
-        # Legacy GPS points are maintained for existing flights during migration
-
     def _create_gps_points_legacy(self, flight, df):
         """Legacy GPS point creation - will be removed after full migration"""
         # Clear existing GPS points for this flight
@@ -379,11 +375,41 @@ class FlightManager:
             flight.analyzed_at = timezone.now()
             flight.save()
 
-            # Calculate accuracy metrics after all data is saved
-            flight.update_accuracy_metrics()
+            # Calculate accuracy metrics directly from DataFrame
+            if flare_idx is not None and landing_idx is not None:
+                swoop_slice = df.iloc[flare_idx:landing_idx + 1]
 
-            # Calculate and store swoop distance for dashboard performance
-            flight.calculate_and_store_swoop_distance()
+                # Calculate accuracy metrics
+                h_acc_values = swoop_slice['hAcc'].dropna()
+                v_acc_values = swoop_slice['vAcc'].dropna()
+                s_acc_values = swoop_slice['sAcc'].dropna()
+
+                flight.swoop_avg_horizontal_accuracy = h_acc_values.mean() if len(h_acc_values) > 0 else None
+                flight.swoop_avg_vertical_accuracy = v_acc_values.mean() if len(v_acc_values) > 0 else None
+                flight.swoop_avg_speed_accuracy = s_acc_values.mean() if len(s_acc_values) > 0 else None
+
+            # Calculate swoop distance directly from DataFrame
+            if rollout_end_idx is not None and landing_idx is not None:
+                try:
+                    rollout_end_row = df.iloc[rollout_end_idx]
+                    landing_row = df.iloc[landing_idx]
+
+                    # Calculate distance using Haversine formula
+                    import math
+                    lat1, lon1 = math.radians(rollout_end_row['lat']), math.radians(rollout_end_row['lon'])
+                    lat2, lon2 = math.radians(landing_row['lat']), math.radians(landing_row['lon'])
+
+                    dlat = lat2 - lat1
+                    dlon = lon2 - lon1
+                    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+                    c = 2 * math.asin(math.sqrt(a))
+                    distance_m = 6371000 * c  # Earth radius in meters
+                    distance_ft = distance_m * 3.28084  # Convert to feet
+
+                    flight.swoop_distance_ft = distance_ft
+                except (IndexError, TypeError, KeyError):
+                    flight.swoop_distance_ft = None
+
             flight.save()
 
         except Exception as e:

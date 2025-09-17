@@ -166,26 +166,22 @@ class Flight(models.Model):
         # Calculate max distance for personal best (only for swoops with avg altitude ≤ 5m AGL)
         max_distance = 0
         for swoop in pilot_swoops.filter(swoop_avg_altitude_agl__lte=5.0):
-            if swoop.rollout_end_idx and swoop.landing_idx:
-                try:
-                    rollout_end_point = swoop.gps_points.all()[swoop.rollout_end_idx]
-                    landing_point = swoop.gps_points.all()[swoop.landing_idx]
-                    distance_m = rollout_end_point.location.distance(landing_point.location) * 111000
-                    distance_ft = distance_m * 3.28084
-                    max_distance = max(max_distance, distance_ft)
-                except (IndexError, TypeError):
-                    continue
+            # Use stored swoop distance if available, otherwise calculate
+            if swoop.swoop_distance_ft:
+                max_distance = max(max_distance, swoop.swoop_distance_ft)
+            elif swoop.rollout_end_idx and swoop.landing_idx:
+                # Calculate on demand if not stored
+                distance = swoop.calculate_and_store_swoop_distance()
+                if distance:
+                    max_distance = max(max_distance, distance)
 
         # Calculate current flight distance
         current_distance = 0
-        if self.rollout_end_idx and self.landing_idx:
-            try:
-                rollout_end_point = self.gps_points.all()[self.rollout_end_idx]
-                landing_point = self.gps_points.all()[self.landing_idx]
-                distance_m = rollout_end_point.location.distance(landing_point.location) * 111000
-                current_distance = distance_m * 3.28084
-            except (IndexError, TypeError):
-                pass
+        if self.swoop_distance_ft:
+            current_distance = self.swoop_distance_ft
+        elif self.rollout_end_idx and self.landing_idx:
+            # Calculate on demand if not stored
+            current_distance = self.calculate_and_store_swoop_distance() or 0
 
         # Calculate performance percentages
         speed_percentage = 0
@@ -455,20 +451,27 @@ class Flight(models.Model):
         if not self.is_swoop or not self.flare_idx or not self.landing_idx:
             return None, None, None
 
-        # Get GPS points during swoop (from flare to landing)
-        swoop_points = self.gps_points.filter(
-            timestamp__gte=self.gps_points.all()[self.flare_idx].timestamp,
-            timestamp__lte=self.gps_points.all()[self.landing_idx].timestamp
-        ).order_by('timestamp')
+        # Try JSON data first (new method), fallback to GPS points (legacy)
+        gps_data = self.get_gps_data()
 
-        if not swoop_points.exists():
-            return None, None, None
+        if gps_data and len(gps_data) > max(self.flare_idx, self.landing_idx):
+            # JSON data method (preferred for performance)
+            flare_to_landing = gps_data[self.flare_idx:self.landing_idx + 1]
+            h_acc_values = [point.get('h_acc') for point in flare_to_landing if point.get('h_acc') is not None]
+            v_acc_values = [point.get('v_acc') for point in flare_to_landing if point.get('v_acc') is not None]
+            s_acc_values = [point.get('s_acc') for point in flare_to_landing if point.get('s_acc') is not None]
+        else:
+            # Legacy fallback using GPS points
+            swoop_points = self.gps_points.all().order_by('timestamp')
+            if not swoop_points.exists() or len(swoop_points) <= max(self.flare_idx, self.landing_idx):
+                return None, None, None
+
+            flare_to_landing = swoop_points[self.flare_idx:self.landing_idx + 1]
+            h_acc_values = [point.horizontal_accuracy for point in flare_to_landing if point.horizontal_accuracy is not None]
+            v_acc_values = [point.vertical_accuracy for point in flare_to_landing if point.vertical_accuracy is not None]
+            s_acc_values = [point.speed_accuracy for point in flare_to_landing if point.speed_accuracy is not None]
 
         # Calculate averages
-        h_acc_values = [point.horizontal_accuracy for point in swoop_points if point.horizontal_accuracy is not None]
-        v_acc_values = [point.vertical_accuracy for point in swoop_points if point.vertical_accuracy is not None]
-        s_acc_values = [point.speed_accuracy for point in swoop_points if point.speed_accuracy is not None]
-
         avg_h_acc = sum(h_acc_values) / len(h_acc_values) if h_acc_values else None
         avg_v_acc = sum(v_acc_values) / len(v_acc_values) if v_acc_values else None
         avg_s_acc = sum(s_acc_values) / len(s_acc_values) if s_acc_values else None
@@ -482,10 +485,32 @@ class Flight(models.Model):
             return None
 
         try:
-            # Get GPS points ordered by timestamp for direct indexing
-            gps_points = list(self.gps_points.order_by('timestamp'))
+            # Try JSON data first (new method), fallback to GPS points (legacy)
+            gps_data = self.get_gps_data()
 
-            if len(gps_points) > max(self.rollout_end_idx, self.landing_idx):
+            if gps_data and len(gps_data) > max(self.rollout_end_idx, self.landing_idx):
+                # JSON data method (preferred for performance)
+                rollout_end_point = gps_data[self.rollout_end_idx]
+                landing_point = gps_data[self.landing_idx]
+
+                # Calculate distance using Haversine formula
+                import math
+                lat1, lon1 = math.radians(rollout_end_point['lat']), math.radians(rollout_end_point['lon'])
+                lat2, lon2 = math.radians(landing_point['lat']), math.radians(landing_point['lon'])
+
+                dlat = lat2 - lat1
+                dlon = lon2 - lon1
+                a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+                c = 2 * math.asin(math.sqrt(a))
+                distance_m = 6371000 * c  # Earth radius in meters
+                distance_ft = distance_m * 3.28084  # Convert to feet
+            else:
+                # Legacy fallback using GPS points
+                gps_points = list(self.gps_points.order_by('timestamp'))
+                if not gps_points or len(gps_points) <= max(self.rollout_end_idx, self.landing_idx):
+                    self.swoop_distance_ft = None
+                    return None
+
                 rollout_end_point = gps_points[self.rollout_end_idx]
                 landing_point = gps_points[self.landing_idx]
 
@@ -493,9 +518,9 @@ class Flight(models.Model):
                 distance_m = rollout_end_point.location.distance(landing_point.location) * 111000  # Convert degrees to meters
                 distance_ft = distance_m * 3.28084  # Convert to feet
 
-                self.swoop_distance_ft = distance_ft
-                return distance_ft
-        except (IndexError, TypeError):
+            self.swoop_distance_ft = distance_ft
+            return distance_ft
+        except (IndexError, TypeError, KeyError):
             self.swoop_distance_ft = None
             return None
 
