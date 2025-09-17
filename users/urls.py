@@ -12,6 +12,7 @@ urlpatterns = [
     path('profile/', views.profile_view, name='profile'),
     path('flights/', views.flights_view, name='flights'),
     path('flight/upload/', views.upload_flight_view, name='upload_flight'),
+    path('flight/upload/results/', views.upload_results_view, name='upload_results'),
     path('flight/<int:flight_id>/', views.flight_detail_view, name='flight_detail'),
     path('flight/<int:flight_id>/toggle-incorrect/', views.toggle_data_incorrect_view, name='toggle_data_incorrect'),
     path('flight/<int:flight_id>/delete/', views.delete_flight_view, name='delete_flight'),

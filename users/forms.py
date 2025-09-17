@@ -4,6 +4,26 @@ from django.contrib.auth.models import User
 from .models import UserProfile, Canopy
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    """Custom widget for multiple file uploads"""
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+    """Custom field for multiple file uploads"""
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("widget", MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        # Handle single file uploads that come through as a single file
+        single_file_clean = super().clean
+        if isinstance(data, (list, tuple)):
+            result = [single_file_clean(d, initial) for d in data]
+            return result
+        return single_file_clean(data, initial)
+
+
 class SignUpForm(UserCreationForm):
     """Extended user registration form"""
     email = forms.EmailField(required=True)
@@ -147,13 +167,13 @@ class UserProfileForm(forms.ModelForm):
 class FlightUploadForm(forms.Form):
     """Form for uploading FlySight CSV files"""
 
-    file = forms.FileField(
-        widget=forms.FileInput(attrs={
+    file = MultipleFileField(
+        widget=MultipleFileInput(attrs={
             'class': 'form-control',
             'accept': '.csv,.CSV',
-            'multiple': False
+            'multiple': True
         }),
-        help_text="Select a FlySight CSV file to upload"
+        help_text="Select one or more FlySight CSV files to upload"
     )
     canopy = forms.ModelChoiceField(
         queryset=None,
@@ -172,13 +192,19 @@ class FlightUploadForm(forms.Form):
             self.fields['canopy'].queryset = Canopy.objects.none()
 
     def clean_file(self):
-        file = self.cleaned_data.get('file')
-        if file:
+        files = self.cleaned_data.get('file')
+        if not files:
+            return files
+
+        # Handle single file (not in a list)
+        if not isinstance(files, list):
+            files = [files]
+
+        for file in files:
             if not file.name.lower().endswith('.csv'):
-                raise forms.ValidationError("File must be a CSV file.")
+                raise forms.ValidationError(f"File '{file.name}' must be a CSV file.")
 
-            # Check file size (limit to 10MB)
             if file.size > 10 * 1024 * 1024:
-                raise forms.ValidationError("File size must be less than 10MB.")
+                raise forms.ValidationError(f"File '{file.name}' size must be less than 10MB.")
 
-        return file
+        return files

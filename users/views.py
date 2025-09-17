@@ -351,37 +351,20 @@ def upload_flight_view(request):
     if request.method == 'POST':
         form = FlightUploadForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
-            file = form.cleaned_data['file']
+            files = form.cleaned_data.get('file')
             canopy = form.cleaned_data.get('canopy')
 
-            try:
-                # Save uploaded file temporarily
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
-                    for chunk in file.chunks():
-                        tmp_file.write(chunk)
-                    tmp_file_path = tmp_file.name
+            # Ensure files is a list
+            if not isinstance(files, list):
+                files = [files] if files else []
 
-                # Process the file
-                flight = process_flysight_file(tmp_file_path, pilot=request.user, canopy=canopy)
+            # Handle single file upload - redirect to flight detail
+            if len(files) == 1:
+                return _process_single_file(request, files[0], canopy)
 
-                # Clean up temporary file
-                os.unlink(tmp_file_path)
-
-                if flight.analysis_successful:
-                    if flight.is_swoop:
-                        messages.success(request, f'Flight uploaded and analyzed successfully! Swoop detected with {abs(flight.turn_rotation):.0f}° rotation.')
-                    else:
-                        messages.success(request, 'Flight uploaded successfully! No swoop detected in this flight.')
-                else:
-                    messages.warning(request, f'Flight uploaded but analysis failed: {flight.analysis_error}')
-
-                return redirect('flight_detail', flight_id=flight.id)
-
-            except Exception as e:
-                # Clean up temp file if it exists
-                if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
-                    os.unlink(tmp_file_path)
-                messages.error(request, f'Error processing flight: {str(e)}')
+            # Handle multiple files - process all and redirect to summary
+            else:
+                return _process_multiple_files(request, files, canopy)
 
         else:
             messages.error(request, 'Please correct the errors below.')
@@ -389,6 +372,116 @@ def upload_flight_view(request):
         form = FlightUploadForm(user=request.user)
 
     return render(request, 'users/upload_flight.html', {'form': form})
+
+
+def _process_single_file(request, file, canopy):
+    """Process a single uploaded file"""
+    try:
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+            for chunk in file.chunks():
+                tmp_file.write(chunk)
+            tmp_file_path = tmp_file.name
+
+        # Process the file
+        flight = process_flysight_file(tmp_file_path, pilot=request.user, canopy=canopy)
+
+        # Clean up temporary file
+        os.unlink(tmp_file_path)
+
+        if flight.analysis_successful:
+            if flight.is_swoop:
+                messages.success(request, f'Flight uploaded and analyzed successfully! Swoop detected with {abs(flight.turn_rotation):.0f}° rotation.')
+            else:
+                messages.success(request, 'Flight uploaded successfully! No swoop detected in this flight.')
+        else:
+            messages.warning(request, f'Flight uploaded but analysis failed: {flight.analysis_error}')
+
+        return redirect('flight_detail', flight_id=flight.id)
+
+    except Exception as e:
+        # Clean up temp file if it exists
+        if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
+            os.unlink(tmp_file_path)
+        messages.error(request, f'Error processing flight: {str(e)}')
+        return redirect('upload_flight')
+
+
+def _process_multiple_files(request, files, canopy):
+    """Process multiple uploaded files"""
+    results = []
+    successful_uploads = 0
+
+    for file in files:
+        result = {
+            'filename': file.name,
+            'success': False,
+            'flight_id': None,
+            'error': None,
+            'swoop_detected': False,
+            'turn_rotation': None
+        }
+
+        try:
+            # Save uploaded file temporarily
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                for chunk in file.chunks():
+                    tmp_file.write(chunk)
+                tmp_file_path = tmp_file.name
+
+            # Process the file
+            flight = process_flysight_file(tmp_file_path, pilot=request.user, canopy=canopy)
+
+            # Clean up temporary file
+            os.unlink(tmp_file_path)
+
+            result['success'] = True
+            result['flight_id'] = flight.id
+            result['analysis_successful'] = flight.analysis_successful
+            result['swoop_detected'] = flight.is_swoop
+            result['turn_rotation'] = flight.turn_rotation
+            result['analysis_error'] = flight.analysis_error
+
+            if flight.analysis_successful:
+                successful_uploads += 1
+
+        except Exception as e:
+            # Clean up temp file if it exists
+            if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
+            result['error'] = str(e)
+
+        results.append(result)
+
+    # Store results in session for the results page
+    failed_uploads = len(files) - successful_uploads
+    request.session['upload_results'] = {
+        'results': results,
+        'total_files': len(files),
+        'successful_uploads': successful_uploads,
+        'failed_uploads': failed_uploads
+    }
+
+    messages.success(request, f'Processed {len(files)} files. {successful_uploads} successful uploads.')
+    return redirect('upload_results')
+
+
+@login_required
+def upload_results_view(request):
+    """Display results of multiple file uploads"""
+    upload_results = request.session.get('upload_results')
+
+    if not upload_results:
+        messages.error(request, 'No upload results found.')
+        return redirect('upload_flight')
+
+    # Clear the session data after retrieving it
+    if 'upload_results' in request.session:
+        del request.session['upload_results']
+
+    return render(request, 'users/upload_results.html', {
+        'upload_results': upload_results
+    })
 
 
 @login_required

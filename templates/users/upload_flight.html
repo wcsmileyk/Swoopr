@@ -27,12 +27,18 @@
                     {% csrf_token %}
 
                     <div class="mb-3">
-                        <label for="{{ form.file.id_for_label }}" class="form-label">FlySight CSV File *</label>
+                        <label for="{{ form.file.id_for_label }}" class="form-label">FlySight CSV Files *</label>
                         {{ form.file }}
                         {% if form.file.errors %}
                             <div class="text-danger small">{{ form.file.errors }}</div>
                         {% endif %}
                         <div class="form-text">{{ form.file.help_text }}</div>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Single file:</strong> Go directly to flight detail
+                            <br>
+                            <strong>Multiple files:</strong> View upload summary with all flights
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -74,7 +80,8 @@
                     <li>Flight data is automatically analyzed for swoop detection</li>
                     <li>Turn rotation, maximum speeds, and altitudes are calculated</li>
                     <li>Performance metrics and grading are generated</li>
-                    <li>You'll be redirected to view detailed flight analysis</li>
+                    <li><strong>Single file:</strong> Redirected to detailed flight analysis</li>
+                    <li><strong>Multiple files:</strong> View upload summary with all processed flights</li>
                 </ul>
 
                 <h6>Canopy Selection:</h6>
