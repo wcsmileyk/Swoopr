@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 
-{% block title %}Add Canopy - Swoopr{% endblock %}
+{% block title %}Edit Canopy - Swoopr{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">
-        <i class="bi bi-plus-circle"></i> Add Canopy
+        <i class="bi bi-gear"></i> Edit Canopy
     </h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <a href="{% url 'dashboard' %}" class="btn btn-sm btn-outline-secondary">
@@ -19,7 +19,7 @@
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="bi bi-gear"></i> Canopy Details
+                    <i class="bi bi-gear"></i> {{ canopy.display_name }}
                 </h5>
             </div>
             <div class="card-body">
@@ -81,49 +81,13 @@
 
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> Add Canopy
+                            <i class="bi bi-check-circle"></i> Update Canopy
                         </button>
                         <a href="{% url 'dashboard' %}" class="btn btn-secondary">Cancel</a>
                     </div>
                 </form>
             </div>
         </div>
-
-{#        <!-- Wing Loading Calculator -->#}
-{#        {% if user.profile.exit_weight %}#}
-{#        <div class="card mt-4">#}
-{#            <div class="card-header">#}
-{#                <h6 class="mb-0">#}
-{#                    <i class="bi bi-calculator"></i> Wing Loading Calculator#}
-{#                </h6>#}
-{#            </div>#}
-{#            <div class="card-body">#}
-{#                {% if user.profile.exit_weight %}#}
-{#                    <p class="text-muted mb-2">Based on your exit weight of {{ user.profile.exit_weight }} lbs:</p>#}
-{#                    <div class="row text-center">#}
-{#                        <div class="col-md-3">#}
-{#                            <strong>120 sq ft</strong><br>#}
-{#                            <span class="text-primary">{{ user.profile.exit_weight|floatformat:1|div:120|floatformat:2 }} lbs/sq ft</span>#}
-{#                        </div>#}
-{#                        <div class="col-md-3">#}
-{#                            <strong>135 sq ft</strong><br>#}
-{#                            <span class="text-success">{{ user.profile.exit_weight|floatformat:1|div:135|floatformat:2 }} lbs/sq ft</span>#}
-{#                        </div>#}
-{#                        <div class="col-md-3">#}
-{#                            <strong>150 sq ft</strong><br>#}
-{#                            <span class="text-info">{{ user.profile.exit_weight|floatformat:1|div:150|floatformat:2 }} lbs/sq ft</span>#}
-{#                        </div>#}
-{#                        <div class="col-md-3">#}
-{#                            <strong>170 sq ft</strong><br>#}
-{#                            <span class="text-warning">{{ user.profile.exit_weight|floatformat:1|div:170|floatformat:2 }} lbs/sq ft</span>#}
-{#                        </div>#}
-{#                    </div>#}
-{#                {% else %}#}
-{#                    <p class="text-muted mb-2">You haven't submited an exit weight so we cnanot calculate wing loading. Update your user profile to automatically calculate.</p>#}
-{#                {% endif %}#}
-{#            </div>#}
-{#        </div>#}
-{#        {% endif %}#}
     </div>
 </div>
 {% endblock %}

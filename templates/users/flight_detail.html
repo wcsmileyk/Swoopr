@@ -29,6 +29,9 @@
     </h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <div class="btn-group me-2">
+            <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary">
+                <i class="bi bi-cloud-upload"></i> Upload
+            </a>
             <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleDataIncorrect()">
                 <i class="bi bi-flag"></i>
                 {% if flight.data_incorrect %}

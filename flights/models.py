@@ -3,6 +3,9 @@ from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.contrib.postgres.indexes import GistIndex
 from django.contrib.auth.models import User
+import json
+import gzip
+import base64
 
 
 class Flight(models.Model):
@@ -59,6 +62,7 @@ class Flight(models.Model):
     max_vspeed_altitude_agl = models.FloatField(null=True, blank=True)
     max_gspeed_altitude_agl = models.FloatField(null=True, blank=True)
     landing_altitude_agl = models.FloatField(null=True, blank=True)
+    swoop_avg_altitude_agl = models.FloatField(null=True, blank=True, help_text="Average altitude during swoop (flare to landing) in meters AGL")
 
     # Flight duration and timing
     total_flight_time = models.FloatField(null=True, blank=True, help_text="Total flight time in seconds")
@@ -73,6 +77,10 @@ class Flight(models.Model):
     swoop_avg_horizontal_accuracy = models.FloatField(null=True, blank=True, help_text="Average hAcc during swoop in meters")
     swoop_avg_vertical_accuracy = models.FloatField(null=True, blank=True, help_text="Average vAcc during swoop in meters")
     swoop_avg_speed_accuracy = models.FloatField(null=True, blank=True, help_text="Average sAcc during swoop in m/s")
+
+    # GPS data storage (new efficient approach)
+    gps_data_compressed = models.TextField(null=True, blank=True, help_text="Compressed JSON GPS data")
+    gps_data_hash = models.CharField(max_length=64, null=True, blank=True, help_text="Hash of GPS data for integrity")
 
     class Meta:
         unique_together = ['pilot', 'device_id', 'session_id']
@@ -95,6 +103,8 @@ class Flight(models.Model):
             models.Index(fields=['landing_idx']),  # Flight detail calculations
             models.Index(fields=['flare_idx']),  # Flight detail calculations
             models.Index(fields=['swoop_distance_ft']),  # Dashboard personal bests
+            models.Index(fields=['swoop_avg_altitude_agl']),  # Distance PR filtering
+            models.Index(fields=['gps_data_hash']),  # GPS data integrity checks
         ]
         ordering = ['-created_at']
 
@@ -133,13 +143,14 @@ class Flight(models.Model):
 
     @property
     def performance_grade(self):
-        """Calculate performance grade based on personal bests"""
-        if not self.is_swoop or not self.pilot:
+        """Calculate performance grade based on personal bests for this specific canopy"""
+        if not self.is_swoop or not self.pilot or not self.canopy:
             return None
 
-        # Get pilot's personal bests
+        # Get pilot's personal bests for the same canopy
         pilot_swoops = Flight.objects.filter(
             pilot=self.pilot,
+            canopy=self.canopy,
             is_swoop=True,
             analysis_successful=True
         ).exclude(id=self.id)  # Exclude current flight
@@ -152,9 +163,9 @@ class Flight(models.Model):
             models.Max('max_vertical_speed_mph')
         )['max_vertical_speed_mph__max']
 
-        # Calculate max distance for personal best
+        # Calculate max distance for personal best (only for swoops with avg altitude ≤ 5m AGL)
         max_distance = 0
-        for swoop in pilot_swoops:
+        for swoop in pilot_swoops.filter(swoop_avg_altitude_agl__lte=5.0):
             if swoop.rollout_end_idx and swoop.landing_idx:
                 try:
                     rollout_end_point = swoop.gps_points.all()[swoop.rollout_end_idx]
@@ -203,6 +214,63 @@ class Flight(models.Model):
 
     def get_chart_data(self):
         """Get GPS data formatted for time series charts"""
+        # Try new JSON storage first, fallback to legacy
+        gps_data = self.get_gps_data()
+        if not gps_data:
+            return self._get_chart_data_legacy()
+
+        if not gps_data:
+            return None
+
+        # Convert to lists for JSON serialization
+        timestamps = []
+        altitudes_agl = []
+        altitudes_msl = []
+        vertical_speeds = []
+        ground_speeds = []
+        headings = []
+
+        # Convert to seconds from start for x-axis
+        start_time = None
+        for i, point in enumerate(gps_data):
+            if i == 0:
+                start_time = point['timestamp']
+                time_offset = 0
+            else:
+                time_offset = point['timestamp'] - start_time
+
+            timestamps.append(time_offset)
+            altitudes_agl.append(point.get('altitude_agl', 0))
+            altitudes_msl.append(point.get('altitude_msl', 0))
+            vertical_speeds.append(point.get('velocity_down', 0) * 2.23694)  # Convert to mph
+            ground_speeds.append(point.get('ground_speed', 0) * 2.23694)  # Convert to mph
+            headings.append(point.get('heading', 0))
+
+        # Mark important indices as timestamps
+        important_points = {}
+        if self.flare_idx is not None and self.flare_idx < len(timestamps):
+            important_points['flare'] = timestamps[self.flare_idx]
+        if self.max_vspeed_idx is not None and self.max_vspeed_idx < len(timestamps):
+            important_points['max_vspeed'] = timestamps[self.max_vspeed_idx]
+        if self.max_gspeed_idx is not None and self.max_gspeed_idx < len(timestamps):
+            important_points['max_gspeed'] = timestamps[self.max_gspeed_idx]
+        if self.landing_idx is not None and self.landing_idx < len(timestamps):
+            important_points['landing'] = timestamps[self.landing_idx]
+        if self.rollout_start_idx is not None and self.rollout_start_idx < len(timestamps):
+            important_points['rollout_start'] = timestamps[self.rollout_start_idx]
+
+        return {
+            'timestamps': timestamps,
+            'altitude_agl': altitudes_agl,
+            'altitude_msl': altitudes_msl,
+            'vertical_speed': vertical_speeds,
+            'ground_speed': ground_speeds,
+            'heading': headings,
+            'important_points': important_points
+        }
+
+    def _get_chart_data_legacy(self):
+        """Legacy method using GPSPoint model - will be removed after migration"""
         import json
 
         # Get all GPS points for this flight, ordered by time
@@ -430,6 +498,62 @@ class Flight(models.Model):
         except (IndexError, TypeError):
             self.swoop_distance_ft = None
             return None
+
+    def store_gps_data(self, gps_data_list):
+        """
+        Store GPS data as compressed JSON
+        gps_data_list: List of dicts with GPS point data
+        """
+        import hashlib
+
+        # Convert to compact format
+        compact_data = {
+            'points': gps_data_list,
+            'count': len(gps_data_list),
+            'version': '1.0'
+        }
+
+        # Compress and encode
+        json_str = json.dumps(compact_data, separators=(',', ':'))
+        compressed = gzip.compress(json_str.encode('utf-8'))
+        encoded = base64.b64encode(compressed).decode('ascii')
+
+        # Store with hash for integrity
+        self.gps_data_compressed = encoded
+        self.gps_data_hash = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+
+    def get_gps_data(self):
+        """
+        Retrieve and decompress GPS data
+        Returns: List of GPS point dicts or None if no data
+        """
+        if not self.gps_data_compressed:
+            return None
+
+        try:
+            # Decode and decompress
+            compressed = base64.b64decode(self.gps_data_compressed.encode('ascii'))
+            json_str = gzip.decompress(compressed).decode('utf-8')
+            data = json.loads(json_str)
+
+            # Verify integrity if hash exists
+            if self.gps_data_hash:
+                import hashlib
+                computed_hash = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+                if computed_hash != self.gps_data_hash:
+                    raise ValueError("GPS data integrity check failed")
+
+            return data.get('points', [])
+        except Exception as e:
+            print(f"Error retrieving GPS data for flight {self.id}: {e}")
+            return None
+
+    def get_gps_points_legacy(self):
+        """
+        Fallback method to get GPS points from old GPSPoint model
+        This will be removed after migration
+        """
+        return self.gps_points.all().order_by('timestamp')
 
     def update_accuracy_metrics(self):
         """Update the stored accuracy metrics for this flight"""

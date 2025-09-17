@@ -241,7 +241,49 @@ class FlightManager:
         return flight
 
     def create_gps_points(self, flight, df):
-        """Create GPSPoint objects from DataFrame"""
+        """Store GPS data as compressed JSON (new efficient approach)"""
+        gps_data_list = []
+
+        for idx, row in df.iterrows():
+            if pd.isna(row['time']) or pd.isna(row['lat']) or pd.isna(row['lon']):
+                continue
+
+            # Convert to timestamp (seconds since epoch)
+            timestamp = row['time'].timestamp() if hasattr(row['time'], 'timestamp') else float(row['time'])
+
+            # Handle missing accuracy values
+            h_acc = float(row['hAcc']) if pd.notna(row['hAcc']) and row['hAcc'] != '' else None
+            v_acc = float(row['vAcc']) if pd.notna(row['vAcc']) and row['vAcc'] != '' else None
+            s_acc = float(row['sAcc']) if pd.notna(row['sAcc']) and row['sAcc'] != '' else None
+
+            # Create compact GPS point data
+            point_data = {
+                'timestamp': timestamp,
+                'lat': float(row['lat']),
+                'lon': float(row['lon']),
+                'altitude_msl': float(row['hMSL']),
+                'altitude_agl': float(row['AGL']),
+                'velocity_north': float(row['velN']),
+                'velocity_east': float(row['velE']),
+                'velocity_down': float(row['velD']),
+                'ground_speed': float(row['gspeed']),
+                'heading': float(row['heading']),
+                'h_acc': h_acc,
+                'v_acc': v_acc,
+                's_acc': s_acc,
+                'num_sv': int(row['numSV'])
+            }
+            gps_data_list.append(point_data)
+
+        # Store as compressed JSON
+        flight.store_gps_data(gps_data_list)
+
+        # PERFORMANCE OPTIMIZATION: Skip legacy GPS points for new flights
+        # Only use JSON storage going forward to reduce database load
+        # Legacy GPS points are maintained for existing flights during migration
+
+    def _create_gps_points_legacy(self, flight, df):
+        """Legacy GPS point creation - will be removed after full migration"""
         # Clear existing GPS points for this flight
         flight.gps_points.all().delete()
 
@@ -324,6 +366,10 @@ class FlightManager:
             flight.max_vspeed_altitude_agl = df.iloc[max_vspeed_idx]['AGL']
             flight.max_gspeed_altitude_agl = df.iloc[max_gspeed_idx]['AGL']
             flight.landing_altitude_agl = df.iloc[landing_idx]['AGL']
+
+            # Calculate average altitude during swoop (flare to landing)
+            swoop_altitudes = df.iloc[flare_idx:landing_idx+1]['AGL']
+            flight.swoop_avg_altitude_agl = swoop_altitudes.mean()
 
             # Store timing
             flight.total_flight_time = landing_time - df.iloc[0]['t_s']

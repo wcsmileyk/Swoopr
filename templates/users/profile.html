@@ -49,14 +49,6 @@
                             <label for="{{ form.ti.id_for_label }}" class="form-label">Tandem-I</label>
                             {{ form.ti }}
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="{{ form.total_jumps.id_for_label }}" class="form-label">Total Jumps</label>
-                            {{ form.total_jumps }}
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label for="{{ form.swoop_jumps.id_for_label }}" class="form-label">Swoop Jumps</label>
-                            {{ form.swoop_jumps }}
-                        </div>
                     </div>
 
                     <div class="row">
@@ -121,9 +113,6 @@
                 <p><strong>Email:</strong> {{ user.email }}</p>
                 <p><strong>Member Since:</strong> {{ user.date_joined|date:"M Y" }}</p>
 
-                {% if user.profile.experience_level %}
-                <p><strong>Experience:</strong> {{ user.profile.experience_level }}</p>
-                {% endif %}
             </div>
         </div>
     </div>

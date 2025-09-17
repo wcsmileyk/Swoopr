@@ -155,8 +155,11 @@ def dashboard_view(request):
             if ground_speed_stats['max_ground_speed']:
                 stats['max_ground_speed'] = ground_speed_stats['max_ground_speed']
 
-            # Get swoop distance stats using the stored field
-            distance_stats = successful_swoops.filter(swoop_distance_ft__isnull=False).aggregate(
+            # Get swoop distance stats using the stored field (only for swoops with avg altitude ≤ 5m AGL)
+            distance_stats = successful_swoops.filter(
+                swoop_distance_ft__isnull=False,
+                swoop_avg_altitude_agl__lte=5.0
+            ).aggregate(
                 max_distance=Max('swoop_distance_ft')
             )
 
@@ -190,10 +193,11 @@ def dashboard_view(request):
                 if max_ground_speed_flight:
                     personal_bests['max_ground_speed_flight_id'] = max_ground_speed_flight.id
 
-            # Max swoop distance flight
+            # Max swoop distance flight (only for swoops with avg altitude ≤ 5m AGL)
             if distance_stats['max_distance']:
                 max_distance_flight = successful_swoops.filter(
-                    swoop_distance_ft=distance_stats['max_distance']
+                    swoop_distance_ft=distance_stats['max_distance'],
+                    swoop_avg_altitude_agl__lte=5.0
                 ).first()
                 if max_distance_flight:
                     personal_bests['max_distance_flight_id'] = max_distance_flight.id

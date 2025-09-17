@@ -94,12 +94,11 @@ class CanopyForm(forms.ModelForm):
 
     class Meta:
         model = Canopy
-        fields = ['manufacturer', 'model', 'size', 'year_manufactured', 'line_set', 'modifications', 'is_primary']
+        fields = ['manufacturer', 'model', 'size', 'line_set', 'modifications', 'is_primary']
         widgets = {
             'manufacturer': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Icarus, Performance Designs'}),
             'model': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Sabre2, Katana'}),
             'size': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Size in sq ft'}),
-            'year_manufactured': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Year'}),
             'line_set': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Line set type if modified'}),
             'modifications': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Any modifications made'}),
             'is_primary': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -125,7 +124,7 @@ class UserProfileForm(forms.ModelForm):
         model = UserProfile
         fields = [
             'license_number', 'uspa_number', 'license_level', 'coach', 'affi', 'ti',
-            'total_jumps', 'swoop_jumps', 'exit_weight', 'home_dz', 'phone',
+            'exit_weight', 'home_dz', 'phone',
             'emergency_contact', 'emergency_phone', 'units', 'public_profile'
         ]
         widgets = {
@@ -135,8 +134,6 @@ class UserProfileForm(forms.ModelForm):
             'coach': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'affi': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'ti': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'total_jumps': forms.NumberInput(attrs={'class': 'form-control'}),
-            'swoop_jumps': forms.NumberInput(attrs={'class': 'form-control'}),
             'exit_weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
             'home_dz': forms.TextInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
