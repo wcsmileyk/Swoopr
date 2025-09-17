@@ -49,10 +49,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.gis',
     'users',
     'flights'
 ]
+
+# Add GIS support if not in build phase
+if not os.getenv('NIXPACKS_BUILD_PHASE'):
+    INSTALLED_APPS.append('django.contrib.gis')
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -89,9 +92,17 @@ WSGI_APPLICATION = 'Swoopr.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# Use PostGIS if GIS is available, otherwise regular PostgreSQL
+if os.getenv('NIXPACKS_BUILD_PHASE'):
+    # Use regular PostgreSQL during build
+    DATABASE_ENGINE = 'django.db.backends.postgresql'
+else:
+    # Use PostGIS in runtime
+    DATABASE_ENGINE = 'django.contrib.gis.db.backends.postgis'
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
+        'ENGINE': DATABASE_ENGINE,
         'NAME': os.getenv('DB_NAME', 'swoopr_dev'),
         'USER': os.getenv('DB_USER', 'swoopr_user'),
         'PASSWORD': os.getenv('DB_PASSWORD'),

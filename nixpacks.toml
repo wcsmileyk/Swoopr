@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["gdal", "proj", "geos", "postgresql"]
-
-[phases.build]
-cmds = ["python -m pip install --upgrade pip"]
-
-[start]
-cmd = "gunicorn Swoopr.wsgi --log-file -"
