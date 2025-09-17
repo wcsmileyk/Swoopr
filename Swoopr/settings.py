@@ -52,6 +52,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -172,3 +173,23 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Static files for production
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise configuration for static files
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Login/Logout URLs
+LOGIN_URL = '/users/login/'
+LOGIN_REDIRECT_URL = '/users/dashboard/'
+LOGOUT_REDIRECT_URL = '/users/login/'
+
+# Railway.app specific settings
+if os.getenv('RAILWAY_ENVIRONMENT'):
+    # Production settings for Railway
+    DEBUG = False
+    ALLOWED_HOSTS = ['.railway.app', '.up.railway.app']
+
+    # Force HTTPS in production
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
