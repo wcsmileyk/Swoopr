@@ -1,0 +1,313 @@
+{% extends 'base.html' %}
+{% load unit_filters %}
+
+{% block title %}{{ profile_user.profile.display_name }} - Public Profile - Swoopr{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-person-circle"></i> {{ profile_user.profile.display_name }}
+        <small class="text-muted">@{{ profile_user.username }}</small>
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{% url 'user_search' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Search
+        </a>
+    </div>
+</div>
+
+<!-- Profile Info -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-person"></i> Pilot Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        {% if profile_user.profile.license_level %}
+                            <p><strong>License:</strong> {{ profile_user.profile.get_license_level_display }}</p>
+                        {% endif %}
+                        {% if profile_user.profile.total_jumps %}
+                            <p><strong>Total Jumps:</strong> {{ profile_user.profile.total_jumps|floatformat:0 }}</p>
+                        {% endif %}
+                        {% if profile_user.profile.swoop_jumps %}
+                            <p><strong>Swoop Jumps:</strong> {{ profile_user.profile.swoop_jumps|floatformat:0 }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {% if profile_user.profile.home_dz %}
+                            <p><strong>Home DZ:</strong> {{ profile_user.profile.home_dz }}</p>
+                        {% endif %}
+                        {% if profile_user.profile.exit_weight %}
+                            <p><strong>Exit Weight:</strong> {{ profile_user.profile.exit_weight|floatformat:0 }} lbs</p>
+                        {% endif %}
+                        {% if profile_user.profile.uspa_number %}
+                            <p><strong>USPA #:</strong> {{ profile_user.profile.uspa_number }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Instructor Badges -->
+                {% if profile_user.profile.coach or profile_user.profile.affi or profile_user.profile.ti %}
+                    <hr>
+                    <div>
+                        <strong>Qualifications:</strong>
+                        {% if profile_user.profile.coach %}
+                            <span class="badge bg-primary ms-1">Coach</span>
+                        {% endif %}
+                        {% if profile_user.profile.affi %}
+                            <span class="badge bg-success ms-1">AFF Instructor</span>
+                        {% endif %}
+                        {% if profile_user.profile.ti %}
+                            <span class="badge bg-info ms-1">Tandem Instructor</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-bar-chart"></i> Public Flight Stats
+                </h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="row">
+                    <div class="col-6">
+                        <h4 class="text-primary">{{ stats.total_public_flights }}</h4>
+                        <small>Public Flights</small>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-success">{{ stats.total_public_swoops }}</h4>
+                        <small>Public Swoops</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if stats.total_public_swoops > 0 %}
+<!-- Swoop Performance Stats -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-trophy"></i> Public Swoop Performance
+                </h5>
+                <small class="text-muted">Based on {{ stats.total_public_swoops }} public swoop{{ stats.total_public_swoops|pluralize }}</small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Turn Analysis -->
+                    {% if stats.max_rotation %}
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-primary">Turn Performance</h6>
+                                <h4>{{ stats.max_rotation|floatformat:0 }}°</h4>
+                                <small>Max Rotation</small>
+                                {% if stats.avg_rotation %}
+                                    <br><small class="text-muted">Avg: {{ stats.avg_rotation|floatformat:0 }}°</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Speed Analysis -->
+                    {% if stats.max_speed %}
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-success">Vertical Speed</h6>
+                                <h4>{{ stats.max_speed|floatformat:1 }}</h4>
+                                <small>mph (max)</small>
+                                {% if stats.avg_speed %}
+                                    <br><small class="text-muted">Avg: {{ stats.avg_speed|floatformat:1 }} mph</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Ground Speed -->
+                    {% if stats.max_ground_speed %}
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-warning">Ground Speed</h6>
+                                <h4>{{ stats.max_ground_speed|floatformat:1 }}</h4>
+                                <small>mph (max)</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Distance -->
+                    {% if stats.max_swoop_distance %}
+                    <div class="col-md-3 mb-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-info">Distance</h6>
+                                <h4>{{ stats.max_swoop_distance|floatformat:0 }}</h4>
+                                <small>feet (max)</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent Public Flights -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history"></i> Recent Public Flights
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_flights %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Performance</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for flight in recent_flights %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ flight.created_at|date:"M d, Y" }}</strong><br>
+                                        <small class="text-muted">{{ flight.created_at|time:"H:i" }}</small>
+                                    </td>
+                                    <td>
+                                        {% if flight.is_swoop %}
+                                            <span class="badge bg-success">Swoop</span>
+                                            {% if flight.performance_grade %}
+                                                <span class="badge bg-primary ms-1">Grade {{ flight.performance_grade }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-secondary">Flight</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if flight.is_swoop and flight.analysis_successful %}
+                                            {% if flight.turn_rotation %}
+                                                <strong>{{ flight.turn_rotation|floatformat:0 }}°</strong> {{ flight.turn_direction|title }}<br>
+                                            {% endif %}
+                                            {% if flight.max_vertical_speed_mph %}
+                                                <small>{{ flight.max_vertical_speed_mph|floatformat:1 }} mph</small>
+                                            {% endif %}
+                                        {% elif not flight.analysis_successful %}
+                                            <span class="text-muted">Analysis failed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if flight.canopy %}
+                                            <small class="text-muted">{{ flight.canopy.manufacturer }} {{ flight.canopy.model }} {{ flight.canopy.size }}</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-eye-slash display-4"></i>
+                        <p class="mt-2">No public flights available</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if public_swoops %}
+<!-- Top Public Swoops -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-star"></i> Notable Public Swoops
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for swoop in public_swoops|slice:":6" %}
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card border-success">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <small class="text-muted">{{ swoop.created_at|date:"M d, Y" }}</small>
+                                    {% if swoop.performance_grade %}
+                                        <span class="badge bg-primary">{{ swoop.performance_grade }}</span>
+                                    {% endif %}
+                                </div>
+
+                                {% if swoop.turn_rotation %}
+                                    <h6 class="text-success">{{ swoop.turn_rotation|floatformat:0 }}° {{ swoop.turn_direction|title }}</h6>
+                                {% endif %}
+
+                                <div class="small">
+                                    {% if swoop.max_vertical_speed_mph %}
+                                        <div><strong>V-Speed:</strong> {{ swoop.max_vertical_speed_mph|floatformat:1 }} mph</div>
+                                    {% endif %}
+                                    {% if swoop.max_ground_speed_mph %}
+                                        <div><strong>G-Speed:</strong> {{ swoop.max_ground_speed_mph|floatformat:1 }} mph</div>
+                                    {% endif %}
+                                    {% if swoop.swoop_distance_ft %}
+                                        <div><strong>Distance:</strong> {{ swoop.swoop_distance_ft|floatformat:0 }} ft</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Contact Info -->
+{% if profile_user.profile.coach or profile_user.profile.affi or profile_user.profile.ti %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <h6><i class="bi bi-info-circle"></i> Coaching & Instruction</h6>
+            <p class="mb-0">
+                {{ profile_user.profile.display_name }} is a qualified instructor/coach.
+                {% if user.is_authenticated %}
+                    Contact information may be available through your home drop zone or skydiving community.
+                {% else %}
+                    <a href="{% url 'login' %}" class="alert-link">Log in</a> to connect with instructors.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -8,7 +8,7 @@ from django.db import transaction, models
 from django.core.files.storage import default_storage
 import os
 import tempfile
-from .forms import SignUpForm, UserLoginForm, CanopyForm, UserProfileForm, FlightUploadForm
+from .forms import SignUpForm, UserLoginForm, CanopyForm, UserProfileForm, FlightUploadForm, BulkPrivacyForm, UserSearchForm
 from .models import Canopy
 from flights.models import Flight
 from flights.flight_manager import process_flysight_file
@@ -644,3 +644,206 @@ def bulk_delete_flights_view(request):
         messages.warning(request, 'No flights were deleted.')
 
     return redirect('flights')
+
+
+@login_required
+def privacy_settings_view(request):
+    """Privacy settings page for managing public profile and flights"""
+    user = request.user
+
+    # Get user's flights for bulk privacy management
+    flights = Flight.objects.filter(pilot=user).order_by('-created_at')
+
+    context = {
+        'user': user,
+        'flights': flights,
+        'total_flights': flights.count(),
+        'public_flights': flights.filter(is_public=True).count(),
+    }
+
+    return render(request, 'users/privacy_settings.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def bulk_privacy_update_view(request):
+    """Update privacy settings for multiple flights"""
+    form = BulkPrivacyForm(request.POST)
+
+    if form.is_valid():
+        action = form.cleaned_data['action']
+        flight_ids = form.cleaned_data['flight_ids'].split(',')
+
+        # Filter to only user's flights
+        flights = Flight.objects.filter(
+            id__in=flight_ids,
+            pilot=request.user
+        )
+
+        if action == 'make_public':
+            updated_count = flights.update(is_public=True)
+            messages.success(request, f'{updated_count} flight(s) made public.')
+        elif action == 'make_private':
+            updated_count = flights.update(is_public=False)
+            messages.success(request, f'{updated_count} flight(s) made private.')
+
+    return redirect('privacy_settings')
+
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_flight_privacy_view(request, flight_id):
+    """Toggle privacy setting for a single flight"""
+    flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
+
+    flight.is_public = not flight.is_public
+    flight.save()
+
+    status = "public" if flight.is_public else "private"
+    messages.success(request, f'Flight has been made {status}.')
+
+    return redirect('flight_detail', flight_id=flight.id)
+
+
+def user_search_view(request):
+    """Search for public users"""
+    form = UserSearchForm(request.GET)
+    users = None
+
+    if form.is_valid():
+        query = form.cleaned_data.get('query', '').strip()
+        license_level = form.cleaned_data.get('license_level')
+        home_dz = form.cleaned_data.get('home_dz', '').strip()
+
+        # Base queryset: only users with public profiles
+        users = User.objects.filter(profile__public_profile=True).select_related('profile')
+
+        # Apply search filters
+        if query:
+            users = users.filter(
+                models.Q(username__icontains=query) |
+                models.Q(first_name__icontains=query) |
+                models.Q(last_name__icontains=query) |
+                models.Q(profile__home_dz__icontains=query)
+            )
+
+        if license_level:
+            users = users.filter(profile__license_level=license_level)
+
+        if home_dz:
+            users = users.filter(profile__home_dz__icontains=home_dz)
+
+        users = users.order_by('username')
+
+    context = {
+        'form': form,
+        'users': users,
+        'search_performed': bool(form.is_valid() and any(form.cleaned_data.values())),
+    }
+
+    return render(request, 'users/user_search.html', context)
+
+
+def public_profile_view(request, username):
+    """View a user's public profile"""
+    user = get_object_or_404(User, username=username)
+
+    # Check if profile is public
+    if not user.profile.public_profile:
+        messages.error(request, f"{user.username}'s profile is not public.")
+        return redirect('user_search')
+
+    # Get public flights
+    public_flights = Flight.objects.filter(
+        pilot=user,
+        is_public=True
+    ).order_by('-created_at')
+
+    # Get public swoops only
+    public_swoops = public_flights.filter(is_swoop=True, analysis_successful=True)
+
+    # Calculate public stats
+    stats = {
+        'total_public_flights': public_flights.count(),
+        'total_public_swoops': public_swoops.count(),
+    }
+
+    # Add swoop performance stats if there are public swoops
+    if public_swoops.exists():
+        from django.db.models import Avg, Max, Min, Count
+
+        # Get rotation stats
+        rotation_stats = public_swoops.filter(turn_rotation__isnull=False).aggregate(
+            avg_rotation=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
+            max_rotation=Max(models.Func(models.F('turn_rotation'), function='ABS')),
+            min_rotation=Min(models.Func(models.F('turn_rotation'), function='ABS')),
+        )
+
+        # Get speed stats
+        speed_stats = public_swoops.filter(max_vertical_speed_mph__isnull=False).aggregate(
+            avg_speed=Avg('max_vertical_speed_mph'),
+            max_speed=Max('max_vertical_speed_mph'),
+            min_speed=Min('max_vertical_speed_mph')
+        )
+
+        # Get ground speed stats
+        ground_speed_stats = public_swoops.filter(max_ground_speed_mph__isnull=False).aggregate(
+            max_ground_speed=Max('max_ground_speed_mph')
+        )
+
+        # Update stats with aggregated values
+        if rotation_stats['max_rotation']:
+            stats.update(rotation_stats)
+
+        if speed_stats['max_speed']:
+            stats.update(speed_stats)
+
+        if ground_speed_stats['max_ground_speed']:
+            stats['max_ground_speed'] = ground_speed_stats['max_ground_speed']
+
+        # Get distance stats
+        distance_stats = public_swoops.filter(
+            swoop_distance_ft__isnull=False,
+            swoop_avg_altitude_agl__lte=5.0
+        ).aggregate(
+            max_distance=Max('swoop_distance_ft')
+        )
+
+        if distance_stats['max_distance']:
+            stats['max_swoop_distance'] = distance_stats['max_distance']
+
+    # Recent public flights
+    recent_public_flights = public_flights[:10]
+
+    context = {
+        'profile_user': user,
+        'stats': stats,
+        'recent_flights': recent_public_flights,
+        'public_swoops': public_swoops[:20],  # Limit to recent swoops
+    }
+
+    return render(request, 'users/public_profile.html', context)
+
+
+def public_swoops_view(request):
+    """View all public swoops across the platform"""
+    # Get all public swoops from users with public profiles
+    public_swoops = Flight.objects.filter(
+        is_public=True,
+        is_swoop=True,
+        analysis_successful=True,
+        pilot__profile__public_profile=True
+    ).select_related('pilot', 'pilot__profile', 'canopy').order_by('-created_at')
+
+    # Pagination
+    from django.core.paginator import Paginator
+    paginator = Paginator(public_swoops, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'total_count': public_swoops.count(),
+    }
+
+    return render(request, 'users/public_swoops.html', context)

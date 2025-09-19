@@ -208,3 +208,49 @@ class FlightUploadForm(forms.Form):
                 raise forms.ValidationError(f"File '{file.name}' size must be less than 10MB.")
 
         return files
+
+
+class BulkPrivacyForm(forms.Form):
+    """Form for bulk setting flight privacy"""
+
+    PRIVACY_CHOICES = [
+        ('make_public', 'Make Public'),
+        ('make_private', 'Make Private'),
+    ]
+
+    action = forms.ChoiceField(
+        choices=PRIVACY_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    flight_ids = forms.CharField(
+        widget=forms.HiddenInput()
+    )
+
+
+class UserSearchForm(forms.Form):
+    """Form for searching public users"""
+
+    query = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Search by username, name, or drop zone...',
+            'autofocus': True
+        }),
+        required=False
+    )
+
+    license_level = forms.ChoiceField(
+        choices=[('', 'Any License')] + UserProfile._meta.get_field('license_level').choices,
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+
+    home_dz = forms.CharField(
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Home drop zone'
+        })
+    )

@@ -34,6 +34,9 @@ class Flight(models.Model):
     analysis_error = models.TextField(blank=True)
     data_incorrect = models.BooleanField(default=False, help_text="Flag for flights with incorrect or problematic data")
 
+    # Privacy controls
+    is_public = models.BooleanField(default=False, help_text="Allow others to view this flight")
+
     # Key indices (store as record numbers for referencing GPS points)
     landing_idx = models.IntegerField(null=True, blank=True)
     flare_idx = models.IntegerField(null=True, blank=True)
@@ -107,6 +110,8 @@ class Flight(models.Model):
             models.Index(fields=['analysis_successful']),
             models.Index(fields=['canopy']),
             models.Index(fields=['data_incorrect']),
+            models.Index(fields=['is_public']),  # Public flight queries
+            models.Index(fields=['pilot', 'is_public']),  # Public user flight queries
             models.Index(fields=['rollout_end_idx']),  # Flight detail calculations
             models.Index(fields=['landing_idx']),  # Flight detail calculations
             models.Index(fields=['flare_idx']),  # Flight detail calculations

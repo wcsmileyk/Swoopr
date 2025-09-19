@@ -1,0 +1,225 @@
+{% extends 'base.html' %}
+
+{% block title %}Find Pilots - Swoopr{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-search"></i> Find Pilots
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{% url 'public_swoops' %}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-list"></i> Browse All Public Swoops
+        </a>
+    </div>
+</div>
+
+<!-- Search Form -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-funnel"></i> Search Filters
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="get" action="{% url 'user_search' %}">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.query.id_for_label }}" class="form-label">Search</label>
+                            {{ form.query }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="{{ form.license_level.id_for_label }}" class="form-label">License Level</label>
+                            {{ form.license_level }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label for="{{ form.home_dz.id_for_label }}" class="form-label">Home Drop Zone</label>
+                            {{ form.home_dz }}
+                        </div>
+                        <div class="col-md-2 mb-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-search"></i> Search
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Search Results -->
+{% if search_performed %}
+    {% if users %}
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Found {{ users|length }} pilot{{ users|length|pluralize }} with public profiles
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            {% for pilot in users %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="flex-shrink-0">
+                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                    <i class="bi bi-person-circle fs-4"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="mb-0">{{ pilot.profile.display_name }}</h6>
+                                <small class="text-muted">@{{ pilot.username }}</small>
+                            </div>
+                        </div>
+
+                        <div class="row text-center mb-3">
+                            <div class="col">
+                                <strong>{{ pilot.flights.filter:is_public=True|length }}</strong><br>
+                                <small class="text-muted">Public Flights</small>
+                            </div>
+                            <div class="col">
+                                <strong>{{ pilot.flights.filter:is_public=True,is_swoop=True|length }}</strong><br>
+                                <small class="text-muted">Public Swoops</small>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Pilot Info -->
+                        <div class="small">
+                            {% if pilot.profile.license_level %}
+                                <div class="mb-1">
+                                    <i class="bi bi-award text-warning"></i>
+                                    <strong>{{ pilot.profile.get_license_level_display }}</strong>
+                                </div>
+                            {% endif %}
+
+                            {% if pilot.profile.home_dz %}
+                                <div class="mb-1">
+                                    <i class="bi bi-geo-alt text-info"></i>
+                                    {{ pilot.profile.home_dz }}
+                                </div>
+                            {% endif %}
+
+                            {% if pilot.profile.total_jumps %}
+                                <div class="mb-1">
+                                    <i class="bi bi-airplane text-success"></i>
+                                    {{ pilot.profile.total_jumps }} jumps
+                                </div>
+                            {% endif %}
+
+                            <!-- Instructor Badges -->
+                            <div class="mt-2">
+                                {% if pilot.profile.coach %}
+                                    <span class="badge bg-primary">Coach</span>
+                                {% endif %}
+                                {% if pilot.profile.affi %}
+                                    <span class="badge bg-success">AFF-I</span>
+                                {% endif %}
+                                {% if pilot.profile.ti %}
+                                    <span class="badge bg-info">TI</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a href="{% url 'public_profile' pilot.username %}" class="btn btn-primary btn-sm w-100">
+                            <i class="bi bi-eye"></i> View Profile
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    <h5><i class="bi bi-exclamation-triangle"></i> No pilots found</h5>
+                    <p class="mb-0">
+                        No pilots match your search criteria. Try adjusting your filters or
+                        <a href="{% url 'user_search' %}" class="alert-link">browse all public pilots</a>.
+                    </p>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% else %}
+    <!-- Welcome Message -->
+    <div class="row">
+        <div class="col-12">
+            <div class="jumbotron bg-light p-5 rounded">
+                <div class="text-center">
+                    <i class="bi bi-people display-1 text-primary mb-3"></i>
+                    <h2>Connect with the Swoop Community</h2>
+                    <p class="lead">
+                        Find coaches, training partners, and fellow swoop pilots. Browse public profiles
+                        to see flying styles, performance stats, and connect for remote coaching.
+                    </p>
+                    <hr class="my-4">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h5><i class="bi bi-search text-primary"></i> Discover</h5>
+                            <p>Search pilots by experience level, home drop zone, or instructor qualifications.</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h5><i class="bi bi-graph-up text-success"></i> Learn</h5>
+                            <p>View public swoop data to study techniques and compare performance metrics.</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h5><i class="bi bi-chat-dots text-info"></i> Connect</h5>
+                            <p>Find coaches and experienced pilots for personalized training and advice.</p>
+                        </div>
+                    </div>
+                    <a href="{% url 'public_swoops' %}" class="btn btn-primary btn-lg mt-3">
+                        <i class="bi bi-eye"></i> Browse Recent Public Swoops
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popular Features -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h6><i class="bi bi-award text-warning"></i> Find Instructors</h6>
+                    <p class="text-muted">
+                        Search for certified coaches, AFF instructors, and tandem instructors
+                        who have made their profiles public.
+                    </p>
+                    <form method="get" action="{% url 'user_search' %}">
+                        <input type="hidden" name="query" value="coach">
+                        <button type="submit" class="btn btn-outline-primary btn-sm">
+                            Search Coaches
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="body">
+                    <h6><i class="bi bi-geo-alt text-info"></i> Local Pilots</h6>
+                    <p class="text-muted">
+                        Connect with pilots at your home drop zone or locations you plan to visit.
+                    </p>
+                    <p>
+                        <small class="text-muted">
+                            Enter a drop zone name in the search form above to find local pilots.
+                        </small>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+{% endblock %}

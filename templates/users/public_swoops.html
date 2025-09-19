@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+{% load unit_filters %}
+
+{% block title %}Public Swoops - Swoopr{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-globe"></i> Public Swoops
+        <small class="text-muted">({{ total_count }} total)</small>
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{% url 'user_search' %}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-search"></i> Find Pilots
+        </a>
+    </div>
+</div>
+
+<!-- Info Banner -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <h6><i class="bi bi-info-circle"></i> Community Swoop Data</h6>
+            <p class="mb-0">
+                Explore public swoops shared by the community. Use this data for learning, technique analysis, and connecting with pilots.
+                All data shown here has been made public by the pilots themselves.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Swoops List -->
+{% if page_obj %}
+    <div class="row">
+        {% for swoop in page_obj %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>
+                                <a href="{% url 'public_profile' swoop.pilot.username %}" class="text-decoration-none">
+                                    {{ swoop.pilot.profile.display_name }}
+                                </a>
+                            </strong>
+                            <br>
+                            <small class="text-muted">@{{ swoop.pilot.username }}</small>
+                        </div>
+                        {% if swoop.performance_grade %}
+                            <span class="badge bg-primary">Grade {{ swoop.performance_grade }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <!-- Date and Basic Info -->
+                    <div class="mb-3">
+                        <small class="text-muted">
+                            <i class="bi bi-calendar"></i> {{ swoop.created_at|date:"M d, Y" }} at {{ swoop.created_at|time:"H:i" }}
+                        </small>
+                    </div>
+
+                    <!-- Turn Performance -->
+                    {% if swoop.turn_rotation %}
+                        <div class="text-center mb-3">
+                            <h4 class="text-success mb-1">{{ swoop.turn_rotation|floatformat:0 }}°</h4>
+                            <small class="text-muted">{{ swoop.turn_direction|title }} Turn</small>
+                        </div>
+                    {% endif %}
+
+                    <!-- Performance Metrics -->
+                    <div class="row text-center small">
+                        {% if swoop.max_vertical_speed_mph %}
+                            <div class="col-4">
+                                <strong class="text-primary">{{ swoop.max_vertical_speed_mph|floatformat:1 }}</strong><br>
+                                <small class="text-muted">mph V-Speed</small>
+                            </div>
+                        {% endif %}
+
+                        {% if swoop.max_ground_speed_mph %}
+                            <div class="col-4">
+                                <strong class="text-warning">{{ swoop.max_ground_speed_mph|floatformat:1 }}</strong><br>
+                                <small class="text-muted">mph G-Speed</small>
+                            </div>
+                        {% endif %}
+
+                        {% if swoop.swoop_distance_ft %}
+                            <div class="col-4">
+                                <strong class="text-info">{{ swoop.swoop_distance_ft|floatformat:0 }}</strong><br>
+                                <small class="text-muted">feet</small>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Additional Details -->
+                    <hr>
+                    <div class="small">
+                        {% if swoop.canopy %}
+                            <div class="mb-1">
+                                <i class="bi bi-parachute text-secondary"></i>
+                                {{ swoop.canopy.manufacturer }} {{ swoop.canopy.model }} {{ swoop.canopy.size }}sq ft
+                            </div>
+                        {% endif %}
+
+                        {% if swoop.pilot.profile.home_dz %}
+                            <div class="mb-1">
+                                <i class="bi bi-geo-alt text-info"></i>
+                                {{ swoop.pilot.profile.home_dz }}
+                            </div>
+                        {% endif %}
+
+                        <!-- Pilot Qualifications -->
+                        {% if swoop.pilot.profile.coach or swoop.pilot.profile.affi or swoop.pilot.profile.ti %}
+                            <div class="mt-2">
+                                {% if swoop.pilot.profile.coach %}
+                                    <span class="badge bg-primary badge-sm">Coach</span>
+                                {% endif %}
+                                {% if swoop.pilot.profile.affi %}
+                                    <span class="badge bg-success badge-sm">AFF-I</span>
+                                {% endif %}
+                                {% if swoop.pilot.profile.ti %}
+                                    <span class="badge bg-info badge-sm">TI</span>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <div class="row">
+                        <div class="col-6">
+                            <a href="{% url 'public_profile' swoop.pilot.username %}" class="btn btn-outline-primary btn-sm w-100">
+                                <i class="bi bi-person"></i> Profile
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            {% if user.is_authenticated %}
+                                <!-- Only show flight detail link to logged-in users -->
+                                <small class="text-muted">Flight ID: {{ swoop.id }}</small>
+                            {% else %}
+                                <a href="{% url 'login' %}" class="btn btn-outline-secondary btn-sm w-100">
+                                    <i class="bi bi-box-arrow-in-right"></i> Login
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+        <nav aria-label="Public swoops pagination">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1">First</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                    </li>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ num }}</span>
+                        </li>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+
+{% else %}
+    <!-- No Swoops -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-eye-slash display-1 text-muted"></i>
+                    <h4 class="mt-3">No Public Swoops Yet</h4>
+                    <p class="text-muted">
+                        Be the first to share your swoop data with the community!
+                    </p>
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'privacy_settings' %}" class="btn btn-primary">
+                            <i class="bi bi-share"></i> Share Your Swoops
+                        </a>
+                    {% else %}
+                        <a href="{% url 'signup' %}" class="btn btn-primary">
+                            <i class="bi bi-person-plus"></i> Join Swoopr
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Community Stats -->
+<div class="row mt-5">
+    <div class="col-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <div class="text-center">
+                    <h6><i class="bi bi-people"></i> Community Impact</h6>
+                    <p class="mb-0">
+                        <strong>{{ total_count }}</strong> public swoops shared •
+                        Helping pilots learn and improve together
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

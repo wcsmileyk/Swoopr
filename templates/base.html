@@ -72,6 +72,23 @@
                             <i class="bi bi-plus-circle"></i> Add Canopy
                         </a>
                     </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="socialDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-people"></i> Community
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'user_search' %}">
+                                <i class="bi bi-search"></i> Find Pilots
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'public_swoops' %}">
+                                <i class="bi bi-globe"></i> Public Swoops
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'privacy_settings' %}">
+                                <i class="bi bi-shield-lock"></i> Privacy Settings
+                            </a></li>
+                        </ul>
+                    </li>
                 </ul>
 
                 <ul class="navbar-nav">
@@ -82,6 +99,9 @@
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{% url 'profile' %}">
                                 <i class="bi bi-person"></i> Profile
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'privacy_settings' %}">
+                                <i class="bi bi-shield-lock"></i> Privacy Settings
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li>
@@ -96,6 +116,18 @@
                     </li>
                 </ul>
                 {% else %}
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'user_search' %}">
+                            <i class="bi bi-search"></i> Find Pilots
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'public_swoops' %}">
+                            <i class="bi bi-globe"></i> Public Swoops
+                        </a>
+                    </li>
+                </ul>
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'login' %}">Login</a>
