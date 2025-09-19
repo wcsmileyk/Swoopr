@@ -591,7 +591,16 @@ def toggle_data_incorrect_view(request, flight_id):
     """Toggle the data_incorrect flag for a flight"""
     flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
 
+    # Get notes from the form if provided
+    notes = request.POST.get('notes', '').strip()
+
+    # Toggle the flag
     flight.data_incorrect = not flight.data_incorrect
+
+    # Update notes if flight is being flagged as incorrect
+    if flight.data_incorrect and notes:
+        flight.notes = notes
+
     flight.save()
 
     action = "flagged as incorrect" if flight.data_incorrect else "unflagged"
