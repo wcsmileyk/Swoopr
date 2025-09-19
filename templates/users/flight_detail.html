@@ -446,6 +446,12 @@ const chart = new Chart(ctx, {
                 title: {
                     display: true,
                     text: 'Time (seconds)'
+                },
+                ticks: {
+                    stepSize: 1,
+                    callback: function(value) {
+                        return Math.round(value);
+                    }
                 }
             },
             y: {

@@ -22,7 +22,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         batch_size = options['batch_size']
         dry_run = options['dry_run']
-
         # Find swoop flights that need recalculation
         swoops_to_update = Flight.objects.filter(
             is_swoop=True,
