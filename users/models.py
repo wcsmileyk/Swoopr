@@ -45,6 +45,7 @@ class UserProfile(models.Model):
     )
     timezone = models.CharField(max_length=50, default='UTC')
     public_profile = models.BooleanField(default=False, help_text="Allow others to see your stats")
+    auto_public_flights = models.BooleanField(default=False, help_text="Automatically make all uploaded flights public")
 
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)

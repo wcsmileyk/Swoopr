@@ -218,6 +218,9 @@ class FlightManager:
             except AttributeError:
                 canopy = None
 
+        # Check if user has auto-public flights enabled
+        auto_public = getattr(pilot.profile, 'auto_public_flights', False)
+
         flight, created = Flight.objects.get_or_create(
             pilot=pilot,
             device_id=device_id,
@@ -227,6 +230,7 @@ class FlightManager:
                 'firmware_version': firmware_version,
                 'filename': filename,
                 'analysis_version': 'enhanced_v1',
+                'is_public': auto_public,
             }
         )
 
@@ -236,6 +240,9 @@ class FlightManager:
             flight.firmware_version = firmware_version
             flight.filename = filename
             flight.analysis_version = 'enhanced_v1'
+            # Only update privacy if flight is currently private and user has auto-public enabled
+            if not flight.is_public and auto_public:
+                flight.is_public = True
             flight.save()
 
         return flight

@@ -91,6 +91,13 @@
                                 Make my profile public (allow others to see my stats)
                             </label>
                         </div>
+                        <div class="form-check">
+                            {{ form.auto_public_flights }}
+                            <label class="form-check-label" for="{{ form.auto_public_flights.id_for_label }}">
+                                Automatically make all uploaded flights public
+                            </label>
+                            <div class="form-text">When enabled, all new flight uploads will be public by default. You can still change individual flight privacy later.</div>
+                        </div>
                     </div>
 
                     <button type="submit" class="btn btn-primary">

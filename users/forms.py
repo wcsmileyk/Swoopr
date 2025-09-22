@@ -145,7 +145,7 @@ class UserProfileForm(forms.ModelForm):
         fields = [
             'license_number', 'uspa_number', 'license_level', 'coach', 'affi', 'ti',
             'exit_weight', 'home_dz', 'phone',
-            'emergency_contact', 'emergency_phone', 'units', 'public_profile'
+            'emergency_contact', 'emergency_phone', 'units', 'public_profile', 'auto_public_flights'
         ]
         widgets = {
             'license_number': forms.TextInput(attrs={'class': 'form-control'}),
@@ -161,6 +161,7 @@ class UserProfileForm(forms.ModelForm):
             'emergency_phone': forms.TextInput(attrs={'class': 'form-control'}),
             'units': forms.Select(attrs={'class': 'form-control'}),
             'public_profile': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'auto_public_flights': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 
