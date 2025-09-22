@@ -538,68 +538,98 @@ class FlightManager:
 
     def find_turn_start_fallback(self, df, landing_idx):
         """
-        Fallback method to find turn start when no clear flare is detected.
-        Looks back 30 seconds from landing and finds where the flight path
-        transitions from perpendicular to the landing direction into the turn.
+        Improved fallback method to find turn start for direct-entry swoops.
+        Detects sustained heading changes rather than looking for perpendicular approaches.
         """
         t_s = df['t_s'].to_numpy().astype(float)
-        velN = df['velN'].to_numpy().astype(float)
-        velE = df['velE'].to_numpy().astype(float)
 
-        # Look back 30 seconds from landing
+        # Look back further for direct entry swoops (60 seconds)
         landing_time = t_s[landing_idx]
-        search_start_time = landing_time - 30.0
+        search_start_time = landing_time - 60.0
 
-        # Find indices within this 30-second window
+        # Find indices within search window
         search_mask = (t_s >= search_start_time) & (t_s <= landing_time)
         search_idxs = np.where(search_mask)[0]
 
-        if len(search_idxs) < 10:
-            # If we don't have enough data, fall back to a simple time-based approach
-            fallback_idx = max(0, landing_idx - int(30 * 5))  # 30 seconds at 5Hz
+        if len(search_idxs) < 50:  # Need more data for this analysis
+            fallback_idx = max(0, landing_idx - int(60 * 5))  # 60 seconds at 5Hz
             return fallback_idx
 
-        # Calculate headings for the search window
-        headings = np.degrees(np.arctan2(velE[search_idxs], velN[search_idxs]))
+        # Calculate headings using stored heading data if available, otherwise compute
+        if 'heading' in df.columns:
+            all_headings = df['heading'].to_numpy().astype(float)
+            headings = all_headings[search_idxs]
+        else:
+            velN = df['velN'].to_numpy().astype(float)
+            velE = df['velE'].to_numpy().astype(float)
+            headings = np.degrees(np.arctan2(velE[search_idxs], velN[search_idxs]))
 
-        # Calculate landing direction (average heading in last few seconds before landing)
-        landing_window = min(10, len(search_idxs) // 3)
-        landing_heading = np.mean(headings[-landing_window:])
+        # Function to calculate heading difference handling 360° wrap
+        def heading_diff(h1, h2):
+            diff = h2 - h1
+            if diff > 180:
+                diff -= 360
+            elif diff < -180:
+                diff += 360
+            return diff
 
-        # Find where the heading starts deviating significantly from perpendicular to landing
-        # Perpendicular would be landing_heading ± 90 degrees
-        perp_heading_1 = (landing_heading + 90) % 360
-        perp_heading_2 = (landing_heading - 90) % 360
+        # Look for sustained turn initiation using heading change rate
+        window_size = 25  # 5-second analysis windows
+        turn_rate_threshold = 8.0  # degrees per second sustained turn
 
-        # Calculate angular differences from perpendicular directions
-        def angular_diff(a, b):
-            diff = abs(a - b)
-            return min(diff, 360 - diff)
+        best_turn_start = None
+        max_sustained_rate = 0
 
-        # Find the point where we start turning away from perpendicular approach
-        turn_threshold = 30  # degrees deviation from perpendicular
+        for i in range(0, len(headings) - window_size * 2, 5):  # Check every second
+            if i + window_size * 2 >= len(headings):
+                break
 
-        for i in range(len(headings) - landing_window):
-            current_heading = headings[i]
+            # Analyze heading change rate in current window
+            window_start = headings[i]
+            window_end = headings[i + window_size]
+            heading_change = heading_diff(window_start, window_end)
+            turn_rate = abs(heading_change) / (window_size * 0.2)  # degrees per second
 
-            # Check if we're significantly off from perpendicular approach
-            dist_to_perp1 = angular_diff(current_heading, perp_heading_1)
-            dist_to_perp2 = angular_diff(current_heading, perp_heading_2)
-            min_perp_dist = min(dist_to_perp1, dist_to_perp2)
+            # Check if this is followed by sustained turning
+            if turn_rate > turn_rate_threshold:
+                # Look ahead to confirm sustained turn (next 5 seconds)
+                next_window_start = headings[i + window_size]
+                next_window_end = headings[i + window_size * 2]
+                next_heading_change = heading_diff(next_window_start, next_window_end)
+                next_turn_rate = abs(next_heading_change) / (window_size * 0.2)
 
-            # If we've deviated more than threshold from perpendicular, this is likely turn start
-            if min_perp_dist > turn_threshold:
-                # Look ahead a bit to confirm this is sustained turn, not just noise
-                if i + 5 < len(headings) - landing_window:
-                    future_heading = headings[i + 5]
-                    future_dist_to_perp1 = angular_diff(future_heading, perp_heading_1)
-                    future_dist_to_perp2 = angular_diff(future_heading, perp_heading_2)
-                    future_min_perp_dist = min(future_dist_to_perp1, future_dist_to_perp2)
+                # Check if turn continues in same direction or is a sustained large turn
+                same_direction = (heading_change * next_heading_change) > 0
+                sustained_turn = next_turn_rate > (turn_rate_threshold * 0.5)  # At least half the rate
 
-                    if future_min_perp_dist > turn_threshold:
-                        return search_idxs[i]
+                # For very high turn rates, relax the same direction requirement
+                # This handles continuous turns that cross compass boundaries
+                large_continuous_turn = (turn_rate > 15.0 and next_turn_rate > 10.0)
 
-        # If no clear turn detected, use the start of our search window
+                if (same_direction and sustained_turn) or large_continuous_turn:
+                    combined_rate = (turn_rate + next_turn_rate) / 2
+                    if combined_rate > max_sustained_rate:
+                        max_sustained_rate = combined_rate
+                        best_turn_start = search_idxs[i]
+
+        # If we found a good turn start, use it
+        if best_turn_start is not None:
+            return best_turn_start
+
+        # Fallback: look for any significant heading change
+        for i in range(0, len(headings) - 10, 5):
+            if i + 10 >= len(headings):
+                break
+
+            start_heading = headings[i]
+            end_heading = headings[i + 10]
+            change = abs(heading_diff(start_heading, end_heading))
+
+            # Look for 20+ degree change over 2 seconds
+            if change > 20:
+                return search_idxs[i]
+
+        # Final fallback: use start of search window
         return search_idxs[0]
 
     def find_max_speeds(self, df, flare_idx, landing_idx):
