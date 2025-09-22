@@ -121,12 +121,15 @@ class Command(BaseCommand):
                 import numpy as np
 
                 # Reconstruct the DataFrame from stored GPS data to match original FlySight format
-                # Use timestamps from stored data and calculate others
-                base_time = gps_data[0]['timestamp'] if gps_data else 0
+                # Use relative timestamps to avoid datetime conflicts
+                import datetime
+
+                # Use a simple sequential timestamp to avoid datetime parsing issues
+                base_timestamp = 1000000000.0  # Simple base timestamp
 
                 df_data = {
                     '$GNSS': ['$GPRMC'] * len(gps_data),  # Standard GNSS type
-                    'time': [point.get('timestamp', base_time + i * 0.2) for i, point in enumerate(gps_data)],
+                    'time': [base_timestamp + i * 0.2 for i in range(len(gps_data))],  # Sequential timestamps
                     'lat': [point.get('lat', 0) for point in gps_data],
                     'lon': [point.get('lon', 0) for point in gps_data],
                     'hMSL': [point.get('altitude_msl', 0) for point in gps_data],
@@ -154,10 +157,20 @@ class Command(BaseCommand):
                 original_analysis_successful = flight.analysis_successful
                 original_error = flight.analysis_error
 
-                # Re-run the analysis
+                # Re-run the analysis (the analyze_swoop method includes flight.save())
                 with transaction.atomic():
-                    manager.analyze_swoop(flight, df)
-                    flight.save()
+                    try:
+                        # Temporarily remove any problematic datetime fields
+                        original_analyzed_at = flight.analyzed_at
+                        flight.analyzed_at = None
+
+                        # Run the analysis
+                        manager.analyze_swoop(flight, df)
+
+                    except Exception as analysis_error:
+                        # If analysis fails, restore original state and re-raise
+                        flight.analyzed_at = original_analyzed_at
+                        raise analysis_error
 
                 # Report results
                 if flight.analysis_successful:
