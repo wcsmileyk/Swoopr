@@ -33,6 +33,12 @@ class Flight(models.Model):
     analysis_successful = models.BooleanField(default=False)
     analysis_error = models.TextField(blank=True)
     data_incorrect = models.BooleanField(default=False, help_text="Flag for flights with incorrect or problematic data")
+    flare_detection_method = models.CharField(
+        max_length=20,
+        choices=[('traditional', 'Traditional Flare'), ('turn_detection', 'Turn Detection Fallback')],
+        null=True, blank=True,
+        help_text="Method used to detect the flare/turn initiation point"
+    )
 
     # Privacy controls
     is_public = models.BooleanField(default=False, help_text="Allow others to view this flight")

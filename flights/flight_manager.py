@@ -326,7 +326,16 @@ class FlightManager:
         try:
             # Run swoop detection
             landing_idx = self.get_landing(df)
-            flare_idx = self.find_flare(df, landing_idx)
+
+            # Try traditional flare detection first
+            try:
+                flare_idx = self.find_flare(df, landing_idx)
+                flare_method = "traditional"
+            except (ValueError, IndexError):
+                # Fallback: no clear flare detected, use turn detection approach
+                flare_idx = self.find_turn_start_fallback(df, landing_idx)
+                flare_method = "turn_detection"
+
             max_vspeed_idx, max_gspeed_idx = self.find_max_speeds(df, flare_idx, landing_idx)
             turn_rotation = self.get_rotation(df, flare_idx, max_gspeed_idx)
             rollout_start_idx, rollout_end_idx = self.get_roll_out(df, max_vspeed_idx, max_gspeed_idx, landing_idx)
@@ -352,6 +361,9 @@ class FlightManager:
             flight.max_gspeed_idx = max_gspeed_idx
             flight.rollout_start_idx = rollout_start_idx
             flight.rollout_end_idx = rollout_end_idx
+
+            # Store detection method for reference
+            flight.flare_detection_method = flare_method
 
             # Store calculated metrics (in metric units)
             flight.turn_rotation = turn_rotation
@@ -523,6 +535,72 @@ class FlightManager:
 
         flare = int(flare_candidates[0])
         return flare
+
+    def find_turn_start_fallback(self, df, landing_idx):
+        """
+        Fallback method to find turn start when no clear flare is detected.
+        Looks back 30 seconds from landing and finds where the flight path
+        transitions from perpendicular to the landing direction into the turn.
+        """
+        t_s = df['t_s'].to_numpy().astype(float)
+        velN = df['velN'].to_numpy().astype(float)
+        velE = df['velE'].to_numpy().astype(float)
+
+        # Look back 30 seconds from landing
+        landing_time = t_s[landing_idx]
+        search_start_time = landing_time - 30.0
+
+        # Find indices within this 30-second window
+        search_mask = (t_s >= search_start_time) & (t_s <= landing_time)
+        search_idxs = np.where(search_mask)[0]
+
+        if len(search_idxs) < 10:
+            # If we don't have enough data, fall back to a simple time-based approach
+            fallback_idx = max(0, landing_idx - int(30 * 5))  # 30 seconds at 5Hz
+            return fallback_idx
+
+        # Calculate headings for the search window
+        headings = np.degrees(np.arctan2(velE[search_idxs], velN[search_idxs]))
+
+        # Calculate landing direction (average heading in last few seconds before landing)
+        landing_window = min(10, len(search_idxs) // 3)
+        landing_heading = np.mean(headings[-landing_window:])
+
+        # Find where the heading starts deviating significantly from perpendicular to landing
+        # Perpendicular would be landing_heading ± 90 degrees
+        perp_heading_1 = (landing_heading + 90) % 360
+        perp_heading_2 = (landing_heading - 90) % 360
+
+        # Calculate angular differences from perpendicular directions
+        def angular_diff(a, b):
+            diff = abs(a - b)
+            return min(diff, 360 - diff)
+
+        # Find the point where we start turning away from perpendicular approach
+        turn_threshold = 30  # degrees deviation from perpendicular
+
+        for i in range(len(headings) - landing_window):
+            current_heading = headings[i]
+
+            # Check if we're significantly off from perpendicular approach
+            dist_to_perp1 = angular_diff(current_heading, perp_heading_1)
+            dist_to_perp2 = angular_diff(current_heading, perp_heading_2)
+            min_perp_dist = min(dist_to_perp1, dist_to_perp2)
+
+            # If we've deviated more than threshold from perpendicular, this is likely turn start
+            if min_perp_dist > turn_threshold:
+                # Look ahead a bit to confirm this is sustained turn, not just noise
+                if i + 5 < len(headings) - landing_window:
+                    future_heading = headings[i + 5]
+                    future_dist_to_perp1 = angular_diff(future_heading, perp_heading_1)
+                    future_dist_to_perp2 = angular_diff(future_heading, perp_heading_2)
+                    future_min_perp_dist = min(future_dist_to_perp1, future_dist_to_perp2)
+
+                    if future_min_perp_dist > turn_threshold:
+                        return search_idxs[i]
+
+        # If no clear turn detected, use the start of our search window
+        return search_idxs[0]
 
     def find_max_speeds(self, df, flare_idx, landing_idx):
         """Find maximum vertical and ground speed points"""
