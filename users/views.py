@@ -484,10 +484,18 @@ def upload_results_view(request):
     })
 
 
-@login_required
 def flight_detail_view(request, flight_id):
     """View detailed flight analysis"""
-    flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
+    if request.user.is_authenticated:
+        # For authenticated users, try to get their own flight first
+        try:
+            flight = Flight.objects.get(id=flight_id, pilot=request.user)
+        except Flight.DoesNotExist:
+            # If not their flight, check if it's a public flight they can view
+            flight = get_object_or_404(Flight, id=flight_id, is_public=True)
+    else:
+        # For anonymous users, only allow public flights
+        flight = get_object_or_404(Flight, id=flight_id, is_public=True)
 
     # Get chart data for visualization
     import json

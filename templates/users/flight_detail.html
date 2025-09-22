@@ -38,32 +38,47 @@
         {% endif %}
     </h1>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2">
-            <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary">
-                <i class="bi bi-cloud-upload"></i> Upload
+        {% if user.is_authenticated and user == flight.pilot %}
+            <!-- Owner-only controls -->
+            <div class="btn-group me-2">
+                <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-cloud-upload"></i> Upload
+                </a>
+                <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleDataIncorrect()">
+                    <i class="bi bi-flag"></i>
+                    {% if flight.data_incorrect %}
+                        Remove Flag
+                    {% else %}
+                        Flag as Incorrect
+                    {% endif %}
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-info" onclick="toggleFlightPrivacy()">
+                    {% if flight.is_public %}
+                        <i class="bi bi-eye-slash"></i> Make Private
+                    {% else %}
+                        <i class="bi bi-eye"></i> Make Public
+                    {% endif %}
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete()">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </div>
+            <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Flights
             </a>
-            <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleDataIncorrect()">
-                <i class="bi bi-flag"></i>
-                {% if flight.data_incorrect %}
-                    Remove Flag
-                {% else %}
-                    Flag as Incorrect
+        {% else %}
+            <!-- Public viewer controls -->
+            <div class="btn-group me-2">
+                {% if flight.pilot.profile.public_profile %}
+                    <a href="{% url 'public_profile' flight.pilot.username %}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-person"></i> View {{ flight.pilot.profile.display_name }}'s Profile
+                    </a>
                 {% endif %}
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-info" onclick="toggleFlightPrivacy()">
-                {% if flight.is_public %}
-                    <i class="bi bi-eye-slash"></i> Make Private
-                {% else %}
-                    <i class="bi bi-eye"></i> Make Public
-                {% endif %}
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete()">
-                <i class="bi bi-trash"></i> Delete
-            </button>
-        </div>
-        <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Back to Flights
-        </a>
+                <a href="{% url 'public_swoops' %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Public Swoops
+                </a>
+            </div>
+        {% endif %}
     </div>
 </div>
 
