@@ -735,6 +735,12 @@ def user_search_view(request):
 
         users = users.order_by('username')
 
+        # Add flight counts for each user
+        if users:
+            for user in users:
+                user.public_flight_count = user.flights.filter(is_public=True).count()
+                user.public_swoop_count = user.flights.filter(is_public=True, is_swoop=True).count()
+
     context = {
         'form': form,
         'users': users,

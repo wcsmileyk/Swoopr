@@ -239,15 +239,10 @@ class Flight(models.Model):
         ground_speeds = []
         headings = []
 
-        # Convert to seconds from start for x-axis, rounded to whole seconds
-        start_time = None
+        # Convert to seconds from start for x-axis using index position and 5Hz sampling rate
         for i, point in enumerate(gps_data):
-            if i == 0:
-                start_time = point['timestamp']
-                time_offset = 0
-            else:
-                time_offset = round(point['timestamp'] - start_time)
-
+            # FlySight records at 5Hz, so each index represents 0.2 seconds
+            time_offset = i * 0.2
             timestamps.append(time_offset)
             altitudes_agl.append(point.get('altitude_agl', 0))
             altitudes_msl.append(point.get('altitude_msl', 0))
@@ -296,11 +291,10 @@ class Flight(models.Model):
         ground_speeds = []
         headings = []
 
-        # Convert to seconds from start for x-axis, rounded to whole seconds
-        start_time = points[0].timestamp
-
-        for point in points:
-            time_offset = round((point.timestamp - start_time).total_seconds())
+        # Convert to seconds from start for x-axis using index position and 5Hz sampling rate
+        for i, point in enumerate(points):
+            # FlySight records at 5Hz, so each index represents 0.2 seconds
+            time_offset = i * 0.2
             timestamps.append(time_offset)
             altitudes_agl.append(point.altitude_agl)
             altitudes_msl.append(point.altitude_msl)

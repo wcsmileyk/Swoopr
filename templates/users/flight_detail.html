@@ -606,10 +606,11 @@ if (chartData.important_points.max_gspeed) {
     });
 }
 
-// Focus chart on swoop area if we have flare and landing points
+// Focus chart on swoop area with context if we have flare and landing points
 if (chartData.important_points.flare && chartData.important_points.landing) {
-    const swoopStart = Math.max(0, chartData.important_points.flare - 5);
-    const swoopEnd = chartData.important_points.landing + 2;
+    // Show context before flare and after landing to see full swoop pattern
+    const swoopStart = Math.max(0, chartData.important_points.flare - 15);
+    const swoopEnd = chartData.important_points.landing + 10;
     chart.options.scales.x.min = swoopStart;
     chart.options.scales.x.max = swoopEnd;
     chart.update();

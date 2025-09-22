@@ -80,11 +80,11 @@
 
                         <div class="row text-center mb-3">
                             <div class="col">
-                                <strong>{{ pilot.flights.filter:is_public=True|length }}</strong><br>
+                                <strong>{{ pilot.public_flight_count }}</strong><br>
                                 <small class="text-muted">Public Flights</small>
                             </div>
                             <div class="col">
-                                <strong>{{ pilot.flights.filter:is_public=True,is_swoop=True|length }}</strong><br>
+                                <strong>{{ pilot.public_swoop_count }}</strong><br>
                                 <small class="text-muted">Public Swoops</small>
                             </div>
                         </div>
