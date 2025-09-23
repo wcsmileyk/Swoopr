@@ -12,8 +12,8 @@ from io import StringIO
 class FlightAdmin(admin.ModelAdmin):
     list_display = [
         'id', 'pilot', 'uploaded_at', 'is_swoop', 'analysis_successful',
-        'data_incorrect', 'flare_detection_method', 'analysis_error_short',
-        'download_csv_link'
+        'data_incorrect', 'flare_detection_method', 'total_flight_time',
+        'analysis_error_short', 'download_csv_link'
     ]
     list_filter = [
         'analysis_successful', 'data_incorrect', 'is_swoop',
@@ -21,13 +21,13 @@ class FlightAdmin(admin.ModelAdmin):
     ]
     search_fields = ['pilot__username', 'analysis_error', 'notes']
     readonly_fields = [
-        'uploaded_at', 'analyzed_at', 'file_size', 'duration_seconds',
+        'uploaded_at', 'analyzed_at', 'total_flight_time',
         'max_vertical_speed_ms', 'max_ground_speed_ms', 'turn_rotation'
     ]
 
     fieldsets = (
         ('Basic Info', {
-            'fields': ('pilot', 'uploaded_at', 'file_size', 'duration_seconds')
+            'fields': ('pilot', 'uploaded_at', 'total_flight_time', 'filename')
         }),
         ('Analysis Status', {
             'fields': ('analysis_successful', 'analysis_error', 'analyzed_at', 'flare_detection_method')
