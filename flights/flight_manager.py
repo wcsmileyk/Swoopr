@@ -529,8 +529,17 @@ class FlightManager:
         sustained_slow_vspeed = pd.Series((dvspeed >= 0).astype(int)).rolling(win_vspeed, min_periods=win_vspeed).sum().to_numpy() >= win_vspeed
         vspeed_gate = vspeed <= cfg.max_vspeed_threshold
 
-        flare_candidates = np.where(sustained_slow_vspeed & vspeed_gate & mask)[0]
+        # Add minimum altitude requirement for valid flare detection
+        agl = df['AGL'].to_numpy().astype(float)
+        min_flare_altitude = 75.0  # meters AGL
+        altitude_gate = agl >= min_flare_altitude
+
+        flare_candidates = np.where(sustained_slow_vspeed & vspeed_gate & altitude_gate & mask)[0]
         if not flare_candidates.any():
+            # Fallback: try without vspeed gate but keep altitude requirement
+            flare_candidates = np.where(sustained_slow_vspeed & altitude_gate & mask)[0]
+        if not flare_candidates.any():
+            # Final fallback: original logic without altitude gate
             flare_candidates = np.where(sustained_slow_vspeed & mask)[0]
 
         flare = int(flare_candidates[0])

@@ -28,10 +28,16 @@ class Command(BaseCommand):
             action='store_true',
             help='Show analysis results without saving',
         )
+        parser.add_argument(
+            '--force-turn-detection',
+            action='store_true',
+            help='Force use of turn detection algorithm instead of traditional flare detection',
+        )
 
     def handle(self, *args, **options):
         flight_id = options['flight_id']
         dry_run = options['dry_run']
+        force_turn_detection = options['force_turn_detection']
 
         try:
             flight = Flight.objects.get(id=flight_id)
@@ -79,17 +85,23 @@ class Command(BaseCommand):
             landing_idx = manager.get_landing(df)
             self.stdout.write(f'Landing detected at index: {landing_idx}')
 
-            # Try traditional flare detection first
-            try:
-                flare_idx = manager.find_flare(df, landing_idx)
-                flare_method = "traditional"
-                self.stdout.write(f'Traditional flare detected at index: {flare_idx}')
-            except (ValueError, IndexError) as e:
-                self.stdout.write(f'Traditional flare detection failed: {e}')
-                # Use fallback method
+            # Try traditional flare detection first (unless forced to use turn detection)
+            if force_turn_detection:
+                self.stdout.write('Forcing turn detection algorithm')
                 flare_idx = manager.find_turn_start_fallback(df, landing_idx)
                 flare_method = "turn_detection"
-                self.stdout.write(f'Fallback turn detection at index: {flare_idx}')
+                self.stdout.write(f'Forced turn detection at index: {flare_idx}')
+            else:
+                try:
+                    flare_idx = manager.find_flare(df, landing_idx)
+                    flare_method = "traditional"
+                    self.stdout.write(f'Traditional flare detected at index: {flare_idx}')
+                except (ValueError, IndexError) as e:
+                    self.stdout.write(f'Traditional flare detection failed: {e}')
+                    # Use fallback method
+                    flare_idx = manager.find_turn_start_fallback(df, landing_idx)
+                    flare_method = "turn_detection"
+                    self.stdout.write(f'Fallback turn detection at index: {flare_idx}')
 
             # Find max speeds
             max_vspeed_idx, max_gspeed_idx = manager.find_max_speeds(df, flare_idx, landing_idx)
