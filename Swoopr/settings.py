@@ -60,6 +60,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Custom error logging middleware
+    'Swoopr.middleware.ErrorLoggingMiddleware',
+    # 'Swoopr.middleware.RequestLoggingMiddleware',  # Uncomment for even more verbose logging
 ]
 
 ROOT_URLCONF = 'Swoopr.urls'
@@ -196,6 +199,120 @@ STORAGES = {
 # WhiteNoise settings for better static file handling
 WHITENOISE_USE_FINDERS = True
 WHITENOISE_AUTOREFRESH = DEBUG  # Only refresh in development
+
+# Logging Configuration
+# Production-safe logging that captures errors without exposing sensitive data
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+        'error_detailed': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {pathname}:{lineno} {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'filters': ['require_debug_true'],
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple'
+        },
+        'console_prod': {
+            'level': 'WARNING',
+            'filters': ['require_debug_false'],
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose'
+        },
+        'error_file': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'errors.log'),
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 5,
+            'formatter': 'error_detailed',
+        },
+        'server_errors': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'server_errors.log'),
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 10,
+            'formatter': 'error_detailed',
+        },
+        # Email admins for critical errors (optional)
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler',
+            'include_html': False,
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'level': 'INFO',
+        'handlers': ['console', 'console_prod'],
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'console_prod', 'error_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['error_file', 'server_errors', 'mail_admins'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'django.server': {
+            'handlers': ['error_file', 'server_errors'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['error_file', 'server_errors', 'mail_admins'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        # Application-specific loggers
+        'flights': {
+            'handlers': ['console', 'console_prod', 'error_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'users': {
+            'handlers': ['console', 'console_prod', 'error_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Catch-all for any other application logs
+        'swoopr': {
+            'handlers': ['console', 'console_prod', 'error_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Ensure logs directory exists
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
 
 # Login/Logout URLs
 LOGIN_URL = '/users/login/'

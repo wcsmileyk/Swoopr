@@ -132,7 +132,99 @@ class FlightManager:
                 raise e
 
     def read_flysight_file(self, filepath):
-        """Read and parse FlySight CSV file"""
+        """Read and parse FlySight CSV file - supports multiple formats"""
+
+        # Try to detect file format
+        with open(filepath, "r") as f:
+            first_line = f.readline().strip()
+
+        # Check if it's a standard CSV with headers
+        if not first_line.startswith('$') and 'time' in first_line.lower():
+            return self._read_standard_csv(filepath)
+        else:
+            return self._read_flysight_format(filepath)
+
+    def _read_standard_csv(self, filepath):
+        """Read standard CSV format with headers (like gps_00545.csv)"""
+        metadata = {}
+
+        # Read the CSV with pandas to auto-detect headers
+        df = pd.read_csv(filepath)
+
+        # Skip units row if it exists (second row with units like "(deg)", "(m)", etc.)
+        if len(df) > 0 and any('(' in str(val) and ')' in str(val) for val in df.iloc[0].values if pd.notna(val)):
+            df = df.iloc[1:].reset_index(drop=True)
+
+        # Standardize column names to match our expected format
+        column_mapping = {
+            'time': 'time',
+            'lat': 'lat',
+            'lon': 'lon',
+            'hMSL': 'hMSL',
+            'velN': 'velN',
+            'velE': 'velE',
+            'velD': 'velD',
+            'hAcc': 'hAcc',
+            'vAcc': 'vAcc',
+            'sAcc': 'sAcc',
+            'numSV': 'numSV',
+            'heading': 'heading'
+        }
+
+        # Rename columns if they exist
+        df.rename(columns=column_mapping, inplace=True)
+
+        # Add missing columns with default values if needed
+        required_cols = ['time', 'lat', 'lon', 'hMSL', 'velN', 'velE', 'velD', 'hAcc', 'vAcc', 'sAcc', 'numSV']
+        for col in required_cols:
+            if col not in df.columns:
+                if col == 'numSV':
+                    df[col] = 6  # Default satellite count
+                elif col in ['hAcc', 'vAcc', 'sAcc']:
+                    df[col] = 1.0  # Default accuracy
+                else:
+                    raise InvalidTrackFile(f"Required column '{col}' not found in CSV")
+
+        # Add $GNSS column if missing (for compatibility)
+        if '$GNSS' not in df.columns:
+            df['$GNSS'] = '$GPRMC'
+
+        # Convert numeric columns to proper data types
+        numeric_cols = ['lat', 'lon', 'hMSL', 'velN', 'velE', 'velD', 'hAcc', 'vAcc', 'sAcc', 'numSV', 'heading']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # Parse timestamps - handle both ISO format and epoch
+        if df['time'].dtype == 'object':
+            # Try ISO format first
+            df['time'] = pd.to_datetime(df['time'], format="%Y-%m-%dT%H:%M:%S.%fZ", utc=True, errors='coerce')
+            # If that fails, try without microseconds
+            if df['time'].isna().all():
+                df['time'] = pd.to_datetime(df['time'], utc=True, errors='coerce')
+
+        # Convert to relative time in seconds
+        if df['time'].notna().any():
+            start_time = df['time'].iloc[0]
+            df['t_s'] = (df['time'] - start_time).dt.total_seconds()
+        else:
+            # Assume 5Hz data if no valid timestamps
+            df['t_s'] = np.arange(len(df)) * 0.2
+
+        # Calculate derived fields
+        df['gspeed'] = np.sqrt(df['velN']**2 + df['velE']**2)
+        if 'heading' not in df.columns:
+            df['heading'] = compute_heading(df)
+        df['AGL'] = self.calculate_agl(df)
+
+        # Set metadata
+        metadata['format'] = 'standard_csv'
+        metadata['device'] = 'unknown'
+
+        return df, metadata
+
+    def _read_flysight_format(self, filepath):
+        """Read original FlySight format"""
         # Standard FlySight columns
         cols = ["$GNSS", "time", "lat", "lon", "hMSL", "velN", "velE", "velD",
                 "hAcc", "vAcc", "sAcc", "numSV"]
@@ -177,6 +269,8 @@ class FlightManager:
         df['gspeed'] = np.sqrt(df['velN']**2 + df['velE']**2)
         df['heading'] = compute_heading(df)
         df['AGL'] = self.calculate_agl(df)
+
+        metadata['format'] = 'flysight'
 
         return df, metadata
 
