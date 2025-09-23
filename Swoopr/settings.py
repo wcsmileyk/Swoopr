@@ -148,6 +148,12 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
+# Static files finders - ensure admin files are found
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -187,18 +193,38 @@ MEDIA_ROOT = BASE_DIR / 'media'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # WhiteNoise configuration for static files (updated for Django 4.2+)
-STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+# Use different storage based on environment
+if DEBUG:
+    # Development: use standard storage
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+else:
+    # Production: use WhiteNoise with fallback for missing files
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+        },
+    }
 
 # WhiteNoise settings for better static file handling
 WHITENOISE_USE_FINDERS = True
 WHITENOISE_AUTOREFRESH = DEBUG  # Only refresh in development
+
+# Production-specific WhiteNoise settings
+if not DEBUG:
+    # Skip missing files instead of raising errors
+    WHITENOISE_MANIFEST_STRICT = False
+    # Increase max age for static files caching
+    WHITENOISE_MAX_AGE = 31536000  # 1 year
 
 # Logging Configuration
 # Production-safe logging that captures errors without exposing sensitive data
