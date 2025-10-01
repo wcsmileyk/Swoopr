@@ -53,11 +53,82 @@ class Flight(models.Model):
 
     # Calculated swoop metrics
     turn_rotation = models.FloatField(null=True, blank=True, help_text="Turn rotation in degrees")
+    turn_rotation_confidence = models.FloatField(null=True, blank=True, help_text="Confidence score for rotation calculation (0.0-1.0)")
+    turn_rotation_method = models.CharField(
+        max_length=20,
+        null=True, blank=True,
+        help_text="Method used for rotation calculation (raw, smoothed, dominant, fallback)"
+    )
+    intended_turn = models.IntegerField(
+        null=True, blank=True,
+        choices=[(90, '90°'), (270, '270°'), (450, '450°'), (630, '630°'), (810, '810°'), (990, '990°')],
+        help_text="Intended standard turn degree classification"
+    )
     turn_direction = models.CharField(
         max_length=5,
         choices=[('left', 'Left'), ('right', 'Right')],
         null=True, blank=True
     )
+
+    # gswoop-style turn segment metrics (turn initiation to rollout end)
+    turn_segment_rotation = models.FloatField(null=True, blank=True, help_text="gswoop-style turn segment rotation in degrees")
+    turn_segment_confidence = models.FloatField(null=True, blank=True, help_text="Confidence score for gswoop-style rotation (0.0-1.0)")
+    turn_segment_method = models.CharField(
+        max_length=30,
+        null=True, blank=True,
+        help_text="Method used for gswoop-style rotation calculation"
+    )
+    turn_segment_intended = models.IntegerField(
+        null=True, blank=True,
+        choices=[(90, '90°'), (270, '270°'), (450, '450°'), (630, '630°'), (810, '810°'), (990, '990°')],
+        help_text="Intended turn classification for gswoop-style segment"
+    )
+    turn_segment_start_alt = models.FloatField(null=True, blank=True, help_text="Turn segment start altitude in ft AGL")
+    turn_segment_end_alt = models.FloatField(null=True, blank=True, help_text="Turn segment end altitude in ft AGL")
+    turn_segment_duration = models.FloatField(null=True, blank=True, help_text="Turn segment duration in seconds")
+    gswoop_difference = models.FloatField(null=True, blank=True, help_text="Difference from gswoop published rotation in degrees")
+
+    # ML-enhanced rotation metrics
+    ml_rotation = models.FloatField(null=True, blank=True, help_text="ML-predicted rotation in degrees")
+    ml_rotation_confidence = models.FloatField(null=True, blank=True, help_text="ML prediction confidence (0.0-1.0)")
+    ml_rotation_method = models.CharField(
+        max_length=20,
+        null=True, blank=True,
+        help_text="ML prediction method (ml_enhanced, fallback)"
+    )
+    ml_intended_turn = models.IntegerField(
+        null=True, blank=True,
+        choices=[(90, '90°'), (270, '270°'), (450, '450°'), (630, '630°'), (810, '810°'), (990, '990°')],
+        help_text="ML-predicted intended turn classification"
+    )
+
+    # Multi-metric ML prediction fields
+    # Timing predictions
+    ml_turn_time = models.FloatField(null=True, blank=True, help_text="ML-predicted time to execute turn (seconds)")
+    ml_turn_time_confidence = models.FloatField(null=True, blank=True, help_text="Turn time prediction confidence")
+    ml_rollout_time = models.FloatField(null=True, blank=True, help_text="ML-predicted rollout duration (seconds)")
+    ml_rollout_time_confidence = models.FloatField(null=True, blank=True, help_text="Rollout time prediction confidence")
+    ml_swoop_time = models.FloatField(null=True, blank=True, help_text="ML-predicted time aloft during swoop (seconds)")
+    ml_swoop_time_confidence = models.FloatField(null=True, blank=True, help_text="Swoop time prediction confidence")
+
+    # Distance predictions
+    ml_distance_to_stop = models.FloatField(null=True, blank=True, help_text="ML-predicted distance to stop (feet)")
+    ml_distance_confidence = models.FloatField(null=True, blank=True, help_text="Distance prediction confidence")
+    ml_touchdown_distance = models.FloatField(null=True, blank=True, help_text="ML-predicted touchdown distance (feet)")
+    ml_touchdown_confidence = models.FloatField(null=True, blank=True, help_text="Touchdown distance prediction confidence")
+    ml_touchdown_speed = models.FloatField(null=True, blank=True, help_text="ML-predicted touchdown speed (mph)")
+    ml_touchdown_speed_confidence = models.FloatField(null=True, blank=True, help_text="Touchdown speed prediction confidence")
+
+    # Gate and positioning predictions
+    ml_entry_speed = models.FloatField(null=True, blank=True, help_text="ML-predicted entry gate speed (mph)")
+    ml_entry_speed_confidence = models.FloatField(null=True, blank=True, help_text="Entry speed prediction confidence")
+    ml_turn_init_back = models.FloatField(null=True, blank=True, help_text="ML-predicted turn initiation back position (feet)")
+    ml_turn_init_offset = models.FloatField(null=True, blank=True, help_text="ML-predicted turn initiation offset position (feet)")
+
+    # Metadata
+    ml_predictions_count = models.IntegerField(null=True, blank=True, help_text="Number of ML predictions available")
+    ml_predictions_updated_at = models.DateTimeField(null=True, blank=True, help_text="When ML predictions were last updated")
+
     max_vertical_speed_mph = models.FloatField(null=True, blank=True)
     max_vertical_speed_ms = models.FloatField(null=True, blank=True)
     max_ground_speed_mph = models.FloatField(null=True, blank=True)

@@ -7,6 +7,8 @@ Combines FlySight file ingestion with swoop analysis
 import os
 import numpy as np
 import pandas as pd
+import joblib
+from pathlib import Path
 from datetime import datetime
 from django.utils import timezone
 from django.contrib.gis.geos import Point
@@ -86,6 +88,12 @@ class FlightManager:
 
     def __init__(self, cfg=SwoopConfig):
         self.cfg = cfg
+
+        # ML model components
+        self.ml_model = None
+        self.ml_feature_names = None
+        self.ml_model_loaded = False
+        self.load_ml_model()
 
     def process_file(self, filepath, pilot=None, canopy=None):
         """
@@ -431,7 +439,24 @@ class FlightManager:
                 flare_method = "turn_detection"
 
             max_vspeed_idx, max_gspeed_idx = self.find_max_speeds(df, flare_idx, landing_idx)
-            turn_rotation = self.get_rotation(df, flare_idx, max_gspeed_idx)
+
+            # Calculate dual rotation metrics
+            dual_metrics = self.calculate_dual_rotation_metrics(df, flare_idx, max_gspeed_idx, landing_idx)
+
+            # Use full swoop rotation as primary (maintains compatibility)
+            if 'full_swoop' in dual_metrics:
+                fs = dual_metrics['full_swoop']
+                turn_rotation = fs['rotation']
+                intended_turn = fs['intended_turn']
+                rotation_confidence = fs['confidence']
+                rotation_method = fs['method']
+            else:
+                # Fallback to legacy method
+                turn_rotation, intended_turn, rotation_confidence, rotation_method = self.get_rotation_with_metadata(df, flare_idx, max_gspeed_idx)
+
+            # Get ML prediction
+            ml_rotation, ml_intended, ml_confidence, ml_method = self.get_rotation_with_ml_enhancement(df, flare_idx, max_gspeed_idx)
+
             rollout_start_idx, rollout_end_idx = self.get_roll_out(df, max_vspeed_idx, max_gspeed_idx, landing_idx)
 
             # Calculate metrics
@@ -461,7 +486,39 @@ class FlightManager:
 
             # Store calculated metrics (in metric units)
             flight.turn_rotation = turn_rotation
+            flight.turn_rotation_confidence = rotation_confidence
+            flight.turn_rotation_method = rotation_method
+            flight.intended_turn = intended_turn
             flight.turn_direction = "left" if turn_rotation < 0 else "right"
+
+            # Store turn segment metrics (gswoop-style)
+            if 'turn_segment' in dual_metrics:
+                ts = dual_metrics['turn_segment']
+                flight.turn_segment_rotation = ts['rotation']
+                flight.turn_segment_confidence = ts['confidence']
+                flight.turn_segment_method = ts['method']
+                flight.turn_segment_intended = ts['intended_turn']
+                flight.turn_segment_start_alt = ts['start_alt']
+                flight.turn_segment_end_alt = ts['end_alt']
+                flight.turn_segment_duration = ts['duration']
+                # gswoop_difference will be populated later when compared with actual gswoop data
+                flight.gswoop_difference = None
+            else:
+                # Clear turn segment fields if not calculated
+                flight.turn_segment_rotation = None
+                flight.turn_segment_confidence = None
+                flight.turn_segment_method = None
+                flight.turn_segment_intended = None
+                flight.turn_segment_start_alt = None
+                flight.turn_segment_end_alt = None
+                flight.turn_segment_duration = None
+                flight.gswoop_difference = None
+
+            # Store ML prediction metrics
+            flight.ml_rotation = ml_rotation
+            flight.ml_rotation_confidence = ml_confidence
+            flight.ml_rotation_method = ml_method
+            flight.ml_intended_turn = ml_intended
             flight.max_vertical_speed_ms = max_vspeed_ms
             flight.max_ground_speed_ms = max_gspeed_ms
 
@@ -757,7 +814,615 @@ class FlightManager:
         return max_vspeed_idx, max_gspeed_idx
 
     def get_rotation(self, df, flare_idx, max_gspeed_idx):
-        """Calculate turn rotation with enhanced fixes"""
+        """Calculate turn rotation with improved algorithm"""
+        try:
+            # Use improved rotation detection
+            rotation, intended_turn, confidence, method = self._improved_rotation_detection(df, flare_idx, max_gspeed_idx)
+            return rotation
+
+        except Exception as e:
+            # Fallback to original algorithm if improved version fails
+            return self._get_rotation_legacy(df, flare_idx, max_gspeed_idx)
+
+    def get_rotation_with_metadata(self, df, flare_idx, max_gspeed_idx):
+        """Calculate turn rotation with all metadata"""
+        try:
+            # Use improved rotation detection
+            rotation, intended_turn, confidence, method = self._improved_rotation_detection(df, flare_idx, max_gspeed_idx)
+            return rotation, intended_turn, confidence, method
+
+        except Exception as e:
+            # Fallback to original algorithm if improved version fails
+            rotation = self._get_rotation_legacy(df, flare_idx, max_gspeed_idx)
+            return rotation, None, 0.3, "legacy"
+
+    def calculate_dual_rotation_metrics(self, df, flare_idx, max_gspeed_idx, landing_idx):
+        """
+        Calculate both full swoop and gswoop-style turn segment rotation metrics
+        Returns dict with both 'full_swoop' and 'turn_segment' results
+        """
+        results = {}
+
+        # 1. Full Swoop Rotation (existing comprehensive method)
+        try:
+            full_rotation, intended_turn, confidence, method = self.get_rotation_with_metadata(df, flare_idx, max_gspeed_idx)
+            results['full_swoop'] = {
+                'rotation': full_rotation,
+                'intended_turn': intended_turn,
+                'confidence': confidence,
+                'method': method,
+                'start_alt': df.iloc[flare_idx]['AGL'] / 0.3048,
+                'end_alt': df.iloc[max_gspeed_idx]['AGL'] / 0.3048,
+                'duration': (max_gspeed_idx - flare_idx) * 0.2,
+            }
+        except Exception as e:
+            print(f"Full swoop rotation calculation failed: {e}")
+
+        # 2. gswoop-style Turn Segment Rotation
+        try:
+            turn_segment_result = self._calculate_turn_segment_rotation(df, landing_idx)
+            if turn_segment_result:
+                results['turn_segment'] = turn_segment_result
+        except Exception as e:
+            print(f"Turn segment rotation calculation failed: {e}")
+
+        return results
+
+    def _calculate_turn_segment_rotation(self, df, landing_idx):
+        """
+        Calculate gswoop-style turn segment rotation using altitude-based boundary detection
+        Attempts to find turn initiation and rollout end points similar to gswoop methodology
+        """
+
+        # Estimate turn boundaries using altitude and flight characteristics
+        # This is a simplified approach - we can refine with more gswoop comparison data
+
+        # Find potential turn start: look for altitude where turn rate increases significantly
+        turn_start_idx = self._estimate_turn_start_altitude(df, landing_idx)
+
+        # Find potential rollout end: look for low altitude where heading stabilizes
+        rollout_end_idx = self._estimate_rollout_end_altitude(df, landing_idx)
+
+        if turn_start_idx is None or rollout_end_idx is None or turn_start_idx >= rollout_end_idx:
+            return None
+
+        # Calculate rotation over this segment
+        turn_segment = df.iloc[turn_start_idx:rollout_end_idx+1]
+        headings = turn_segment['heading'].values
+
+        if len(headings) < 2:
+            return None
+
+        # Calculate intelligent rotation following the actual flight path
+        rotation, turn_direction = self._calculate_intelligent_rotation(headings)
+
+        # Classify intended turn
+        abs_rotation = abs(rotation)
+        if abs_rotation < 150:
+            intended_turn = 90
+        elif abs_rotation < 350:
+            intended_turn = 270
+        elif abs_rotation < 550:
+            intended_turn = 450
+        else:
+            intended_turn = 630
+
+        # Calculate confidence based on turn characteristics
+        confidence = self._calculate_turn_segment_confidence(headings, rotation, intended_turn)
+
+        return {
+            'rotation': rotation,
+            'intended_turn': intended_turn,
+            'confidence': confidence,
+            'method': 'altitude_based_segment',
+            'start_alt': df.iloc[turn_start_idx]['AGL'] / 0.3048,
+            'end_alt': df.iloc[rollout_end_idx]['AGL'] / 0.3048,
+            'duration': len(headings) * 0.2,
+            'turn_direction': turn_direction
+        }
+
+    def _estimate_turn_start_altitude(self, df, landing_idx):
+        """Estimate turn start point using altitude and turn rate analysis"""
+        # Look for point where heading changes start increasing significantly
+        # Typically around 400-800ft AGL for swoops
+
+        min_alt_m = 120 * 0.3048  # ~400ft minimum
+        max_alt_m = 800 * 0.3048  # ~800ft maximum
+
+        candidates = df[(df['AGL'] >= min_alt_m) & (df['AGL'] <= max_alt_m)].copy()
+
+        if len(candidates) < 10:
+            return None
+
+        # Calculate heading change rate for each candidate point
+        best_idx = None
+        max_turn_rate = 0
+
+        for idx in candidates.index[5:-5]:  # Avoid edges
+            window = df.iloc[idx-5:idx+6]  # 11-point window
+            headings = window['heading'].values
+
+            # Calculate average turn rate in this window
+            turn_rate = self._calculate_avg_turn_rate(headings)
+
+            if turn_rate > max_turn_rate and turn_rate > 2.0:  # At least 2°/point
+                max_turn_rate = turn_rate
+                best_idx = idx
+
+        return best_idx
+
+    def _estimate_rollout_end_altitude(self, df, landing_idx):
+        """Estimate rollout end point - low altitude where heading stabilizes"""
+        # Look for point where heading changes decrease significantly
+        # Typically around 10-50ft AGL
+
+        min_alt_m = 3 * 0.3048   # ~10ft minimum
+        max_alt_m = 50 * 0.3048  # ~50ft maximum
+
+        candidates = df[(df['AGL'] >= min_alt_m) & (df['AGL'] <= max_alt_m)].copy()
+
+        if len(candidates) < 5:
+            # If no candidates in range, use point close to landing
+            return max(0, landing_idx - 10)
+
+        # Find point with lowest turn rate
+        best_idx = None
+        min_turn_rate = float('inf')
+
+        for idx in candidates.index[2:-2]:  # Avoid edges
+            window = df.iloc[idx-2:idx+3]  # 5-point window
+            headings = window['heading'].values
+
+            turn_rate = self._calculate_avg_turn_rate(headings)
+
+            if turn_rate < min_turn_rate:
+                min_turn_rate = turn_rate
+                best_idx = idx
+
+        return best_idx
+
+    def _calculate_avg_turn_rate(self, headings):
+        """Calculate average absolute turn rate for a heading sequence"""
+        if len(headings) < 2:
+            return 0
+
+        total_change = 0
+        valid_changes = 0
+
+        for i in range(1, len(headings)):
+            diff = headings[i] - headings[i-1]
+
+            # Normalize to [-180, 180]
+            while diff > 180:
+                diff -= 360
+            while diff < -180:
+                diff += 360
+
+            # Filter out GPS noise
+            if abs(diff) <= 90:
+                total_change += abs(diff)
+                valid_changes += 1
+
+        return total_change / max(1, valid_changes)
+
+    def _calculate_intelligent_rotation(self, headings):
+        """Calculate rotation by following the actual flight path"""
+        if len(headings) < 2:
+            return 0, "unknown"
+
+        total_left_turn = 0
+        total_right_turn = 0
+
+        for i in range(1, len(headings)):
+            prev_heading = headings[i-1]
+            curr_heading = headings[i]
+
+            diff = curr_heading - prev_heading
+
+            # Normalize to [-180, 180]
+            while diff > 180:
+                diff -= 360
+            while diff < -180:
+                diff += 360
+
+            # Filter out GPS noise
+            if abs(diff) <= 90:
+                if diff < 0:
+                    total_left_turn += abs(diff)
+                else:
+                    total_right_turn += abs(diff)
+
+        # Determine dominant direction and calculate final rotation
+        if total_left_turn > total_right_turn:
+            net_rotation = -(total_left_turn - total_right_turn)
+            direction = "left"
+        else:
+            net_rotation = total_right_turn - total_left_turn
+            direction = "right"
+
+        # For multi-rotation turns, add full rotations
+        total_rotation = total_left_turn + total_right_turn
+        if total_rotation > 270:
+            estimated_full_rotations = int(total_rotation / 360)
+            if direction == "left":
+                final_rotation = -(abs(net_rotation) + estimated_full_rotations * 360)
+            else:
+                final_rotation = abs(net_rotation) + estimated_full_rotations * 360
+        else:
+            final_rotation = net_rotation
+
+        return final_rotation, direction
+
+    def _calculate_turn_segment_confidence(self, headings, rotation, intended_turn):
+        """Calculate confidence score for turn segment analysis"""
+        confidence = 0.5  # Base confidence
+
+        # Higher confidence for smooth heading progression
+        heading_smoothness = self._calculate_heading_smoothness(headings)
+        confidence += heading_smoothness * 0.3
+
+        # Higher confidence if rotation is close to standard turn
+        distance_to_standard = abs(abs(rotation) - intended_turn)
+        if distance_to_standard < 30:
+            confidence += 0.2
+        elif distance_to_standard < 60:
+            confidence += 0.1
+
+        # Higher confidence for reasonable turn duration
+        duration = len(headings) * 0.2
+        if 3 <= duration <= 15:
+            confidence += 0.2
+
+        return max(0.1, min(1.0, confidence))
+
+    def _calculate_heading_smoothness(self, headings):
+        """Calculate smoothness of heading progression (0-1 scale)"""
+        if len(headings) < 3:
+            return 0.5
+
+        # Count direction changes and large jumps
+        direction_changes = 0
+        large_jumps = 0
+        last_diff = None
+
+        for i in range(1, len(headings)):
+            diff = headings[i] - headings[i-1]
+
+            # Normalize
+            while diff > 180:
+                diff -= 360
+            while diff < -180:
+                diff += 360
+
+            if abs(diff) > 45:  # Large jump
+                large_jumps += 1
+
+            if last_diff is not None:
+                if (last_diff > 0) != (diff > 0):  # Direction change
+                    direction_changes += 1
+
+            last_diff = diff
+
+        # Calculate smoothness score
+        max_changes = len(headings) - 2
+        if max_changes <= 0:
+            return 0.5
+
+        smoothness = 1.0 - (direction_changes + large_jumps) / max_changes
+        return max(0.0, min(1.0, smoothness))
+
+    def load_ml_model(self):
+        """Load the trained ML model for rotation prediction"""
+        try:
+            model_path = Path(__file__).parent / 'rotation_prediction_model.pkl'
+            if model_path.exists():
+                model_data = joblib.load(model_path)
+                self.ml_model = model_data['model']
+                self.ml_feature_names = model_data['feature_names']
+                self.ml_model_loaded = True
+                print(f"✅ ML rotation model loaded (improvement: {model_data.get('improvement', 0):+.1f}%)")
+            else:
+                print(f"⚠️  ML model not found: {model_path}")
+        except Exception as e:
+            print(f"❌ Error loading ML model: {e}")
+
+    def extract_ml_features(self, df, flare_idx, max_gspeed_idx):
+        """Extract features for ML prediction (matching training format)"""
+        features = {}
+
+        # Basic flight characteristics
+        features['flight_duration'] = len(df) * 0.2
+        features['turn_duration'] = (max_gspeed_idx - flare_idx) * 0.2
+
+        # Altitude features
+        features['entry_altitude'] = df.iloc[flare_idx]['AGL'] / 0.3048  # Convert to feet
+        features['max_gspeed_altitude'] = df.iloc[max_gspeed_idx]['AGL'] / 0.3048
+        features['altitude_loss'] = (df.iloc[flare_idx]['AGL'] - df.iloc[max_gspeed_idx]['AGL']) / 0.3048
+
+        # Speed features
+        features['entry_speed'] = df.iloc[flare_idx]['gspeed'] * 2.23694  # Convert to mph
+        features['max_vspeed'] = abs(df.iloc[max_gspeed_idx]['velD']) * 2.23694
+        features['max_gspeed'] = df.iloc[max_gspeed_idx]['gspeed'] * 2.23694
+
+        # Heading analysis
+        turn_data = df[flare_idx:max_gspeed_idx+1]
+        headings = turn_data['heading'].values
+
+        if len(headings) >= 2:
+            features['heading_start'] = headings[0]
+            features['heading_end'] = headings[-1]
+
+            # Calculate net heading change
+            net_change = headings[-1] - headings[0]
+            while net_change > 180:
+                net_change -= 360
+            while net_change < -180:
+                net_change += 360
+            features['net_heading_change'] = net_change
+        else:
+            features['heading_start'] = 0
+            features['heading_end'] = 0
+            features['net_heading_change'] = 0
+
+        return features
+
+    def predict_ml_rotation(self, df, flare_idx, max_gspeed_idx):
+        """Predict rotation using ML model"""
+        if not self.ml_model_loaded:
+            return None, 0.0, "ml_unavailable"
+
+        try:
+            # Extract features
+            features = self.extract_ml_features(df, flare_idx, max_gspeed_idx)
+
+            # Create feature vector in correct order
+            feature_vector = np.array([[features[name] for name in self.ml_feature_names]])
+
+            # Predict
+            ml_rotation = self.ml_model.predict(feature_vector)[0]
+
+            # Calculate confidence based on reasonable rotation range
+            confidence = min(1.0, max(0.3, 1.0 - abs(ml_rotation) / 1200))
+
+            return ml_rotation, confidence, "ml_enhanced"
+
+        except Exception as e:
+            print(f"ML prediction error: {e}")
+            return None, 0.0, "ml_error"
+
+    def get_rotation_with_ml_enhancement(self, df, flare_idx, max_gspeed_idx):
+        """Get rotation with ML enhancement as primary method"""
+
+        # Try ML prediction first
+        ml_rotation, ml_confidence, ml_method = self.predict_ml_rotation(df, flare_idx, max_gspeed_idx)
+
+        if ml_rotation is not None and ml_confidence > 0.4:
+            # Use ML prediction if confident enough
+
+            # Classify ML prediction to intended turn
+            abs_rotation = abs(ml_rotation)
+            if abs_rotation < 150:
+                ml_intended = 90
+            elif abs_rotation < 350:
+                ml_intended = 270
+            elif abs_rotation < 550:
+                ml_intended = 450
+            elif abs_rotation < 750:
+                ml_intended = 630
+            elif abs_rotation < 950:
+                ml_intended = 810
+            else:
+                ml_intended = 990
+
+            return ml_rotation, ml_intended, ml_confidence, ml_method
+        else:
+            # Fallback to traditional algorithm
+            return self.get_rotation_with_metadata(df, flare_idx, max_gspeed_idx)
+
+    def _improved_rotation_detection(self, df, flare_idx, max_gspeed_idx):
+        """Enhanced rotation detection with multiple validation methods"""
+
+        # Extract turn data
+        turn_data = df[flare_idx:max_gspeed_idx+1].copy()
+        headings = turn_data['heading'].values
+
+        if len(headings) < 3:
+            return 270.0, 270, 0.5, "default"  # Default fallback
+
+        # Method 1: Smoothed heading approach to reduce GPS noise
+        def smooth_headings(headings, window_size=5):
+            """Smooth headings using a moving average, handling 360° wraparound"""
+            # Convert to complex representation to handle wraparound
+            complex_headings = np.exp(1j * np.deg2rad(headings))
+
+            # Smooth in complex domain
+            if len(complex_headings) >= window_size:
+                # Use a simple moving average
+                smoothed_complex = np.convolve(complex_headings,
+                                             np.ones(window_size)/window_size,
+                                             mode='same')
+            else:
+                smoothed_complex = complex_headings
+
+            # Convert back to angles
+            smoothed_headings = np.rad2deg(np.angle(smoothed_complex))
+            smoothed_headings = (smoothed_headings + 360) % 360
+
+            return smoothed_headings
+
+        smooth_hdg = smooth_headings(headings)
+
+        # Method 2: Progressive heading tracking with outlier rejection
+        def progressive_heading_analysis(headings):
+            """Track heading changes progressively, rejecting outliers"""
+
+            if len(headings) < 2:
+                return 0, 0
+
+            total_rotation = 0
+            prev_heading = headings[0]
+
+            for heading in headings[1:]:
+                # Calculate angular difference
+                diff = heading - prev_heading
+
+                # Normalize to [-180, 180]
+                while diff > 180:
+                    diff -= 360
+                while diff < -180:
+                    diff += 360
+
+                # Outlier rejection: reject changes > 120° (likely GPS noise)
+                if abs(diff) <= 120:
+                    total_rotation += diff
+                    prev_heading = heading
+                # For large jumps, keep the same heading (ignore the noise)
+
+            return total_rotation, len(headings)
+
+        # Method 3: Direction-consistent analysis
+        def direction_consistent_analysis(headings):
+            """Focus on the dominant turn direction"""
+
+            changes = []
+            for i in range(1, len(headings)):
+                diff = headings[i] - headings[i-1]
+                while diff > 180:
+                    diff -= 360
+                while diff < -180:
+                    diff += 360
+
+                if abs(diff) <= 120:  # Outlier rejection
+                    changes.append(diff)
+
+            if not changes:
+                return 0, 0
+
+            # Determine dominant direction
+            positive_sum = sum(c for c in changes if c > 0)
+            negative_sum = sum(c for c in changes if c < 0)
+
+            if abs(negative_sum) > abs(positive_sum):
+                # Left turn dominant
+                dominant_changes = [c for c in changes if c < 0]
+                direction = -1
+            else:
+                # Right turn dominant
+                dominant_changes = [c for c in changes if c > 0]
+                direction = 1
+
+            total_dominant = sum(dominant_changes)
+            return total_dominant, direction
+
+        # Apply all methods
+        raw_rotation, _ = progressive_heading_analysis(headings)
+        smooth_rotation, _ = progressive_heading_analysis(smooth_hdg)
+        dominant_rotation, direction = direction_consistent_analysis(headings)
+
+        # Method 4: Full rotation detection
+        def detect_full_rotations(headings):
+            """Detect if we've made full 360° rotations"""
+
+            if len(headings) < 10:  # Need sufficient data
+                return 0
+
+            # Look for heading wrapping patterns
+            wraps = 0
+
+            # Track crossings of 0°/360° line
+            for i in range(1, len(headings)):
+                prev = headings[i-1]
+                curr = headings[i]
+
+                # Detect 360° -> 0° crossing (positive rotation)
+                if prev > 270 and curr < 90:
+                    wraps += 1
+                # Detect 0° -> 360° crossing (negative rotation)
+                elif prev < 90 and curr > 270:
+                    wraps -= 1
+
+            return wraps
+
+        full_rotations = detect_full_rotations(headings)
+
+        # Method 5: Turn classification and validation
+        def classify_and_validate(rotations_dict):
+            """Classify turn type and validate with multiple methods"""
+
+            methods_agreement = {}
+
+            for method_name, rotation in rotations_dict.items():
+                abs_rotation = abs(rotation)
+
+                # Add full rotations if detected
+                if full_rotations != 0:
+                    abs_rotation += abs(full_rotations) * 360
+
+                # Classify into standard turns
+                if abs_rotation < 150:
+                    category = 90
+                elif abs_rotation < 350:
+                    category = 270
+                elif abs_rotation < 550:
+                    category = 450
+                elif abs_rotation < 750:
+                    category = 630
+                elif abs_rotation < 950:
+                    category = 810
+                else:
+                    category = 990
+
+                methods_agreement[method_name] = {
+                    'raw_rotation': rotation,
+                    'corrected_rotation': abs_rotation,
+                    'category': category,
+                    'confidence': self._calculate_rotation_confidence(abs_rotation, category)
+                }
+
+            return methods_agreement
+
+        # Combine all methods
+        rotation_methods = {
+            'raw': raw_rotation,
+            'smoothed': smooth_rotation,
+            'dominant': dominant_rotation
+        }
+
+        classifications = classify_and_validate(rotation_methods)
+
+        # Decision logic: pick the most confident method
+        best_method = None
+        best_confidence = 0
+
+        for method_name, data in classifications.items():
+            if data['confidence'] > best_confidence:
+                best_confidence = data['confidence']
+                best_method = method_name
+
+        if best_method:
+            result = classifications[best_method]
+            final_rotation = result['corrected_rotation']
+            intended_turn = result['category']
+            confidence = result['confidence']
+
+            # Apply direction
+            if direction == -1:
+                final_rotation = -final_rotation
+
+            return final_rotation, intended_turn, confidence, best_method
+        else:
+            # Fallback to most conservative estimate
+            return smooth_rotation, 270, 0.3, 'fallback'
+
+    def _calculate_rotation_confidence(self, rotation, category):
+        """Calculate confidence based on distance from standard turn"""
+        distance = abs(rotation - category)
+        max_distance = 90  # Maximum acceptable distance
+        confidence = max(0, (max_distance - distance) / max_distance)
+        return confidence
+
+    def _get_rotation_legacy(self, df, flare_idx, max_gspeed_idx):
+        """Legacy rotation calculation method (original algorithm)"""
         headings = df['heading'].astype(int)
         heading_unwrapped_deg = np.unwrap(np.deg2rad(headings), discont=np.deg2rad(20)) * 180/np.pi
 
