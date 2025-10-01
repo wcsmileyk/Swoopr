@@ -625,7 +625,8 @@ if (chartData.important_points.max_gspeed) {
 if (chartData.important_points.flare && chartData.important_points.landing) {
     // Show context before flare and after landing to see full swoop pattern
     const swoopStart = Math.max(0, chartData.important_points.flare - 15);
-    const swoopEnd = chartData.important_points.landing + 10;
+    const maxTimestamp = chartData.timestamps[chartData.timestamps.length - 1];
+    const swoopEnd = Math.min(maxTimestamp, chartData.important_points.landing + 10);
     chart.options.scales.x.min = swoopStart;
     chart.options.scales.x.max = swoopEnd;
     chart.update();

@@ -519,6 +519,9 @@ class FlightManager:
             flight.ml_rotation_confidence = ml_confidence
             flight.ml_rotation_method = ml_method
             flight.ml_intended_turn = ml_intended
+
+            # Add comprehensive multi-metric ML predictions
+            self._add_multi_metric_ml_predictions(flight, df, flare_idx, max_gspeed_idx)
             flight.max_vertical_speed_ms = max_vspeed_ms
             flight.max_ground_speed_ms = max_gspeed_ms
 
@@ -1637,6 +1640,257 @@ class FlightManager:
 
         # Fallback 2: absolute minimum
         return int(df_section.iloc[low_pos]['index'])
+
+    def _add_multi_metric_ml_predictions(self, flight, df, flare_idx, max_gspeed_idx):
+        """Add comprehensive ML predictions for all gswoop-compatible metrics"""
+        try:
+            # Load multi-metric ML models if not already loaded
+            if not hasattr(self, 'multi_ml_models') or self.multi_ml_models is None:
+                self._load_multi_metric_models()
+
+            if self.multi_ml_models is None:
+                return  # Models not available
+
+            # Extract comprehensive features
+            features = self._extract_comprehensive_features(df, flare_idx, max_gspeed_idx)
+            if features is None:
+                return
+
+            # Make predictions for all metrics
+            predictions = {}
+            for metric_name, model_data in self.multi_ml_models.items():
+                try:
+                    model = model_data['model']
+                    scaler = model_data['scaler']
+                    feature_names = model_data['feature_names']
+
+                    # Ensure features match expected order
+                    feature_array = np.array([features.get(fname, 0.0) for fname in feature_names]).reshape(1, -1)
+
+                    # Apply scaling
+                    feature_array_scaled = scaler.transform(feature_array)
+
+                    # Make prediction
+                    prediction = model.predict(feature_array_scaled)[0]
+                    predictions[metric_name] = prediction
+                except Exception as e:
+                    print(f"Warning: Failed to predict {metric_name}: {e}")
+                    predictions[metric_name] = None
+
+            # Store predictions in flight object
+            self._store_multi_metric_predictions(flight, predictions)
+
+        except Exception as e:
+            print(f"Warning: Multi-metric ML prediction failed: {e}")
+
+    def _load_multi_metric_models(self):
+        """Load all multi-metric ML models"""
+        import joblib
+
+        try:
+            model_path = Path(__file__).parent.parent / 'multi_metric_ml_model.joblib'
+            if model_path.exists():
+                model_data = joblib.load(model_path)
+                self.multi_ml_models = model_data['models']  # Extract the models dict
+                print(f"Loaded multi-metric ML models for {len(self.multi_ml_models)} metrics")
+            else:
+                print(f"Multi-metric ML model not found at {model_path}")
+                self.multi_ml_models = None
+        except Exception as e:
+            print(f"Failed to load multi-metric ML models: {e}")
+            self.multi_ml_models = None
+
+    def _extract_comprehensive_features(self, df, flare_idx, max_gspeed_idx):
+        """Extract comprehensive features for multi-metric ML prediction"""
+        try:
+            features = {}
+
+            # Basic flight parameters
+            features['total_duration'] = float(df.iloc[-1]['t_s'] - df.iloc[0]['t_s'])
+            features['max_altitude'] = float(df['hMSL'].max())
+            features['altitude_range'] = float(df['hMSL'].max() - df['hMSL'].min())
+
+            # Landing and flare analysis
+            landing_idx = self.get_landing(df)
+            flare_time = df.iloc[flare_idx]['t_s']
+            landing_time = df.iloc[landing_idx]['t_s']
+            max_gspeed_time = df.iloc[max_gspeed_idx]['t_s']
+
+            features['flare_duration'] = float(landing_time - flare_time)
+            features['flare_to_max_gspeed'] = float(max_gspeed_time - flare_time)
+            features['max_gspeed_to_landing'] = float(landing_time - max_gspeed_time)
+
+            # Speed analysis
+            features['max_vspeed'] = float(abs(df['velD'].min()))
+            features['max_gspeed'] = float(df['gspeed'].max())
+            features['avg_vspeed_in_turn'] = float(abs(df.iloc[flare_idx:max_gspeed_idx]['velD']).mean())
+            features['avg_gspeed_in_turn'] = float(df.iloc[flare_idx:max_gspeed_idx]['gspeed'].mean())
+
+            # Altitude analysis
+            flare_alt = df.iloc[flare_idx]['AGL']
+            landing_alt = df.iloc[landing_idx]['AGL']
+            max_gspeed_alt = df.iloc[max_gspeed_idx]['AGL']
+
+            features['flare_altitude'] = float(flare_alt)
+            features['max_gspeed_altitude'] = float(max_gspeed_alt)
+            features['altitude_loss_in_turn'] = float(flare_alt - max_gspeed_alt)
+            features['altitude_loss_total'] = float(flare_alt - landing_alt)
+
+            # Heading and rotation analysis
+            if 'heading' in df.columns:
+                headings = df.iloc[flare_idx:max_gspeed_idx]['heading'].values
+                if len(headings) > 1:
+                    # Calculate rotation features
+                    heading_changes = np.diff(headings)
+                    # Handle 360-degree wraparound
+                    heading_changes = np.where(heading_changes > 180, heading_changes - 360, heading_changes)
+                    heading_changes = np.where(heading_changes < -180, heading_changes + 360, heading_changes)
+
+                    features['total_heading_change'] = float(np.sum(heading_changes))
+                    features['avg_turn_rate'] = float(np.mean(np.abs(heading_changes)))
+                    features['max_turn_rate'] = float(np.max(np.abs(heading_changes)))
+                    features['heading_variance'] = float(np.var(headings))
+                else:
+                    features['total_heading_change'] = 0.0
+                    features['avg_turn_rate'] = 0.0
+                    features['max_turn_rate'] = 0.0
+                    features['heading_variance'] = 0.0
+            else:
+                # Calculate heading from GPS coordinates if not available
+                try:
+                    lat = df['lat'].to_numpy()
+                    lon = df['lon'].to_numpy()
+                    headings = []
+                    for i in range(1, len(lat)):
+                        dlat = lat[i] - lat[i-1]
+                        dlon = lon[i] - lon[i-1]
+                        heading = np.degrees(np.arctan2(dlon, dlat)) % 360
+                        headings.append(heading)
+
+                    if len(headings) > flare_idx:
+                        turn_headings = headings[flare_idx:max_gspeed_idx]
+                        if len(turn_headings) > 1:
+                            heading_changes = np.diff(turn_headings)
+                            heading_changes = np.where(heading_changes > 180, heading_changes - 360, heading_changes)
+                            heading_changes = np.where(heading_changes < -180, heading_changes + 360, heading_changes)
+
+                            features['total_heading_change'] = float(np.sum(heading_changes))
+                            features['avg_turn_rate'] = float(np.mean(np.abs(heading_changes)))
+                            features['max_turn_rate'] = float(np.max(np.abs(heading_changes)))
+                            features['heading_variance'] = float(np.var(turn_headings))
+                        else:
+                            features['total_heading_change'] = 0.0
+                            features['avg_turn_rate'] = 0.0
+                            features['max_turn_rate'] = 0.0
+                            features['heading_variance'] = 0.0
+                    else:
+                        features['total_heading_change'] = 0.0
+                        features['avg_turn_rate'] = 0.0
+                        features['max_turn_rate'] = 0.0
+                        features['heading_variance'] = 0.0
+                except:
+                    features['total_heading_change'] = 0.0
+                    features['avg_turn_rate'] = 0.0
+                    features['max_turn_rate'] = 0.0
+                    features['heading_variance'] = 0.0
+
+            # Speed change analysis
+            vspeed_at_flare = abs(df.iloc[flare_idx]['velD'])
+            vspeed_at_max_gspeed = abs(df.iloc[max_gspeed_idx]['velD'])
+            gspeed_at_flare = df.iloc[flare_idx]['gspeed']
+            gspeed_at_max_gspeed = df.iloc[max_gspeed_idx]['gspeed']
+
+            features['vspeed_change_in_turn'] = float(vspeed_at_max_gspeed - vspeed_at_flare)
+            features['gspeed_change_in_turn'] = float(gspeed_at_max_gspeed - gspeed_at_flare)
+            features['speed_ratio_at_flare'] = float(gspeed_at_flare / vspeed_at_flare if vspeed_at_flare > 0 else 0)
+            features['speed_ratio_at_max_gspeed'] = float(gspeed_at_max_gspeed / vspeed_at_max_gspeed if vspeed_at_max_gspeed > 0 else 0)
+
+            # G-force and acceleration analysis (if available)
+            if all(col in df.columns for col in ['velN', 'velE', 'velD']):
+                # Calculate 3D acceleration
+                vel_vectors = df[['velN', 'velE', 'velD']].values
+                if len(vel_vectors) > 1:
+                    accelerations = np.diff(vel_vectors, axis=0)
+                    g_forces = np.linalg.norm(accelerations, axis=1)
+
+                    turn_g_forces = g_forces[flare_idx:max_gspeed_idx] if len(g_forces) > max_gspeed_idx else g_forces[flare_idx:]
+                    if len(turn_g_forces) > 0:
+                        features['max_g_force'] = float(np.max(turn_g_forces))
+                        features['avg_g_force'] = float(np.mean(turn_g_forces))
+                    else:
+                        features['max_g_force'] = 0.0
+                        features['avg_g_force'] = 0.0
+                else:
+                    features['max_g_force'] = 0.0
+                    features['avg_g_force'] = 0.0
+            else:
+                features['max_g_force'] = 0.0
+                features['avg_g_force'] = 0.0
+
+            # Distance and positioning analysis
+            if all(col in df.columns for col in ['lat', 'lon']):
+                # Calculate horizontal distance traveled during turn
+                lat_start, lon_start = df.iloc[flare_idx]['lat'], df.iloc[flare_idx]['lon']
+                lat_end, lon_end = df.iloc[max_gspeed_idx]['lat'], df.iloc[max_gspeed_idx]['lon']
+
+                # Approximate distance (for small distances)
+                dlat = lat_end - lat_start
+                dlon = lon_end - lon_start
+                distance_deg = np.sqrt(dlat**2 + dlon**2)
+                distance_m = distance_deg * 111000  # rough conversion to meters
+
+                features['horizontal_distance_in_turn'] = float(distance_m)
+                features['distance_per_degree_rotation'] = float(distance_m / abs(features['total_heading_change']) if abs(features['total_heading_change']) > 0 else 0)
+            else:
+                features['horizontal_distance_in_turn'] = 0.0
+                features['distance_per_degree_rotation'] = 0.0
+
+            # Pattern recognition features
+            features['turn_efficiency'] = float(features['gspeed_change_in_turn'] / features['flare_duration'] if features['flare_duration'] > 0 else 0)
+            features['altitude_efficiency'] = float(features['altitude_loss_in_turn'] / features['flare_duration'] if features['flare_duration'] > 0 else 0)
+            features['rotation_rate'] = float(abs(features['total_heading_change']) / features['flare_duration'] if features['flare_duration'] > 0 else 0)
+
+            return features
+
+        except Exception as e:
+            print(f"Error extracting comprehensive features: {e}")
+            return None
+
+    def _store_multi_metric_predictions(self, flight, predictions):
+        """Store multi-metric ML predictions in flight object"""
+        try:
+            # Map gswoop metric names to our database fields
+            # Timing predictions
+            flight.ml_turn_time = predictions.get('time_to_execute_turn')
+            flight.ml_rollout_time = predictions.get('time_during_rollout')
+            flight.ml_swoop_time = predictions.get('time_aloft_during_swoop')
+
+            # Distance predictions
+            flight.ml_distance_to_stop = predictions.get('distance_to_stop')
+            flight.ml_touchdown_distance = predictions.get('touchdown_estimate')
+
+            # Speed predictions
+            flight.ml_touchdown_speed = predictions.get('touchdown_speed_mph')
+            flight.ml_entry_speed = predictions.get('entry_gate_speed_mph')
+
+            # Position predictions
+            flight.ml_turn_init_back = predictions.get('turn_init_back')
+            flight.ml_turn_init_offset = predictions.get('turn_init_offset')
+
+            # Additional predictions we can store in existing fields
+            # Note: rotation_degrees, max_total_back, max_total_offset don't have direct mappings
+            # but we could use them for confidence scoring or future fields
+
+            # Update prediction metadata
+            from django.utils import timezone
+            flight.ml_predictions_updated_at = timezone.now()
+
+            # Count non-null predictions
+            prediction_count = sum(1 for pred in predictions.values() if pred is not None)
+            flight.ml_predictions_count = prediction_count
+
+        except Exception as e:
+            print(f"Error storing multi-metric predictions: {e}")
 
 
 # Convenience function for processing single files

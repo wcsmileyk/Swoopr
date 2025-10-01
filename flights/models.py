@@ -650,6 +650,7 @@ class Flight(models.Model):
         # Store with hash for integrity
         self.gps_data_compressed = encoded
         self.gps_data_hash = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+        self.save()
 
     def get_gps_data(self):
         """
