@@ -15,6 +15,7 @@ urlpatterns = [
     path('flight/upload/results/', views.upload_results_view, name='upload_results'),
     path('flight/<int:flight_id>/', views.flight_detail_view, name='flight_detail'),
     path('flight/<int:flight_id>/toggle-incorrect/', views.toggle_data_incorrect_view, name='toggle_data_incorrect'),
+    path('flight/<int:flight_id>/update-name/', views.update_flight_name_view, name='update_flight_name'),
     path('flight/<int:flight_id>/delete/', views.delete_flight_view, name='delete_flight'),
     path('flights/bulk-delete/', views.bulk_delete_flights_view, name='bulk_delete_flights'),
 

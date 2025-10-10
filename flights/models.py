@@ -21,6 +21,7 @@ class Flight(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     filename = models.CharField(max_length=255, blank=True)
+    flight_name = models.CharField(max_length=255, blank=True, help_text="User-friendly flight name")
 
     # Flight location and conditions (optional)
     location_name = models.CharField(max_length=100, blank=True, help_text="Drop zone or location name")
@@ -199,9 +200,229 @@ class Flight(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
+        # Use flight_name if available, otherwise fallback to old format
+        if self.flight_name:
+            pilot_name = self.pilot.username if self.pilot else "Unknown"
+            return f"{pilot_name}: {self.flight_name}"
+
         swoop_info = f" - {self.turn_rotation:.0f}° {self.turn_direction}" if self.is_swoop else ""
         pilot_name = self.pilot.username if self.pilot else "Unknown"
         return f"{pilot_name}: {self.session_id[:8]}{swoop_info}"
+
+    def get_flight_datetime(self):
+        """Get the actual flight datetime from GPS data"""
+        gps_data = self.get_gps_data()
+        if gps_data and len(gps_data) > 0:
+            first_point = gps_data[0]
+            if 'timestamp' in first_point:
+                import datetime
+                return datetime.datetime.fromtimestamp(first_point['timestamp'])
+
+        # Fallback to created_at if no GPS data
+        return self.created_at
+
+    def generate_chronological_name(self):
+        """Generate chronological flight name based on pilot's flights that day"""
+        if not self.pilot:
+            return f"{self.filename}"  # Fallback for flights without pilot
+
+        flight_datetime = self.get_flight_datetime()
+        flight_date = flight_datetime.date()
+
+        # Get all flights by this pilot on the same day, ordered chronologically
+        same_day_flights = Flight.objects.filter(
+            pilot=self.pilot
+        ).exclude(
+            id=self.id  # Exclude current flight from count
+        )
+
+        # Filter by flight date using GPS timestamps
+        same_day_flights_list = []
+        for flight in same_day_flights:
+            other_flight_datetime = flight.get_flight_datetime()
+            if other_flight_datetime.date() == flight_date:
+                same_day_flights_list.append((flight, other_flight_datetime))
+
+        # Sort by flight datetime
+        same_day_flights_list.sort(key=lambda x: x[1])
+
+        # Find position of current flight chronologically
+        flight_number = 1
+        for other_flight, other_datetime in same_day_flights_list:
+            if other_datetime < flight_datetime:
+                flight_number += 1
+            else:
+                break
+
+        # Format: "Sep 21 2025 - Flight #1"
+        formatted_date = flight_datetime.strftime("%b %-d %Y")
+        return f"{formatted_date} - Flight #{flight_number}"
+
+    def update_chronological_name(self, save=True):
+        """Update this flight's name to chronological format"""
+        self.flight_name = self.generate_chronological_name()
+        if save:
+            self.save(update_fields=['flight_name'])
+
+    @classmethod
+    def find_potential_duplicates(cls, pilot, gps_data, tolerance_seconds=30):
+        """Find potential duplicate flights based on GPS data characteristics"""
+        if not pilot or not gps_data or len(gps_data) == 0:
+            return []
+
+        first_point = gps_data[0]
+        last_point = gps_data[-1]
+
+        # Extract key characteristics for comparison
+        start_time = first_point.get('timestamp')
+        if not start_time:
+            return []
+
+        import datetime
+        flight_datetime = datetime.datetime.fromtimestamp(start_time)
+        flight_duration = last_point.get('timestamp', start_time) - start_time
+
+        # Get approximate flight coordinates (first and last points)
+        start_lat = first_point.get('lat')
+        start_lon = first_point.get('lon')
+        end_lat = last_point.get('lat')
+        end_lon = last_point.get('lon')
+
+        if None in [start_lat, start_lon, end_lat, end_lon]:
+            return []
+
+        # Find flights from the same pilot within a reasonable time window
+        time_window_start = flight_datetime - datetime.timedelta(seconds=tolerance_seconds)
+        time_window_end = flight_datetime + datetime.timedelta(seconds=tolerance_seconds)
+
+        potential_duplicates = []
+        existing_flights = cls.objects.filter(pilot=pilot)
+
+        for flight in existing_flights:
+            existing_gps_data = flight.get_gps_data()
+            if not existing_gps_data or len(existing_gps_data) == 0:
+                continue
+
+            existing_first = existing_gps_data[0]
+            existing_last = existing_gps_data[-1]
+
+            existing_start_time = existing_first.get('timestamp')
+            if not existing_start_time:
+                continue
+
+            existing_flight_datetime = datetime.datetime.fromtimestamp(existing_start_time)
+            existing_duration = existing_last.get('timestamp', existing_start_time) - existing_start_time
+
+            # Check if times are close
+            if time_window_start <= existing_flight_datetime <= time_window_end:
+                # Check if durations are similar (within 10% or 10 seconds)
+                duration_diff = abs(flight_duration - existing_duration)
+                duration_tolerance = max(10, min(flight_duration, existing_duration) * 0.1)
+
+                if duration_diff <= duration_tolerance:
+                    # Check if coordinates are close (within ~100 meters)
+                    import math
+                    start_distance = cls._calculate_distance(
+                        start_lat, start_lon,
+                        existing_first.get('lat', 0), existing_first.get('lon', 0)
+                    )
+                    end_distance = cls._calculate_distance(
+                        end_lat, end_lon,
+                        existing_last.get('lat', 0), existing_last.get('lon', 0)
+                    )
+
+                    if start_distance <= 100 and end_distance <= 100:  # 100 meters tolerance
+                        potential_duplicates.append({
+                            'flight': flight,
+                            'confidence': cls._calculate_duplicate_confidence(
+                                flight_duration, existing_duration,
+                                start_distance, end_distance,
+                                abs((flight_datetime - existing_flight_datetime).total_seconds())
+                            )
+                        })
+
+        # Sort by confidence (highest first)
+        potential_duplicates.sort(key=lambda x: x['confidence'], reverse=True)
+        return potential_duplicates
+
+    @staticmethod
+    def _calculate_distance(lat1, lon1, lat2, lon2):
+        """Calculate distance between two GPS coordinates in meters"""
+        import math
+        # Haversine formula
+        lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.asin(math.sqrt(a))
+        r = 6371000  # Earth radius in meters
+        return r * c
+
+    @staticmethod
+    def _calculate_duplicate_confidence(duration1, duration2, start_distance, end_distance, time_diff):
+        """Calculate confidence that two flights are duplicates (0-100%)"""
+        # Start with 100% confidence
+        confidence = 100.0
+
+        # Reduce confidence based on duration difference
+        duration_diff_ratio = abs(duration1 - duration2) / max(duration1, duration2)
+        confidence -= duration_diff_ratio * 30  # Up to 30% penalty
+
+        # Reduce confidence based on coordinate distance
+        avg_distance = (start_distance + end_distance) / 2
+        distance_penalty = min(30, avg_distance / 100 * 30)  # Up to 30% penalty
+        confidence -= distance_penalty
+
+        # Reduce confidence based on time difference
+        time_penalty = min(20, time_diff / 30 * 20)  # Up to 20% penalty for 30+ second difference
+        confidence -= time_penalty
+
+        return max(0, confidence)
+
+    @classmethod
+    def resequence_pilot_flights(cls, pilot, target_date=None):
+        """Resequence all flights for a pilot on a given date (or all dates if None)"""
+        if not pilot:
+            return
+
+        # Get all flights for this pilot
+        flights = cls.objects.filter(pilot=pilot)
+
+        if target_date:
+            # Filter by specific date using GPS timestamps
+            flights_on_date = []
+            for flight in flights:
+                flight_datetime = flight.get_flight_datetime()
+                if flight_datetime.date() == target_date:
+                    flights_on_date.append((flight, flight_datetime))
+
+            # Sort by flight datetime and update names
+            flights_on_date.sort(key=lambda x: x[1])
+            for i, (flight, _) in enumerate(flights_on_date, 1):
+                formatted_date = target_date.strftime("%b %-d %Y")
+                new_name = f"{formatted_date} - Flight #{i}"
+                if flight.flight_name != new_name:
+                    flight.flight_name = new_name
+                    flight.save(update_fields=['flight_name'])
+        else:
+            # Resequence all flights by grouping by date
+            flights_by_date = {}
+            for flight in flights:
+                flight_datetime = flight.get_flight_datetime()
+                date_key = flight_datetime.date()
+                if date_key not in flights_by_date:
+                    flights_by_date[date_key] = []
+                flights_by_date[date_key].append((flight, flight_datetime))
+
+            # Resequence each date
+            for date_key, date_flights in flights_by_date.items():
+                date_flights.sort(key=lambda x: x[1])
+                for i, (flight, _) in enumerate(date_flights, 1):
+                    formatted_date = date_key.strftime("%b %-d %Y")
+                    new_name = f"{formatted_date} - Flight #{i}"
+                    if flight.flight_name != new_name:
+                        flight.flight_name = new_name
+                        flight.save(update_fields=['flight_name'])
 
     @property
     def rotation_magnitude(self):
@@ -441,7 +662,9 @@ class Flight(models.Model):
                 points_data.append({
                     'lat': float(point.location.y),
                     'lon': float(point.location.x),
-                    'altitude_agl': float(point.altitude_agl) if point.altitude_agl else 0
+                    'altitude_agl': float(point.altitude_agl) if point.altitude_agl else 0,
+                    'velocity_down': float(point.vertical_speed) if point.vertical_speed else 0,
+                    'ground_speed': float(point.ground_speed) if point.ground_speed else 0
                 })
 
         if not points_data:
@@ -451,6 +674,8 @@ class Flight(models.Model):
         coordinates = []
         cumulative_distances = [0]  # Start at 0 distance
         altitudes_agl_ft = []
+        vertical_speeds_mph = []
+        ground_speeds_mph = []
 
         prev_point = None
         total_distance = 0
@@ -460,8 +685,14 @@ class Flight(models.Model):
             lon = point_data['lon']
             alt_ft = point_data['altitude_agl'] * 3.28084  # Convert to feet
 
+            # Extract speed data if available
+            vspeed_mph = point_data.get('velocity_down', 0) * 2.23694  # Convert m/s to mph
+            gspeed_mph = point_data.get('ground_speed', 0) * 2.23694  # Convert m/s to mph
+
             coordinates.append([lat, lon])
             altitudes_agl_ft.append(alt_ft)
+            vertical_speeds_mph.append(vspeed_mph)
+            ground_speeds_mph.append(gspeed_mph)
 
             if prev_point:
                 # Calculate distance using Haversine formula
@@ -544,6 +775,8 @@ class Flight(models.Model):
             'top_view_coords': top_view_coords,  # [[x_ft, y_ft], ...] for top view
             'cumulative_distances': cumulative_distances,  # [0, d1, d2, ...] in feet
             'altitudes_agl_ft': altitudes_agl_ft,  # [alt1, alt2, ...] in feet
+            'vertical_speeds_mph': vertical_speeds_mph,  # [vspeed1, vspeed2, ...] in mph
+            'ground_speeds_mph': ground_speeds_mph,  # [gspeed1, gspeed2, ...] in mph
             'center_point': center_point,  # [lat, lon] for map centering
             'bounds': bounds,  # [[min_lat, min_lon], [max_lat, max_lon]]
             'important_indices': important_indices,  # {'flare': idx, ...}

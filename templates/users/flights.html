@@ -112,7 +112,7 @@
                                         <th width="40">
                                             <input type="checkbox" id="selectAll" onchange="toggleAllCheckboxes()">
                                         </th>
-                                        <th>Date & Time</th>
+                                        <th>Flight Name</th>
                                         <th>Type</th>
                                         <th>Canopy</th>
                                         <th>Rotation</th>
@@ -129,13 +129,14 @@
                                             <input type="checkbox" name="flight_ids" value="{{ flight.id }}" class="flight-checkbox">
                                         </td>
                                         <td>
-                                            {% if flight.swoop_start_time %}
-                                                {{ flight.swoop_start_time|date:"M d, Y" }}<br>
-                                                <small class="text-muted">{{ flight.swoop_start_time|time:"H:i" }}</small>
-                                            {% else %}
-                                                {{ flight.created_at|date:"M d, Y" }}<br>
-                                                <small class="text-muted">{{ flight.created_at|time:"H:i" }}</small>
-                                            {% endif %}
+                                            <strong>{{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}</strong><br>
+                                            <small class="text-muted">
+                                                {% if flight.swoop_start_time %}
+                                                    {{ flight.swoop_start_time|date:"M d, Y H:i" }}
+                                                {% else %}
+                                                    {{ flight.created_at|date:"M d, Y H:i" }}
+                                                {% endif %}
+                                            </small>
                                         </td>
                                         <td>
                                             {% if flight.is_swoop %}
@@ -209,7 +210,7 @@
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Date & Time</th>
+                                        <th>Flight Name</th>
                                         <th>Type</th>
                                         <th>Canopy</th>
                                         <th>Rotation</th>
@@ -223,13 +224,14 @@
                                     {% for flight in page_obj %}
                                     <tr class="{% if not flight.analysis_successful %}table-warning{% endif %}" onclick="window.location='{% url 'flight_detail' flight.id %}'" style="cursor: pointer;">
                                         <td>
-                                            {% if flight.swoop_start_time %}
-                                                {{ flight.swoop_start_time|date:"M d, Y" }}<br>
-                                                <small class="text-muted">{{ flight.swoop_start_time|time:"H:i" }}</small>
-                                            {% else %}
-                                                {{ flight.created_at|date:"M d, Y" }}<br>
-                                                <small class="text-muted">{{ flight.created_at|time:"H:i" }}</small>
-                                            {% endif %}
+                                            <strong>{{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}</strong><br>
+                                            <small class="text-muted">
+                                                {% if flight.swoop_start_time %}
+                                                    {{ flight.swoop_start_time|date:"M d, Y H:i" }}
+                                                {% else %}
+                                                    {{ flight.created_at|date:"M d, Y H:i" }}
+                                                {% endif %}
+                                            </small>
                                         </td>
                                         <td>
                                             {% if flight.is_swoop %}

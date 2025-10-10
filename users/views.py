@@ -6,6 +6,7 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth.models import User
 from django.db import transaction, models
 from django.core.files.storage import default_storage
+from django.http import JsonResponse
 import os
 import tempfile
 from .forms import SignUpForm, UserLoginForm, CanopyForm, UserProfileForm, FlightUploadForm, BulkPrivacyForm, UserSearchForm
@@ -615,6 +616,34 @@ def toggle_data_incorrect_view(request, flight_id):
     messages.success(request, f'Flight has been {action}.')
 
     return redirect('flight_detail', flight_id=flight.id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_flight_name_view(request, flight_id):
+    """Update a flight's name via AJAX"""
+    flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
+
+    import json
+    try:
+        data = json.loads(request.body)
+        new_name = data.get('flight_name', '').strip()
+
+        if not new_name:
+            return JsonResponse({'success': False, 'error': 'Flight name cannot be empty'})
+
+        if len(new_name) > 255:
+            return JsonResponse({'success': False, 'error': 'Flight name is too long (max 255 characters)'})
+
+        flight.flight_name = new_name
+        flight.save(update_fields=['flight_name'])
+
+        return JsonResponse({'success': True, 'flight_name': new_name})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 
 @login_required

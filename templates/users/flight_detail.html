@@ -13,7 +13,27 @@
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">
-        <i class="bi bi-airplane"></i> Flight Analysis
+        <i class="bi bi-airplane"></i>
+        {% if user.is_authenticated and user == flight.pilot %}
+            <!-- Editable flight name for owner -->
+            <span id="flight-name-display">{{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}</span>
+            <button type="button" class="btn btn-link btn-sm ms-2" onclick="editFlightName()" title="Edit flight name">
+                <i class="bi bi-pencil"></i>
+            </button>
+            <div id="flight-name-edit" style="display: none;" class="d-inline-block ms-2">
+                <input type="text" id="flight-name-input" class="form-control form-control-sm d-inline-block" style="width: 300px;" value="{{ flight.flight_name|default:flight.filename|default:'Unnamed Flight' }}">
+                <button type="button" class="btn btn-success btn-sm ms-1" onclick="saveFlightName()">
+                    <i class="bi bi-check"></i>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm ms-1" onclick="cancelEditFlightName()">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        {% else %}
+            <!-- Read-only flight name for non-owners -->
+            {{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}
+        {% endif %}
+
         {% if flight.is_swoop %}
             <span class="badge bg-success ms-2">Swoop</span>
         {% else %}
@@ -664,10 +684,21 @@ const sideViewChart = new Chart(sideViewCtx, {
             tooltip: {
                 callbacks: {
                     title: function(context) {
-                        return 'Distance: ' + context[0].label + ' ft';
+                        const index = context[0].dataIndex;
+                        const distance = Math.round(viz3DData.cumulative_distances[index]);
+                        const timeOffset = Math.round(index * 0.2 * 10) / 10; // 5Hz sampling
+                        return `Time: ${timeOffset}s | Distance: ${distance} ft`;
                     },
                     label: function(context) {
-                        return 'Altitude: ' + context.parsed.y.toFixed(0) + ' ft AGL';
+                        const index = context.dataIndex;
+                        const altitude = Math.round(viz3DData.altitudes_agl_ft[index]);
+                        const vSpeed = Math.round(viz3DData.vertical_speeds_mph[index] * 10) / 10;
+                        const hSpeed = Math.round(viz3DData.ground_speeds_mph[index] * 10) / 10;
+                        return [
+                            `Altitude: ${altitude} ft AGL`,
+                            `Vertical Speed: ${vSpeed} mph`,
+                            `Ground Speed: ${hSpeed} mph`
+                        ];
                     }
                 }
             }
@@ -745,10 +776,23 @@ const topViewChart = new Chart(topViewCtx, {
             tooltip: {
                 callbacks: {
                     title: function(context) {
-                        return 'Position';
+                        const index = context[0].dataIndex;
+                        const timeOffset = Math.round(index * 0.2 * 10) / 10; // 5Hz sampling
+                        return `Time: ${timeOffset}s | Position`;
                     },
                     label: function(context) {
-                        return 'X: ' + context.parsed.x.toFixed(0) + ' ft, Y: ' + context.parsed.y.toFixed(0) + ' ft';
+                        const index = context.dataIndex;
+                        const altitude = Math.round(viz3DData.altitudes_agl_ft[index]);
+                        const vSpeed = Math.round(viz3DData.vertical_speeds_mph[index] * 10) / 10;
+                        const hSpeed = Math.round(viz3DData.ground_speeds_mph[index] * 10) / 10;
+                        const x = Math.round(context.parsed.x);
+                        const y = Math.round(context.parsed.y);
+                        return [
+                            `Position: ${x} ft E, ${y} ft N`,
+                            `Altitude: ${altitude} ft AGL`,
+                            `Vertical Speed: ${vSpeed} mph`,
+                            `Ground Speed: ${hSpeed} mph`
+                        ];
                     }
                 }
             }
@@ -802,10 +846,27 @@ topViewChart.update();
 // 3. Map View (Leaflet.js)
 const map = L.map('mapView').setView(viz3DData.center_point, 16);
 
-// Add OpenStreetMap tiles
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
-}).addTo(map);
+// Define map layers
+const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+});
+
+const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+    maxZoom: 19
+});
+
+// Add default layer (OSM)
+osmLayer.addTo(map);
+
+// Create layer control
+const baseMaps = {
+    "Street Map": osmLayer,
+    "Satellite": satelliteLayer
+};
+
+L.control.layers(baseMaps).addTo(map);
 
 // Add flight path
 const flightPath = L.polyline(viz3DData.coordinates, {
@@ -1063,6 +1124,65 @@ function confirmDelete() {
         document.body.appendChild(form);
         form.submit();
     }
+}
+
+// Flight name editing functions
+function editFlightName() {
+    document.getElementById('flight-name-display').style.display = 'none';
+    document.getElementById('flight-name-edit').style.display = 'inline-block';
+    document.getElementById('flight-name-input').focus();
+}
+
+function cancelEditFlightName() {
+    document.getElementById('flight-name-display').style.display = 'inline';
+    document.getElementById('flight-name-edit').style.display = 'none';
+    // Reset input to original value
+    document.getElementById('flight-name-input').value = document.getElementById('flight-name-display').textContent;
+}
+
+function saveFlightName() {
+    const newName = document.getElementById('flight-name-input').value.trim();
+    if (newName === '') {
+        alert('Flight name cannot be empty');
+        return;
+    }
+
+    // Show loading state
+    const saveBtn = document.querySelector('#flight-name-edit .btn-success');
+    const originalSaveBtnContent = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+    saveBtn.disabled = true;
+
+    // Send AJAX request to update flight name
+    fetch('{% url "update_flight_name" flight.id %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            flight_name: newName
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update display
+            document.getElementById('flight-name-display').textContent = newName;
+            document.getElementById('flight-name-display').style.display = 'inline';
+            document.getElementById('flight-name-edit').style.display = 'none';
+        } else {
+            alert('Failed to update flight name: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Error updating flight name: ' + error);
+    })
+    .finally(() => {
+        // Restore button state
+        saveBtn.innerHTML = originalSaveBtnContent;
+        saveBtn.disabled = false;
+    });
 }
 </script>
 {% endblock %}

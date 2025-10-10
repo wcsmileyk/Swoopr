@@ -122,7 +122,15 @@ class FlightManager:
                 # Step 3: Create GPS points
                 self.create_gps_points(flight, df)
 
-                # Step 4: Perform swoop analysis
+                # Step 4: Check for potential duplicates
+                duplicate_info = self._check_for_duplicates(flight, df, pilot)
+                if duplicate_info:
+                    print(f"⚠️  Potential duplicate detected: {duplicate_info['message']}")
+
+                # Step 5: Generate chronological flight name and resequence if needed
+                self._update_flight_naming(flight)
+
+                # Step 6: Perform swoop analysis
                 self.analyze_swoop(flight, df)
 
                 return flight
@@ -1891,6 +1899,77 @@ class FlightManager:
 
         except Exception as e:
             print(f"Error storing multi-metric predictions: {e}")
+
+    def _check_for_duplicates(self, flight, df, pilot):
+        """Check for potential duplicate flights and return information"""
+        try:
+            if not pilot:
+                return None
+
+            # Convert DataFrame to GPS data format for duplicate detection
+            gps_data_list = []
+            for idx, row in df.iterrows():
+                gps_data_list.append({
+                    'timestamp': row['time'].timestamp() if hasattr(row['time'], 'timestamp') else float(row['time']),
+                    'lat': float(row['lat']),
+                    'lon': float(row['lon']),
+                    'altitude_agl': float(row['AGL']),
+                    'velocity_down': float(row['velD']),
+                    'ground_speed': float(row['gspeed'])
+                })
+
+            # Find potential duplicates
+            from .models import Flight
+            potential_duplicates = Flight.find_potential_duplicates(pilot, gps_data_list)
+
+            if potential_duplicates:
+                best_match = potential_duplicates[0]
+                confidence = best_match['confidence']
+                existing_flight = best_match['flight']
+
+                if confidence >= 80:  # High confidence duplicate
+                    return {
+                        'is_duplicate': True,
+                        'confidence': confidence,
+                        'existing_flight': existing_flight,
+                        'message': f"High confidence duplicate (confidence: {confidence:.1f}%) of existing flight: {existing_flight.flight_name or existing_flight.filename}"
+                    }
+                elif confidence >= 60:  # Medium confidence
+                    return {
+                        'is_duplicate': False,
+                        'confidence': confidence,
+                        'existing_flight': existing_flight,
+                        'message': f"Possible duplicate (confidence: {confidence:.1f}%) of existing flight: {existing_flight.flight_name or existing_flight.filename}"
+                    }
+
+            return None
+
+        except Exception as e:
+            print(f"Warning: Failed to check for duplicates: {e}")
+            return None
+
+    def _update_flight_naming(self, flight):
+        """Update flight naming for chronological order and resequence other flights if needed"""
+        try:
+            if not flight.pilot:
+                return  # Skip naming for flights without pilots
+
+            # Get the flight date from GPS data
+            flight_datetime = flight.get_flight_datetime()
+            flight_date = flight_datetime.date()
+
+            # Update this flight's name
+            flight.update_chronological_name()
+
+            # Resequence all flights for this pilot on this date to handle out-of-order uploads
+            from .models import Flight
+            Flight.resequence_pilot_flights(flight.pilot, target_date=flight_date)
+
+            print(f"Updated flight naming: {flight.flight_name}")
+
+        except Exception as e:
+            print(f"Warning: Failed to update flight naming: {e}")
+            # Don't fail the upload if naming fails
 
 
 # Convenience function for processing single files
