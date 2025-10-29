@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ gate.name }} - Course Map</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        #header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        #header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        #header .info {
+            margin-top: 5px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        #map {
+            height: calc(100vh - 80px);
+            width: 100%;
+        }
+
+        .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+        }
+
+        .legend h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+
+        .legend-item {
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .legend-item span {
+            display: inline-block;
+            width: 20px;
+            height: 3px;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+
+        .gate-marker {
+            background: #3498db;
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+        }
+
+        .gate-inside { background: #2ecc71; }
+        .gate-outside { background: #e74c3c; }
+        .gate-exit { background: #f39c12; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>{{ gate.name }}</h1>
+        <div class="info">
+            {{ gate.get_gate_type_display }} |
+            Parsed: {{ gate.created_at|date:"M d, Y" }}
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Initialize map
+        const map = L.map('map');
+
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 22,
+            maxNativeZoom: 19
+        }).addTo(map);
+
+        // Fetch course data and render
+        fetch('{% url "flights:gate_course_data" gate.id %}')
+            .then(response => response.json())
+            .then(data => {
+                renderCourse(data);
+            })
+            .catch(error => {
+                console.error('Error loading course data:', error);
+                alert('Error loading course data');
+            });
+
+        function renderCourse(data) {
+            const { gate_positions, course_config, center } = data;
+
+            // Set map view to course center
+            map.setView([center.lat, center.lon], 18);
+
+            // Render entry gates
+            if (course_config.entry_gates) {
+                course_config.entry_gates.forEach((gate, index) => {
+                    renderGate(gate, index === 0 ? 'Inside' : 'Outside', index === 0 ? '#2ecc71' : '#e74c3c');
+                });
+            }
+
+            // Render exit gates for speed course
+            if (course_config.exit_gates) {
+                course_config.exit_gates.forEach((gate, index) => {
+                    renderGate(gate, gate.name, '#f39c12');
+                });
+            }
+
+            // Render course boundary
+            if (course_config.course_boundary) {
+                const boundaryCoords = course_config.course_boundary.map(p => [p.lat, p.lon]);
+                L.polygon(boundaryCoords, {
+                    color: '#3498db',
+                    weight: 2,
+                    fillColor: '#3498db',
+                    fillOpacity: 0.1
+                }).addTo(map).bindPopup('Course Boundary');
+            }
+
+            // Render zone accuracy zones
+            if (course_config.zones) {
+                const colors = ['#e74c3c', '#e67e22', '#f39c12', '#16a085', '#27ae60'];
+                course_config.zones.forEach((zone, index) => {
+                    const zoneCoords = zone.boundary.map(p => [p.lat, p.lon]);
+                    L.polygon(zoneCoords, {
+                        color: colors[index % colors.length],
+                        weight: 2,
+                        fillColor: colors[index % colors.length],
+                        fillOpacity: 0.2
+                    }).addTo(map).bindPopup(`Zone ${zone.zone_number} (${zone.width_m}m)`);
+                });
+            }
+
+            // Render centerline
+            if (course_config.reference_lines) {
+                course_config.reference_lines.forEach(line => {
+                    L.polyline([
+                        [line.start.lat, line.start.lon],
+                        [line.end.lat, line.end.lon]
+                    ], {
+                        color: '#95a5a6',
+                        weight: 1,
+                        dashArray: '5, 10'
+                    }).addTo(map).bindPopup(line.name);
+                });
+            }
+
+            // Add legend
+            addLegend(course_config.gate_type);
+        }
+
+        function renderGate(gate, label, color) {
+            // Draw gate line
+            L.polyline([
+                [gate.bottom_left.lat, gate.bottom_left.lon],
+                [gate.bottom_right.lat, gate.bottom_right.lon]
+            ], {
+                color: color,
+                weight: 4
+            }).addTo(map);
+
+            // Add marker at center
+            L.circleMarker([gate.center.lat, gate.center.lon], {
+                radius: 6,
+                fillColor: color,
+                color: 'white',
+                weight: 2,
+                fillOpacity: 1
+            }).addTo(map).bindPopup(`${gate.name}<br>Alt: ${gate.center.alt.toFixed(1)}m`);
+        }
+
+        function addLegend(gateType) {
+            const legend = L.control({ position: 'bottomright' });
+
+            legend.onAdd = function() {
+                const div = L.DomUtil.create('div', 'legend');
+                div.innerHTML = `
+                    <h4>Course Elements</h4>
+                    <div class="legend-item">
+                        <span style="background: #2ecc71;"></span> Gate 1 (Inside)
+                    </div>
+                    <div class="legend-item">
+                        <span style="background: #e74c3c;"></span> Gate 2 (Outside)
+                    </div>
+                    ${gateType === 'speed' ? `
+                    <div class="legend-item">
+                        <span style="background: #f39c12;"></span> Exit Gates (4 & 5)
+                    </div>
+                    ` : `
+                    <div class="legend-item">
+                        <span style="background: #3498db;"></span> Course Boundary
+                    </div>
+                    <div class="legend-item">
+                        Colored zones for Zone Accuracy
+                    </div>
+                    `}
+                `;
+                return div;
+            };
+
+            legend.addTo(map);
+        }
+    </script>
+</body>
+</html>
