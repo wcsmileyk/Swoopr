@@ -4,36 +4,41 @@ from django.urls import path
 from django.utils.html import format_html
 from django.shortcuts import get_object_or_404
 from django.db import models
-from .models import Flight
+from .models import Flight, CompetitionGate
 import csv
 from io import StringIO
 
 
 class FlightAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'pilot', 'uploaded_at', 'is_swoop', 'analysis_successful',
+        'id', 'pilot', 'uploaded_at', 'is_swoop', 'competition_gate', 'analysis_successful',
         'data_incorrect', 'flare_detection_method', 'total_flight_time',
         'analysis_error_short', 'download_csv_link'
     ]
     list_filter = [
         'analysis_successful', 'data_incorrect', 'is_swoop',
-        'flare_detection_method', 'uploaded_at'
+        'flare_detection_method', 'uploaded_at', 'competition_gate'
     ]
     search_fields = ['pilot__username', 'analysis_error', 'notes']
     readonly_fields = [
         'uploaded_at', 'analyzed_at', 'total_flight_time',
-        'max_vertical_speed_ms', 'max_ground_speed_ms', 'turn_rotation'
+        'max_vertical_speed_ms', 'max_ground_speed_ms', 'turn_rotation',
+        'gate_crossing_idx', 'gate_speed_mps', 'gate_altitude_agl', 'passed_between_gates'
     ]
 
     fieldsets = (
         ('Basic Info', {
-            'fields': ('pilot', 'uploaded_at', 'total_flight_time', 'filename')
+            'fields': ('pilot', 'competition_gate', 'uploaded_at', 'total_flight_time', 'filename')
         }),
         ('Analysis Status', {
             'fields': ('analysis_successful', 'analysis_error', 'analyzed_at', 'flare_detection_method')
         }),
         ('Swoop Data', {
             'fields': ('is_swoop', 'turn_rotation', 'turn_direction', 'max_vertical_speed_ms', 'max_ground_speed_ms'),
+            'classes': ('collapse',)
+        }),
+        ('Gate Metrics', {
+            'fields': ('gate_crossing_idx', 'gate_speed_mps', 'gate_altitude_agl', 'passed_between_gates'),
             'classes': ('collapse',)
         }),
         ('Flags & Notes', {
@@ -124,8 +129,103 @@ class ProblematicFlightAdmin(FlightAdmin):
         return False
 
 
+class CompetitionGateAdmin(admin.ModelAdmin):
+    """Admin interface for competition gates"""
+    list_display = [
+        'id', 'name', 'gate_type', 'is_parsed', 'created_by',
+        'created_at', 'parse_action', 'view_map_link'
+    ]
+    list_filter = ['gate_type', 'is_parsed', 'created_at']
+    search_fields = ['name', 'parse_error']
+    readonly_fields = [
+        'created_at', 'updated_at', 'is_parsed', 'parse_error',
+        'gate_positions', 'course_config', 'center_lat', 'center_lon'
+    ]
+
+    fieldsets = (
+        ('Basic Info', {
+            'fields': ('name', 'gate_type', 'created_by', 'gate_file')
+        }),
+        ('Parse Status', {
+            'fields': ('is_parsed', 'parse_error', 'created_at', 'updated_at')
+        }),
+        ('Parsed Data', {
+            'fields': ('gate_positions', 'course_config', 'center_lat', 'center_lon'),
+            'classes': ('collapse',)
+        })
+    )
+
+    def parse_action(self, obj):
+        """Add parse/reparse button"""
+        if obj.id:
+            if obj.is_parsed:
+                return format_html(
+                    '<a href="{}reparse/" class="button">Reparse</a>',
+                    obj.id
+                )
+            else:
+                return format_html(
+                    '<a href="{}parse/" class="button">Parse Now</a>',
+                    obj.id
+                )
+        return '-'
+    parse_action.short_description = 'Actions'
+
+    def view_map_link(self, obj):
+        """Add link to view course on map"""
+        if obj.id and obj.is_parsed:
+            return format_html(
+                '<a href="/flights/gates/{}/map/" class="button" target="_blank">View Map</a>',
+                obj.id
+            )
+        return '-'
+    view_map_link.short_description = 'Map'
+
+    def get_urls(self):
+        """Add custom URLs for parsing"""
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:gate_id>/parse/',
+                self.admin_site.admin_view(self.parse_gate_view),
+                name='flights_competitiongate_parse'
+            ),
+            path(
+                '<int:gate_id>/reparse/',
+                self.admin_site.admin_view(self.parse_gate_view),
+                name='flights_competitiongate_reparse'
+            ),
+        ]
+        return custom_urls + urls
+
+    def parse_gate_view(self, request, gate_id):
+        """Parse or reparse a gate file"""
+        from django.contrib import messages
+        from django.shortcuts import redirect
+
+        gate = get_object_or_404(CompetitionGate, id=gate_id)
+
+        if gate.parse_gate_file():
+            messages.success(request, f"Successfully parsed gate file '{gate.name}'")
+        else:
+            messages.error(request, f"Failed to parse gate file: {gate.parse_error}")
+
+        return redirect('admin:flights_competitiongate_change', gate_id)
+
+    def save_model(self, request, obj, form, change):
+        """Set created_by to current user if not set"""
+        if not obj.created_by:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+        # Automatically parse on save if not already parsed
+        if not obj.is_parsed and obj.gate_file:
+            obj.parse_gate_file()
+
+
 # Register the admin classes
 admin.site.register(Flight, FlightAdmin)
+admin.site.register(CompetitionGate, CompetitionGateAdmin)
 
 # Create a proxy model for the problematic flights view
 class ProblematicFlight(Flight):

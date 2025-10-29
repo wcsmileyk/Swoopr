@@ -9,10 +9,117 @@ import base64
 from .units import *
 
 
+class CompetitionGate(models.Model):
+    """Model to store competition gate files and parsed gate positions"""
+    GATE_TYPE_CHOICES = [
+        ('standard', 'Standard Gates (Distance/Zone Accuracy)'),
+        ('speed', 'Speed Gates'),
+    ]
+
+    # Metadata
+    name = models.CharField(max_length=200, help_text="Name of the competition location or event")
+    gate_type = models.CharField(max_length=20, choices=GATE_TYPE_CHOICES, help_text="Type of gates")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='competition_gates')
+
+    # File storage
+    gate_file = models.FileField(upload_to='gate_files/', help_text="Upload .gsw or .CSV gate file")
+
+    # Parsed gate positions (stored as JSON)
+    # Format: {'gate_1_inside': {lat, lon, alt}, 'gate_2_outside': {lat, lon, alt}, 'gate_5_center': {lat, lon, alt}}
+    gate_positions = models.JSONField(
+        null=True, blank=True,
+        help_text="Parsed gate positions with lat/lon/altitude"
+    )
+
+    # Course configuration (stored as JSON)
+    course_config = models.JSONField(
+        null=True, blank=True,
+        help_text="Complete course geometry based on USPA rules"
+    )
+
+    # Location information
+    center_lat = models.FloatField(null=True, blank=True, help_text="Center latitude for map display")
+    center_lon = models.FloatField(null=True, blank=True, help_text="Center longitude for map display")
+
+    # Status
+    is_parsed = models.BooleanField(default=False, help_text="Whether the gate file has been successfully parsed")
+    parse_error = models.TextField(blank=True, help_text="Error message if parsing failed")
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['gate_type']),
+            models.Index(fields=['created_by']),
+            models.Index(fields=['is_parsed']),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.get_gate_type_display()})"
+
+    def parse_gate_file(self):
+        """Parse the uploaded gate file to identify gate positions from cross pattern"""
+        from .utils.gate_parser import GateFileParser
+
+        try:
+            parser = GateFileParser(self.gate_file.path, self.gate_type)
+            self.gate_positions = parser.extract_gate_positions()
+            self.is_parsed = True
+            self.parse_error = ""
+
+            # Calculate center point for map
+            if self.gate_positions and 'gate_1_inside' in self.gate_positions:
+                gate_1 = self.gate_positions['gate_1_inside']
+                self.center_lat = gate_1['lat']
+                self.center_lon = gate_1['lon']
+
+            # Generate course configuration
+            self.generate_course_config()
+            self.save()
+
+            return True
+        except Exception as e:
+            self.is_parsed = False
+            self.parse_error = str(e)
+            self.save()
+            return False
+
+    def generate_course_config(self):
+        """Generate course geometry based on USPA competition rules"""
+        from .utils.course_builder import CourseBuilder
+
+        if not self.gate_positions:
+            return
+
+        builder = CourseBuilder(self.gate_positions, self.gate_type)
+        self.course_config = builder.build_course()
+        self.save()
+
+    def get_entry_gate_inside(self):
+        """Get the inside entry gate (gate 1) position"""
+        if self.gate_positions and 'gate_1_inside' in self.gate_positions:
+            return self.gate_positions['gate_1_inside']
+        return None
+
+    def get_entry_gate_outside(self):
+        """Get the outside entry gate (gate 2) position"""
+        if self.gate_positions and 'gate_2_outside' in self.gate_positions:
+            return self.gate_positions['gate_2_outside']
+        return None
+
+    def get_exit_gate_center(self):
+        """Get the exit gate (gate 5) center position for speed course"""
+        if self.gate_type == 'speed' and self.gate_positions and 'gate_5_center' in self.gate_positions:
+            return self.gate_positions['gate_5_center']
+        return None
+
+
 class Flight(models.Model):
     # User association
     pilot = models.ForeignKey(User, on_delete=models.CASCADE, related_name='flights', null=True, blank=True)
     canopy = models.ForeignKey('users.Canopy', on_delete=models.SET_NULL, null=True, blank=True, related_name='flights')
+    competition_gate = models.ForeignKey(CompetitionGate, on_delete=models.SET_NULL, null=True, blank=True, related_name='flights', help_text="Competition gate/course for this flight")
 
     # Basic flight metadata
     device_id = models.CharField(max_length=50)
@@ -27,6 +134,12 @@ class Flight(models.Model):
     location_name = models.CharField(max_length=100, blank=True, help_text="Drop zone or location name")
     weather_conditions = models.TextField(blank=True)
     notes = models.TextField(blank=True, help_text="Pilot notes about the jump")
+
+    # Competition gate metrics (calculated if competition_gate is set)
+    gate_crossing_idx = models.IntegerField(null=True, blank=True, help_text="Index where flight crossed entry gates")
+    gate_speed_mps = models.FloatField(null=True, blank=True, help_text="Speed at gate crossing in m/s")
+    gate_altitude_agl = models.FloatField(null=True, blank=True, help_text="Altitude at gate crossing in meters AGL")
+    passed_between_gates = models.BooleanField(null=True, blank=True, help_text="Whether flight passed cleanly between gates")
 
     # Flight type and analysis status
     is_swoop = models.BooleanField(default=False)
@@ -955,6 +1068,37 @@ class Flight(models.Model):
             self.swoop_avg_vertical_accuracy = v_acc
             self.swoop_avg_speed_accuracy = s_acc
             self.save()
+
+    def calculate_gate_metrics(self):
+        """Calculate and store competition gate crossing metrics"""
+        if not self.competition_gate or not self.competition_gate.is_parsed:
+            return False
+
+        from .utils.gate_calculator import GateCalculator
+
+        try:
+            gps_data = self.get_gps_data()
+            if not gps_data:
+                return False
+
+            calculator = GateCalculator(self.competition_gate.gate_positions)
+            metrics = calculator.calculate_entry_gate_metrics(gps_data)
+
+            if metrics:
+                self.gate_crossing_idx = metrics['crossing_idx']
+                self.gate_speed_mps = metrics['speed_mps']
+                self.gate_altitude_agl = metrics['altitude_agl']
+                self.passed_between_gates = metrics['passed_between_gates']
+                self.save(update_fields=[
+                    'gate_crossing_idx', 'gate_speed_mps',
+                    'gate_altitude_agl', 'passed_between_gates'
+                ])
+                return True
+
+        except Exception as e:
+            print(f"Error calculating gate metrics for flight {self.id}: {e}")
+
+        return False
 
 
 class GPSPoint(models.Model):

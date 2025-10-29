@@ -491,12 +491,15 @@ def flight_detail_view(request, flight_id):
         # For authenticated users, try to get their own flight first
         try:
             flight = Flight.objects.get(id=flight_id, pilot=request.user)
+            is_owner = True
         except Flight.DoesNotExist:
             # If not their flight, check if it's a public flight they can view
             flight = get_object_or_404(Flight, id=flight_id, is_public=True)
+            is_owner = False
     else:
         # For anonymous users, only allow public flights
         flight = get_object_or_404(Flight, id=flight_id, is_public=True)
+        is_owner = False
 
     # Get chart data for visualization
     import json
@@ -580,6 +583,12 @@ def flight_detail_view(request, flight_id):
         except (IndexError, TypeError):
             pass
 
+    # Get available competition gates for selection (only for owner)
+    from flights.models import CompetitionGate
+    available_gates = None
+    if is_owner:
+        available_gates = CompetitionGate.objects.filter(is_parsed=True).order_by('name')
+
     context = {
         'flight': flight,
         'chart_data': chart_data,
@@ -589,6 +598,8 @@ def flight_detail_view(request, flight_id):
         'horizontal_speed_at_start': horizontal_speed_at_start,
         'rollout_start_altitude': rollout_start_altitude,
         'rollout_end_altitude': rollout_end_altitude,
+        'available_gates': available_gates,
+        'is_owner': is_owner,
     }
 
     return render(request, 'users/flight_detail.html', context)
@@ -642,6 +653,65 @@ def update_flight_name_view(request, flight_id):
 
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON data'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def update_flight_gate_view(request, flight_id):
+    """Update a flight's competition gate via AJAX"""
+    flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
+
+    import json
+    try:
+        data = json.loads(request.body)
+        gate_id = data.get('gate_id')
+
+        # Import here to avoid circular imports
+        from flights.models import CompetitionGate
+
+        if gate_id:
+            # Validate gate exists and is parsed
+            gate = get_object_or_404(CompetitionGate, id=gate_id, is_parsed=True)
+            flight.competition_gate = gate
+        else:
+            # Remove gate assignment
+            flight.competition_gate = None
+            # Clear gate metrics when removing gate
+            flight.gate_crossing_idx = None
+            flight.gate_speed_mps = None
+            flight.gate_altitude_agl = None
+            flight.passed_between_gates = None
+
+        flight.save()
+
+        return JsonResponse({'success': True})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@require_http_methods(["POST"])
+def calculate_flight_gate_metrics_view(request, flight_id):
+    """Calculate gate metrics for a flight via AJAX"""
+    flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
+
+    try:
+        if not flight.competition_gate:
+            return JsonResponse({'success': False, 'error': 'No competition gate assigned to this flight'})
+
+        # Calculate gate metrics
+        success = flight.calculate_gate_metrics()
+
+        if success:
+            return JsonResponse({'success': True})
+        else:
+            return JsonResponse({'success': False, 'error': 'Failed to calculate gate metrics. Check that the flight has GPS data and crosses the gates.'})
+
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 

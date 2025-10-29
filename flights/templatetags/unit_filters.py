@@ -72,3 +72,11 @@ def flight_altitude(flight, altitude_field, units='imperial'):
     """Get flight's altitude field in specified units"""
     altitude_meters = getattr(flight, altitude_field, None)
     return flight.get_altitude_display(altitude_meters, units)
+
+@register.filter
+def multiply(value, arg):
+    """Multiply the value by the argument"""
+    try:
+        return float(value) * float(arg)
+    except (ValueError, TypeError):
+        return None

@@ -149,13 +149,96 @@
                         </p>
                     </div>
                     <div class="col-md-3">
-                        <h6 class="text-muted">Flight ID</h6>
+                        <h6 class="text-muted">Competition Gate</h6>
                         <p>
-                            {{ flight.session_id|truncatechars:12 }}<br>
-                            <small>{{ flight.device_id }}</small>
+                            {% if is_owner %}
+                                <!-- Editable gate for owner -->
+                                <span id="gate-display">
+                                    {% if flight.competition_gate %}
+                                        {{ flight.competition_gate.name }}
+                                    {% else %}
+                                        <span class="text-muted">None</span>
+                                    {% endif %}
+                                </span>
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-1" onclick="editGate()" title="Edit competition gate">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <div id="gate-edit" style="display: none;" class="mt-2">
+                                    <select id="gate-select" class="form-select form-select-sm">
+                                        <option value="">No gate</option>
+                                        {% for gate in available_gates %}
+                                            <option value="{{ gate.id }}" {% if flight.competition_gate and flight.competition_gate.id == gate.id %}selected{% endif %}>
+                                                {{ gate.name }} ({{ gate.get_gate_type_display }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="mt-1">
+                                        <button type="button" class="btn btn-success btn-sm" onclick="saveGate()">
+                                            <i class="bi bi-check"></i> Save
+                                        </button>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="cancelEditGate()">
+                                            <i class="bi bi-x"></i> Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <!-- Read-only gate for non-owners -->
+                                {% if flight.competition_gate %}
+                                    {{ flight.competition_gate.name }}
+                                {% else %}
+                                    <span class="text-muted">None</span>
+                                {% endif %}
+                            {% endif %}
                         </p>
                     </div>
                 </div>
+                {% if is_owner and flight.competition_gate %}
+                <!-- Gate metrics row -->
+                <div class="row mt-3 pt-3 border-top">
+                    <div class="col-md-12">
+                        <h6 class="text-muted mb-3">
+                            Gate Metrics
+                            {% if flight.gate_speed_mps %}
+                                <span class="badge bg-success">Calculated</span>
+                            {% else %}
+                                <span class="badge bg-warning">Not Calculated</span>
+                            {% endif %}
+                        </h6>
+                    </div>
+                    {% if flight.gate_speed_mps %}
+                        <div class="col-md-3">
+                            <strong>Gate Speed:</strong><br>
+                            {{ flight.gate_speed_mps|floatformat:2 }} m/s
+                            <small class="text-muted">({{ flight.gate_speed_mps|multiply:2.23694|floatformat:1 }} mph)</small>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Gate Altitude:</strong><br>
+                            {{ flight.gate_altitude_agl|floatformat:2 }} m AGL
+                            <small class="text-muted">({{ flight.gate_altitude_agl|multiply:3.28084|floatformat:1 }} ft)</small>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Passed Between Gates:</strong><br>
+                            {% if flight.passed_between_gates %}
+                                <span class="text-success"><i class="bi bi-check-circle"></i> Yes</span>
+                            {% else %}
+                                <span class="text-warning"><i class="bi bi-exclamation-circle"></i> No</span>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="recalculateGateMetrics()">
+                                <i class="bi bi-arrow-clockwise"></i> Recalculate
+                            </button>
+                        </div>
+                    {% else %}
+                        <div class="col-md-12">
+                            <p class="text-muted mb-2">Gate metrics have not been calculated yet.</p>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="calculateGateMetrics()">
+                                <i class="bi bi-calculator"></i> Calculate Gate Metrics
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -1183,6 +1266,94 @@ function saveFlightName() {
         saveBtn.innerHTML = originalSaveBtnContent;
         saveBtn.disabled = false;
     });
+}
+
+// Competition gate editing functions
+function editGate() {
+    document.getElementById('gate-display').style.display = 'none';
+    document.getElementById('gate-edit').style.display = 'block';
+}
+
+function cancelEditGate() {
+    document.getElementById('gate-display').style.display = 'inline';
+    document.getElementById('gate-edit').style.display = 'none';
+}
+
+function saveGate() {
+    const gateSelect = document.getElementById('gate-select');
+    const gateId = gateSelect.value;
+
+    // Show loading state
+    const saveBtn = document.querySelector('#gate-edit .btn-success');
+    const originalSaveBtnContent = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+    saveBtn.disabled = true;
+
+    // Send AJAX request to update gate
+    fetch('{% url "update_flight_gate" flight.id %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            gate_id: gateId || null
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload page to show updated gate and metrics
+            window.location.reload();
+        } else {
+            alert('Failed to update competition gate: ' + (data.error || 'Unknown error'));
+            saveBtn.innerHTML = originalSaveBtnContent;
+            saveBtn.disabled = false;
+        }
+    })
+    .catch(error => {
+        alert('Error updating competition gate: ' + error);
+        saveBtn.innerHTML = originalSaveBtnContent;
+        saveBtn.disabled = false;
+    });
+}
+
+function calculateGateMetrics() {
+    const btn = event.target;
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Calculating...';
+    btn.disabled = true;
+
+    fetch('{% url "calculate_flight_gate_metrics" flight.id %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload page to show metrics
+            window.location.reload();
+        } else {
+            alert('Failed to calculate gate metrics: ' + (data.error || 'Unknown error'));
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }
+    })
+    .catch(error => {
+        alert('Error calculating gate metrics: ' + error);
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    });
+}
+
+function recalculateGateMetrics() {
+    if (!confirm('Recalculate gate metrics? This will overwrite existing values.')) {
+        return;
+    }
+    calculateGateMetrics();
 }
 </script>
 {% endblock %}
