@@ -1,0 +1,312 @@
+================================================================================
+SWOOPR CODEBASE: COMPREHENSIVE TECHNICAL ANALYSIS - EXECUTIVE SUMMARY
+================================================================================
+
+Analysis Date: November 13, 2025
+Full Report: COMPREHENSIVE_TECHNICAL_ANALYSIS.md (1,044 lines)
+
+================================================================================
+1. CURRENT STATE - FEATURES IMPLEMENTED
+================================================================================
+
+DATA CAPTURE:
+- FlySight CSV import (standard format with $GNSS records)
+- Generic GPS CSV format detection and parsing
+- Batch import via CLI command
+- Web upload with multi-file support
+- Auto-detection between CSV formats
+
+DATA STORAGE:
+- Compressed JSON storage (gzip + base64) in gps_data_compressed field
+- SHA256 integrity hashing
+- Legacy GPSPoint model support (deprecated)
+- 70+ Flight model fields (metadata, analysis, ML predictions)
+- 18 database indexes for query optimization
+
+ANALYSIS FEATURES:
+- Landing detection: Multi-stage algorithm with velocity/altitude gates
+- Flare detection: Traditional (max vspeed) + fallback (turn-based)
+- Peak speed identification: Max vertical and ground speed points
+- Rollout detection: Turn segment and level flight phases
+- Dual rotation metrics: Full swoop + turn segment calculations
+- Confidence scoring: 0.0-1.0 confidence on all predictions
+
+METRICS CAPTURED (40+):
+- Rotation: rotation degrees, confidence, method, intended turn
+- Speeds: max vertical, max ground, entry gate (in mph and m/s)
+- Altitudes: exit, flare, peaks, rollout start/end (in feet AGL)
+- Timing: turn time, rollout time, swoop time (in seconds)
+- Distance: swoop distance from rollout to landing (feet/meters)
+- GPS Accuracy: horizontal, vertical, speed (average during swoop)
+
+================================================================================
+2. ML ANALYSIS - WHAT'S BEING PREDICTED
+================================================================================
+
+ML MODELS IN USE:
+- rotation_prediction_model.pkl (572 KB) - XGBoost for rotation
+- multi_metric_ml_model.joblib (6.5 MB) - Comprehensive metric predictor
+- Loaded via MLModelSingleton (thread-safe, load-once pattern)
+
+ROTATION PREDICTION:
+- Input: 15+ flight characteristics (altitude, speed, heading, duration)
+- Output: Rotation degrees, confidence (0.0-1.0), intended turn classification
+- Confidence threshold: 0.4 (use ML if confidence > 0.4, else fallback)
+
+MULTI-METRIC PREDICTIONS (10+ metrics):
+- Timing: turn_time, rollout_time, swoop_time
+- Distance: distance_to_stop, touchdown_distance, touchdown_speed
+- Gate metrics: entry_speed, turn_init_back, turn_init_offset
+
+EVALUATION & ACCURACY:
+- Uses gswoop as ground truth reference
+- MAE and RMSE metrics tracked
+- Cross-validation across 3 detection methods
+- Confidence tiered fallback strategy
+
+FEEDBACK MECHANISM:
+- User flagging: data_incorrect boolean + notes field
+- Training data: ml_training_data.csv, ml_training_corrections.csv
+- Reanalysis capability: python manage.py reanalyze_all
+
+================================================================================
+3. ALGORITHM ANALYSIS - DETECTION METHODS
+================================================================================
+
+LANDING DETECTION (get_landing):
+- Uses vAcc (vertical accuracy) as gate (median + 2.5 * MAD)
+- Detects "moving": gspeed > 6 m/s AND |vspeed| > 6 m/s
+- Detects "stopped": gspeed < 5 m/s AND |vspeed| < 1 m/s AND alt < 10m
+- Two-stage: last moving point (120s lookback) + sustained stop (15s forward)
+- Fallback: minimum of gspeed + |vspeed|
+
+FLARE DETECTION (find_flare):
+- Method A (Traditional): Peak vertical speed in 30s window before landing
+  Verifies: vertical speed ≤ 5 m/s, altitude ≥ 75m AGL
+- Method B (Fallback): Turn-based detection using heading rate analysis
+  Looks for sustained heading changes > 8-10 degrees/second
+
+ROTATION CALCULATION (5 methods, ranked by robustness):
+1. Raw heading analysis: Direct cumulative tracking + 120° outlier rejection
+2. Smoothed heading: 5-point moving average in complex domain
+3. Direction-consistent: Isolates dominant turn direction
+4. Full rotations: Counts 360° wraps (270°→0° and 0°→270° transitions)
+5. ML-enhanced: XGBoost prediction (if confidence > 0.4)
+
+CONFIDENCE CALCULATION:
+- Distance from standard turns (90°, 270°, 450°, etc.)
+- Heading smoothness scoring (penalizes direction changes > 45°)
+- Turn duration validation (higher confidence for 3-15 second turns)
+- Range: 0.3-1.0 (0.3 = minimum confidence, 1.0 = perfect)
+
+KEY PARAMETERS (Highly Configurable):
+- Landing: back_gspeed_min, back_vspeed_min, fwd_gspeed_max, etc.
+- Flare: flare_back_win (30s), max_vspeed_threshold (5 m/s)
+- Rotation: turn_rate_start_degps (45°), turn_rate_stop_degps (10°)
+- All in SwoopConfig class (flights/flight_manager.py, line 81)
+
+VALIDATION:
+- rotation_validator.py: Single flight validation
+- batch_validation.py: Batch error analysis
+- analyze_gswoop_boundaries.py: Boundary case testing
+
+================================================================================
+4. VISUALIZATION & CHARTS
+================================================================================
+
+TIME SERIES CHART (Chart.js):
+- X-axis: Time in seconds (0.2s sampling from 5Hz data)
+- Y-Axis 1: Altitude AGL (feet) - blue line
+- Y-Axis 2: Speed (mph) - orange (vertical) and green (ground)
+- Markers: Flare (red), Max vspeed (purple), Max gspeed (brown), Landing
+- 400px height, responsive width, hover tooltips
+- NO cross-chart cursor synchronization (potential enhancement)
+
+3D VISUALIZATIONS:
+- Side View: Altitude vs distance with speed coloring
+- Top View: Horizontal path (Mercator projection)
+- Map View: Leaflet.js with OpenStreetMap tiles
+
+PERFORMANCE CHARACTERISTICS:
+- Typical flight: 15-30 minutes = 4,500-9,000 GPS points
+- Swoop charted: 30-60 seconds = 150-300 samples
+- Chart rendering: ~300ms for 400+ samples
+- 3D rendering: ~500ms for 300+ points
+- Data retrieval: <100ms (gzip decompression)
+
+OPTIMIZATION STRATEGIES IMPLEMENTED:
+- Compressed GPS storage (80% size reduction)
+- On-demand calculation (no pre-caching)
+- Only swoop portion visualized (not entire flight)
+
+ENHANCEMENT OPPORTUNITIES:
+- Synchronized cursors across charts
+- Cross-highlighting (click flare → highlight on map)
+- Linked zoom across visualizations
+- Downsampling for very large flights (>10,000 points)
+
+================================================================================
+5. COMPARISON FEATURES
+================================================================================
+
+COMPARISON METHODS:
+1. Dashboard Recent Flights: 10-15 recent flights in table view
+2. Flight List View: Filterable list with date range, canopy, type, status
+3. Personal Best Tracking: Performance grade A-F per flight
+   - Grade based on: max vertical speed, swoop distance (alt ≤ 5m AGL)
+   - A (99%+ of PB), B (90%), C (70%), D (50%), F (<50%)
+4. Canopy Comparison: Statistics aggregated by canopy, wing loading calc
+
+DASHBOARD FUNCTIONALITY:
+- Stat cards: Total flights, swoops, success rate, avg rotation, avg speed
+- Recent flights table: Sortable by date, rotation, speed, performance grade
+- Per-canopy stats: Flights, average performance, trends
+- Personal best tracking: Max speeds, max distances
+
+FILTERING & GROUPING:
+- By pilot: Automatic (user's own flights)
+- By canopy: Dropdown selection
+- By date: Chronological name format ("Sep 21 2025 - Flight #1")
+- By status: Swoop/flight, successful/failed, public/private, flagged
+
+CUSTOM QUERIES:
+- Supported at code level: Django ORM with date range, canopy, type filters
+- NOT exposed in UI: No ad-hoc filtering interface
+- Potential for: Saved filters, custom reports
+
+================================================================================
+6. COACH & SHARING FEATURES
+================================================================================
+
+FLIGHT SHARING:
+- Flight-level: is_public boolean toggle (visible on detail page)
+- User-level: public_profile (control profile visibility)
+- Auto-public: auto_public_flights (new flights automatically public)
+- Bulk operations: Update privacy for multiple flights
+
+PUBLIC FLIGHT VIEWING:
+- Public Swoops Page: Browse all public flights with filtering
+  Filters: rotation range, speed range, canopy, pilot
+- Public Profile Page: View specific user's public flights
+  Requires: target user has public_profile = True
+- User Search: Find pilots by license level, home DZ, username
+
+COACH FEATURES (INFRASTRUCTURE):
+- coach boolean field in UserProfile (currently unused)
+- NO dedicated coach interface implemented
+- NO formal annotation system
+- NO discussion/feedback thread capability
+
+FEEDBACK SYSTEM:
+- User flagging: data_incorrect + notes field
+- ML feedback: ml_feedback_system.py (framework available)
+- Reanalysis: Can retrain models with corrected data
+
+MISSING / NOT IMPLEMENTED:
+- Dedicated coach views and analytics
+- Comments/annotations on flights
+- Coach-only flight access (workaround: make public)
+- Performance tips/coaching advice
+- Progress tracking (before/after comparison)
+- Multi-user collaboration features
+
+================================================================================
+7. DATABASE ARCHITECTURE
+================================================================================
+
+KEY MODELS:
+- Flight: 70+ fields (metadata, analysis results, ML predictions)
+- GPSPoint: Individual GPS samples (legacy, compressed JSON now preferred)
+- CompetitionGate: Gate definitions and parsed positions
+- Canopy: Equipment profiles with size, modifications
+- UserProfile: Extended user info (license, experience, preferences)
+
+INDEXING STRATEGY (18 total indexes):
+- Query optimization: pilot, pilot+created_at, pilot+is_swoop, etc.
+- Performance queries: turn_rotation, max_vertical_speed_mph, distances
+- Public features: is_public, pilot+is_public
+- Flight detail: rollout_end_idx, landing_idx, flare_idx
+
+UNIQUE CONSTRAINTS:
+- (pilot, device_id, session_id): Prevent duplicate flight imports
+- unique_primary_canopy_per_user: One primary canopy per user
+
+GPS DATA STORAGE EVOLUTION:
+- NEW: Compressed JSON in gps_data_compressed (preferred)
+- OLD: GPSPoint model records (deprecated but supported)
+- Format: Gzip + Base64 encoded with SHA256 hash for integrity
+
+================================================================================
+8. KEY STATISTICS
+================================================================================
+
+Code Organization:
+- Main engine: flights/flight_manager.py (2,000+ lines)
+- Database models: flights/models.py (1,150+ lines)
+- User management: users/views.py (1,000+ lines)
+- ML integration: enhanced_ml_integration.py, multi_metric_ml_pipeline.py
+
+Algorithm Complexity:
+- Detection methods: 6+ (raw, smoothed, dominant, full rotations, fallback, ML)
+- Configuration parameters: 15+ in SwoopConfig class
+- Confidence scoring methods: 3+ (distance, smoothness, duration)
+
+Data Handling:
+- GPS sampling rate: 5Hz (0.2 second intervals)
+- Typical flight: 15-30 minutes = 4,500-9,000 samples
+- Swoop portion: 30-60 seconds = 150-300 samples
+- Compression ratio: ~80% reduction via gzip + JSON
+
+User Features:
+- Flight metrics: 40+ calculated per flight
+- ML predictions: 20+ per flight (rotation + multi-metric)
+- Performance grades: A-F per flight
+- Personal best tracking: Per-canopy metrics
+
+================================================================================
+9. STRENGTHS & RECOMMENDATIONS
+================================================================================
+
+STRENGTHS:
+1. Robust multi-method detection with fallback strategy
+2. ML enhancement improves accuracy on complex cases
+3. Intelligent performance grading (per-canopy, per-metric)
+4. Efficient GPS storage (80% compression)
+5. Comprehensive metric tracking (40+ per flight)
+6. Public flight sharing encourages community
+7. Parameterized algorithms allow customization
+
+AREAS FOR ENHANCEMENT:
+1. Coach Tools: Dedicated interface with feedback capabilities
+2. Visualization Linking: Synchronized cursors across charts
+3. Custom Queries: User-defined filtering and grouping
+4. Performance Tracking: Trend analysis and historical comparison
+5. Advanced Analytics: Correlation analysis, skill progression
+6. Mobile Support: Responsive design for smaller screens
+7. Collaborative Features: Multi-user comment/discussion threads
+
+STABILITY & RELIABILITY:
+- Error logging: Rotating file handlers with context
+- Data integrity: SHA256 hashing, duplicate detection
+- Fallback mechanisms: 6+ detection methods + legacy algorithm
+- Validation: Multiple confidence scoring approaches
+
+================================================================================
+DOCUMENT INFORMATION
+================================================================================
+
+Full Analysis: COMPREHENSIVE_TECHNICAL_ANALYSIS.md (1,044 lines)
+This Summary: ANALYSIS_SUMMARY.txt
+Generated: November 13, 2025
+Analyst: Claude Code System
+
+The comprehensive analysis covers all aspects of the Swoopr codebase including:
+- Current features and their implementation
+- ML models and prediction capabilities
+- Algorithm details with validation methods
+- Chart/visualization implementation
+- Comparison and dashboard features
+- Coach/sharing capabilities
+- Database architecture and optimization
+
+================================================================================

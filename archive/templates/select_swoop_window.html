@@ -1,0 +1,475 @@
+{% extends 'base.html' %}
+
+{% block title %}Select Swoop Window - Swoopr{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .window-selector-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        gap: 20px;
+    }
+
+    .chart-wrapper {
+        flex: 1;
+        position: relative;
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    #timingChart {
+        position: relative;
+        height: 100%;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 100%;
+        width: 100%;
+    }
+
+    .selection-info {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        border-left: 4px solid #0d6efd;
+    }
+
+    .selection-info p {
+        margin: 8px 0;
+        font-size: 14px;
+    }
+
+    .selection-time {
+        font-weight: 600;
+        color: #0d6efd;
+    }
+
+    .controls-section {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .selection-range {
+        background: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        border: 1px solid #dee2e6;
+        font-size: 14px;
+    }
+
+    .canvas-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        cursor: crosshair;
+        z-index: 10;
+    }
+
+    .selection-highlight {
+        position: absolute;
+        top: 0;
+        background: rgba(13, 110, 253, 0.2);
+        border-left: 2px solid #0d6efd;
+        border-right: 2px solid #0d6efd;
+        height: 100%;
+        pointer-events: none;
+        z-index: 5;
+    }
+
+    .instructions {
+        background: #e7f3ff;
+        border-radius: 6px;
+        padding: 12px 16px;
+        border-left: 4px solid #0d6efd;
+        margin-bottom: 15px;
+    }
+
+    .instructions p {
+        margin: 0;
+        font-size: 14px;
+    }
+
+    .btn-group-vertical .btn {
+        border-radius: 6px;
+        margin-bottom: 8px;
+    }
+
+    .btn-group-vertical .btn:last-child {
+        margin-bottom: 0;
+    }
+
+    @media (max-height: 900px) {
+        .window-selector-container {
+            gap: 15px;
+        }
+        .chart-wrapper {
+            padding: 15px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="window-selector-container">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center">
+        <h1 class="h3 mb-0">
+            <i class="bi bi-crosshair"></i> Select Swoop Window
+        </h1>
+        <a href="{% url 'flight_detail' flight.id %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Cancel
+        </a>
+    </div>
+
+    <!-- Instructions -->
+    <div class="instructions">
+        <p>
+            <strong>Drag to select the section of flight you believe is the swoop.</strong>
+            Click and drag left-to-right on the chart to highlight your selection. The highlighted area will be re-analyzed to detect the swoop.
+        </p>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-wrapper">
+        <div class="chart-container">
+            <canvas id="timingChart"></canvas>
+            <div id="selectionHighlight" class="selection-highlight" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Selection Info -->
+    <div class="selection-info">
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <p><strong>Flight Duration:</strong> <span id="flightDuration">{{ total_seconds }} seconds</span></p>
+                <p id="selectionRange" style="display: none;">
+                    <strong>Selected Window:</strong>
+                    <span class="selection-time" id="selectionText">None</span>
+                </p>
+            </div>
+            <div class="controls-section">
+                <button type="button" class="btn btn-primary btn-sm" id="submitBtn" disabled onclick="submitSelection()">
+                    <i class="bi bi-check-circle"></i> Analyze Selected Window
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearSelection()">
+                    <i class="bi bi-arrow-clockwise"></i> Clear Selection
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden form for submission -->
+<form id="selectionForm" method="POST" style="display: none;">
+    {% csrf_token %}
+    <input type="hidden" id="startIdx" name="start_idx" value="0">
+    <input type="hidden" id="endIdx" name="end_idx" value="0">
+</form>
+
+<script>
+// Global variables
+let chartInstance = null;
+let isSelecting = false;
+let selectionStartX = null;
+let selectionEndX = null;
+let chartData = null;
+let pixelsPerSecond = 0;
+let selectedStartIdx = null;
+let selectedEndIdx = null;
+
+// Chart data from Django context
+const rawChartData = {{ chart_data|safe }};
+const totalPoints = {{ total_points }};
+const totalSeconds = {{ total_seconds }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (rawChartData) {
+        chartData = rawChartData;
+        initializeChart();
+        setupMouseHandlers();
+    } else {
+        alert('No chart data available. Flight may not have GPS data.');
+    }
+});
+
+function initializeChart() {
+    const ctx = document.getElementById('timingChart').getContext('2d');
+
+    // Prepare chart datasets
+    const datasets = [];
+    const colors = {
+        altitude: 'rgb(54, 162, 235)',
+        vspeed: 'rgb(255, 99, 132)',
+        gspeed: 'rgb(75, 192, 75)'
+    };
+
+    // Altitude (primary axis)
+    datasets.push({
+        label: 'Altitude AGL (feet)',
+        data: chartData.altitude_agl.map((alt, idx) => ({
+            x: chartData.timestamps[idx],
+            y: alt * 3.28084  // Convert meters to feet
+        })),
+        borderColor: colors.altitude,
+        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+        borderWidth: 2,
+        tension: 0.4,
+        yAxisID: 'y',
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        showLine: true
+    });
+
+    // Vertical Speed
+    datasets.push({
+        label: 'Vertical Speed (mph)',
+        data: chartData.vertical_speed.map((speed, idx) => ({
+            x: chartData.timestamps[idx],
+            y: speed
+        })),
+        borderColor: colors.vspeed,
+        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+        borderWidth: 1.5,
+        tension: 0.4,
+        yAxisID: 'y1',
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        showLine: true
+    });
+
+    // Ground Speed
+    datasets.push({
+        label: 'Ground Speed (mph)',
+        data: chartData.ground_speed.map((speed, idx) => ({
+            x: chartData.timestamps[idx],
+            y: speed
+        })),
+        borderColor: colors.gspeed,
+        backgroundColor: 'rgba(75, 192, 75, 0.1)',
+        borderWidth: 1.5,
+        tension: 0.4,
+        yAxisID: 'y1',
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        showLine: true
+    });
+
+    chartInstance = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    enabled: true,
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y.toFixed(1);
+                            }
+                            return label;
+                        },
+                        title: function(context) {
+                            const seconds = context[0].parsed.x;
+                            const time = formatTime(seconds);
+                            return 'Time: ' + time;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'Time (seconds)'
+                    },
+                    min: 0,
+                    max: totalSeconds
+                },
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Altitude AGL (feet)'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Speed (mph)'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            }
+        }
+    });
+
+    // Calculate pixels per second for conversion
+    const canvasWidth = ctx.canvas.offsetWidth;
+    pixelsPerSecond = canvasWidth / totalSeconds;
+}
+
+function setupMouseHandlers() {
+    const canvas = document.getElementById('timingChart');
+    const rect = canvas.getBoundingClientRect();
+
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mouseleave', handleMouseUp);
+}
+
+function handleMouseDown(e) {
+    const canvas = e.target;
+    const rect = canvas.getBoundingClientRect();
+    const relativeX = e.clientX - rect.left;
+
+    // Use Chart.js to convert pixel to chart value
+    const timeValue = chartInstance.scales.x.getValueForPixel(relativeX);
+
+    selectionStartX = relativeX;
+    selectionEndX = null;
+    selectedStartIdx = Math.max(0, Math.floor(timeValue / 0.2)); // 0.2s per point (5Hz)
+    selectedEndIdx = null;
+
+    isSelecting = true;
+}
+
+function handleMouseMove(e) {
+    if (!isSelecting) return;
+
+    const canvas = e.target;
+    const rect = canvas.getBoundingClientRect();
+    const relativeX = e.clientX - rect.left;
+
+    // Use Chart.js to convert pixel to chart value
+    const timeValue = chartInstance.scales.x.getValueForPixel(relativeX);
+
+    selectionEndX = relativeX;
+    selectedEndIdx = Math.min(totalPoints - 1, Math.floor(timeValue / 0.2));
+
+    // Update visual feedback
+    updateSelectionHighlight();
+}
+
+function handleMouseUp(e) {
+    if (!isSelecting) return;
+
+    isSelecting = false;
+
+    if (selectedStartIdx !== null && selectedEndIdx !== null && selectedStartIdx !== selectedEndIdx) {
+        // Ensure start < end
+        if (selectedStartIdx > selectedEndIdx) {
+            [selectedStartIdx, selectedEndIdx] = [selectedEndIdx, selectedStartIdx];
+        }
+
+        updateSelectionDisplay();
+    }
+}
+
+function updateSelectionHighlight() {
+    const highlight = document.getElementById('selectionHighlight');
+    if (selectedStartIdx === null || selectedEndIdx === null) {
+        highlight.style.display = 'none';
+        return;
+    }
+
+    const canvas = document.getElementById('timingChart');
+    const rect = canvas.getBoundingClientRect();
+    const canvasWidth = rect.width;
+
+    const startTime = Math.min(selectedStartIdx, selectedEndIdx) * 0.2;
+    const endTime = Math.max(selectedStartIdx, selectedEndIdx) * 0.2;
+
+    const startPercent = (startTime / totalSeconds) * 100;
+    const widthPercent = ((endTime - startTime) / totalSeconds) * 100;
+
+    highlight.style.left = startPercent + '%';
+    highlight.style.width = widthPercent + '%';
+    highlight.style.display = 'block';
+}
+
+function updateSelectionDisplay() {
+    if (selectedStartIdx === null || selectedEndIdx === null) return;
+
+    const startTime = Math.min(selectedStartIdx, selectedEndIdx) * 0.2;
+    const endTime = Math.max(selectedStartIdx, selectedEndIdx) * 0.2;
+    const duration = endTime - startTime;
+
+    const startTimeStr = formatTime(startTime);
+    const endTimeStr = formatTime(endTime);
+    const durationStr = duration.toFixed(1);
+
+    document.getElementById('selectionRange').style.display = 'block';
+    document.getElementById('selectionText').textContent =
+        `${startTimeStr} to ${endTimeStr} (${durationStr}s)`;
+
+    document.getElementById('submitBtn').disabled = false;
+
+    // Update form values
+    document.getElementById('startIdx').value = Math.min(selectedStartIdx, selectedEndIdx);
+    document.getElementById('endIdx').value = Math.max(selectedStartIdx, selectedEndIdx);
+}
+
+function clearSelection() {
+    selectedStartIdx = null;
+    selectedEndIdx = null;
+    selectionStartX = null;
+    selectionEndX = null;
+    isSelecting = false;
+
+    document.getElementById('selectionHighlight').style.display = 'none';
+    document.getElementById('selectionRange').style.display = 'none';
+    document.getElementById('selectionText').textContent = 'None';
+    document.getElementById('submitBtn').disabled = true;
+
+    document.getElementById('startIdx').value = '0';
+    document.getElementById('endIdx').value = '0';
+}
+
+function submitSelection() {
+    if (selectedStartIdx === null || selectedEndIdx === null) {
+        alert('Please select a window first.');
+        return;
+    }
+
+    document.getElementById('selectionForm').submit();
+}
+
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = (seconds % 60).toFixed(1);
+    return `${mins}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+</script>
+{% endblock %}
