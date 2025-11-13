@@ -1,15 +1,20 @@
 """
 Custom middleware for enhanced error logging and monitoring
+Provides detailed context for debugging 500 errors in production (Render)
 """
 
 import logging
 import traceback
 import json
+import sys
+from datetime import datetime
 from django.http import JsonResponse
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 
 logger = logging.getLogger('swoopr')
+flight_logger = logging.getLogger('flights.flight_manager')
+http_500_logger = logging.getLogger('django.request')
 
 
 class ErrorLoggingMiddleware(MiddlewareMixin):
@@ -23,10 +28,20 @@ class ErrorLoggingMiddleware(MiddlewareMixin):
         Log detailed information about exceptions that cause 500 errors
         """
         # Get request metadata (safe for logging)
+        user_info = None
+        user_id = None
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            user_info = str(request.user)
+            user_id = request.user.id
+        else:
+            user_info = 'Anonymous'
+
         request_data = {
+            'timestamp': datetime.utcnow().isoformat(),
             'method': request.method,
             'path': request.path,
-            'user': str(request.user) if hasattr(request, 'user') and request.user.is_authenticated else 'Anonymous',
+            'user': user_info,
+            'user_id': user_id,
             'user_agent': request.META.get('HTTP_USER_AGENT', ''),
             'remote_addr': self._get_client_ip(request),
             'referer': request.META.get('HTTP_REFERER', ''),
@@ -42,26 +57,40 @@ class ErrorLoggingMiddleware(MiddlewareMixin):
                     safe_params[key] = value
             request_data['query_params'] = safe_params
 
-        # Add POST data size (not content for security)
+        # Add POST data info (not content for security)
         if request.method == 'POST':
             request_data['post_data_size'] = len(request.body) if hasattr(request, 'body') else 0
             request_data['files_uploaded'] = len(request.FILES) if hasattr(request, 'FILES') else 0
+            # Log file names if any (for debugging upload issues)
+            if request.FILES:
+                request_data['file_names'] = list(request.FILES.keys())
+
+        # Get detailed exception info
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        exception_context = {
+            'type': exception.__class__.__name__,
+            'message': str(exception),
+            'module': exc_traceback.tb_frame.f_globals.get('__name__', 'unknown') if exc_traceback else 'unknown',
+            'line': exc_traceback.tb_lineno if exc_traceback else 'unknown',
+        }
 
         # Format the error message
         error_msg = (
             f"500 Error: {exception.__class__.__name__}: {str(exception)}\n"
-            f"Request: {json.dumps(request_data, indent=2)}\n"
+            f"Request Data: {json.dumps(request_data, indent=2, default=str)}\n"
+            f"Exception Context: {json.dumps(exception_context, indent=2)}\n"
             f"Traceback:\n{traceback.format_exc()}"
         )
 
-        # Log the error
+        # Log the error with full context
         logger.error(error_msg, extra={
             'request': request,
             'exception_type': exception.__class__.__name__,
             'exception_message': str(exception),
             'request_path': request.path,
             'request_method': request.method,
-            'user_id': request.user.id if hasattr(request, 'user') and request.user.is_authenticated else None,
+            'user_id': user_id,
+            'remote_addr': self._get_client_ip(request),
         })
 
         # Don't return a response - let Django handle it normally

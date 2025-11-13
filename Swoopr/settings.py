@@ -249,6 +249,11 @@ LOGGING = {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {pathname}:{lineno} {message}',
             'style': '{',
         },
+        'flight_processing': {
+            'format': '{asctime} | {levelname:<8} | {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
     },
     'filters': {
         'require_debug_false': {
@@ -287,6 +292,24 @@ LOGGING = {
             'backupCount': 10,
             'formatter': 'error_detailed',
         },
+        # New handler for flight processing logs
+        'flight_processing_file': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'flight_processing.log'),
+            'maxBytes': 50 * 1024 * 1024,  # 50MB (large, as we log a lot)
+            'backupCount': 10,
+            'formatter': 'flight_processing',
+        },
+        # New handler for 500 error tracking
+        'http_500_errors': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'http_500_errors.log'),
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 10,
+            'formatter': 'error_detailed',
+        },
         # Email admins for critical errors (optional)
         'mail_admins': {
             'level': 'ERROR',
@@ -307,7 +330,7 @@ LOGGING = {
             'propagate': False,
         },
         'django.request': {
-            'handlers': ['error_file', 'server_errors', 'mail_admins'],
+            'handlers': ['error_file', 'server_errors', 'http_500_errors', 'mail_admins'],
             'level': 'ERROR',
             'propagate': False,
         },
@@ -321,9 +344,15 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': False,
         },
+        # Flight processing - detailed logging
+        'flights.flight_manager': {
+            'handlers': ['console', 'console_prod', 'flight_processing_file', 'error_file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
         # Application-specific loggers
         'flights': {
-            'handlers': ['console', 'console_prod', 'error_file'],
+            'handlers': ['console', 'console_prod', 'flight_processing_file', 'error_file'],
             'level': 'INFO',
             'propagate': False,
         },

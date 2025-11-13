@@ -5,6 +5,7 @@ Combines FlySight file ingestion with swoop analysis
 """
 
 import os
+import logging
 import threading
 import numpy as np
 import pandas as pd
@@ -15,6 +16,9 @@ from django.utils import timezone
 from django.contrib.gis.geos import Point
 from django.db import transaction
 from .models import Flight, GPSPoint
+
+# Set up logging
+logger = logging.getLogger('flights.flight_manager')
 
 # Constants
 MPH_PER_MPS = 2.23694
@@ -150,31 +154,47 @@ class FlightManager:
         if pilot is None:
             raise ValueError("pilot parameter is required")
 
+        file_name = Path(filepath).name
+        logger.info(f"Starting file processing: {file_name}")
+
         try:
             with transaction.atomic():
                 # Step 1: Read and parse file
+                logger.debug(f"Reading FlySight file: {file_name}")
                 df, metadata = self.read_flysight_file(filepath)
+                logger.info(f"File parsed: {file_name} | Rows: {len(df)} | Format: {metadata.get('format', 'unknown')}")
 
                 # Step 2: Create or get Flight object
+                logger.debug(f"Creating/updating flight object for: {file_name}")
                 flight = self.create_or_update_flight(filepath, metadata, pilot, canopy)
+                logger.debug(f"Flight object created: ID={flight.id} | Pilot={pilot.username}")
 
                 # Step 3: Create GPS points
+                logger.debug(f"Creating {len(df)} GPS points for flight {flight.id}")
                 self.create_gps_points(flight, df)
+                logger.debug(f"GPS points created successfully for flight {flight.id}")
 
                 # Step 4: Check for potential duplicates
+                logger.debug(f"Checking for duplicates for flight {flight.id}")
                 duplicate_info = self._check_for_duplicates(flight, df, pilot)
                 if duplicate_info:
-                    print(f"⚠️  Potential duplicate detected: {duplicate_info['message']}")
+                    logger.warning(f"Potential duplicate detected: {duplicate_info['message']}")
 
                 # Step 5: Generate chronological flight name and resequence if needed
+                logger.debug(f"Updating flight naming for flight {flight.id}")
                 self._update_flight_naming(flight)
+                logger.debug(f"Flight naming updated: {flight.name}")
 
                 # Step 6: Perform swoop analysis
+                logger.info(f"Starting swoop analysis for flight {flight.id}")
                 self.analyze_swoop(flight, df)
+                logger.info(f"Swoop analysis completed for flight {flight.id} | Success: {flight.analysis_successful}")
 
+                logger.info(f"File processing completed successfully: {file_name} | Flight ID: {flight.id}")
                 return flight
 
         except Exception as e:
+            logger.error(f"Error processing file {file_name}: {str(e)}", exc_info=True)
             # Create flight record with error info
             try:
                 flight = self.create_or_update_flight(filepath, {}, pilot, canopy)
@@ -182,8 +202,10 @@ class FlightManager:
                 flight.analysis_error = str(e)
                 flight.analyzed_at = timezone.now()
                 flight.save()
+                logger.info(f"Error recorded in flight object: {flight.id} | Error: {str(e)}")
                 return flight
-            except Exception:
+            except Exception as db_error:
+                logger.error(f"Failed to save error to database for {file_name}: {str(db_error)}", exc_info=True)
                 raise e
 
     def read_flysight_file(self, filepath):
@@ -473,22 +495,37 @@ class FlightManager:
     def analyze_swoop(self, flight, df):
         """Perform comprehensive swoop analysis"""
         try:
+            logger.debug(f"Flight {flight.id}: Starting swoop analysis | Total rows: {len(df)}")
+
             # Run swoop detection
+            logger.debug(f"Flight {flight.id}: Detecting landing...")
             landing_idx = self.get_landing(df)
+            landing_time = df.iloc[landing_idx]['t_s']
+            logger.debug(f"Flight {flight.id}: Landing detected at index {landing_idx} | Time: {landing_time:.2f}s")
 
             # Try traditional flare detection first
             try:
+                logger.debug(f"Flight {flight.id}: Attempting traditional flare detection...")
                 flare_idx = self.find_flare(df, landing_idx)
                 flare_method = "traditional"
-            except (ValueError, IndexError):
+                flare_time = df.iloc[flare_idx]['t_s']
+                logger.debug(f"Flight {flight.id}: Flare detected (traditional) at index {flare_idx} | Time: {flare_time:.2f}s")
+            except (ValueError, IndexError) as e:
                 # Fallback: no clear flare detected, use turn detection approach
+                logger.debug(f"Flight {flight.id}: Traditional flare detection failed ({str(e)}), using fallback...")
                 flare_idx = self.find_turn_start_fallback(df, landing_idx)
                 flare_method = "turn_detection"
+                flare_time = df.iloc[flare_idx]['t_s']
+                logger.info(f"Flight {flight.id}: Using turn_detection fallback | Index {flare_idx} | Time: {flare_time:.2f}s")
 
+            logger.debug(f"Flight {flight.id}: Finding max speeds...")
             max_vspeed_idx, max_gspeed_idx = self.find_max_speeds(df, flare_idx, landing_idx)
+            logger.debug(f"Flight {flight.id}: Max speeds found | vspeed_idx: {max_vspeed_idx} | gspeed_idx: {max_gspeed_idx}")
 
             # Calculate dual rotation metrics
+            logger.debug(f"Flight {flight.id}: Calculating dual rotation metrics...")
             dual_metrics = self.calculate_dual_rotation_metrics(df, flare_idx, max_gspeed_idx, landing_idx)
+            logger.debug(f"Flight {flight.id}: Dual metrics calculated | Keys: {list(dual_metrics.keys())}")
 
             # Use full swoop rotation as primary (maintains compatibility)
             if 'full_swoop' in dual_metrics:
@@ -497,12 +534,17 @@ class FlightManager:
                 intended_turn = fs['intended_turn']
                 rotation_confidence = fs['confidence']
                 rotation_method = fs['method']
+                logger.info(f"Flight {flight.id}: Full swoop rotation | Rotation: {turn_rotation:.1f}° | Confidence: {rotation_confidence:.2f} | Method: {rotation_method}")
             else:
                 # Fallback to legacy method
+                logger.debug(f"Flight {flight.id}: Using legacy rotation method (full_swoop not in metrics)")
                 turn_rotation, intended_turn, rotation_confidence, rotation_method = self.get_rotation_with_metadata(df, flare_idx, max_gspeed_idx)
+                logger.info(f"Flight {flight.id}: Legacy rotation | Rotation: {turn_rotation:.1f}° | Confidence: {rotation_confidence:.2f} | Method: {rotation_method}")
 
             # Get ML prediction
+            logger.debug(f"Flight {flight.id}: Getting ML prediction (ml_model_loaded: {self.ml_model_loaded})...")
             ml_rotation, ml_intended, ml_confidence, ml_method = self.get_rotation_with_ml_enhancement(df, flare_idx, max_gspeed_idx)
+            logger.debug(f"Flight {flight.id}: ML prediction | Rotation: {ml_rotation if ml_rotation else 'None'} | Confidence: {ml_confidence:.2f} | Method: {ml_method}")
 
             rollout_start_idx, rollout_end_idx = self.get_roll_out(df, max_vspeed_idx, max_gspeed_idx, landing_idx)
 
@@ -640,14 +682,20 @@ class FlightManager:
                     flight.swoop_distance_m = None
                     flight.swoop_distance_ft = None
 
+            logger.info(f"Flight {flight.id}: Analysis completed successfully | Rotation: {turn_rotation:.1f}° | Method: {rotation_method}")
             flight.save()
 
         except Exception as e:
+            logger.error(f"Flight {flight.id}: Error during swoop analysis: {str(e)}", exc_info=True)
             flight.is_swoop = False
             flight.analysis_successful = False
             flight.analysis_error = str(e)
             flight.analyzed_at = timezone.now()
-            flight.save()
+            try:
+                flight.save()
+                logger.info(f"Flight {flight.id}: Error recorded to database")
+            except Exception as save_error:
+                logger.error(f"Flight {flight.id}: Failed to save error to database: {str(save_error)}", exc_info=True)
             raise
 
     # ============== SWOOP ANALYSIS METHODS ==============
