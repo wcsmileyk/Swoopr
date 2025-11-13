@@ -395,10 +395,11 @@ def _process_single_file(request, file, canopy):
                 messages.success(request, f'Flight uploaded and analyzed successfully! Swoop detected with {abs(flight.turn_rotation):.0f}° rotation.')
             else:
                 messages.success(request, 'Flight uploaded successfully! No swoop detected in this flight.')
+            return redirect('flight_detail', flight_id=flight.id)
         else:
-            messages.warning(request, f'Flight uploaded but analysis failed: {flight.analysis_error}')
-
-        return redirect('flight_detail', flight_id=flight.id)
+            # Analysis failed - redirect to window selector for manual swoop detection
+            messages.info(request, f'Flight uploaded but automatic swoop detection failed. Please manually select the swoop window.')
+            return redirect('select_swoop_window', flight_id=flight.id)
 
     except Exception as e:
         # Clean up temp file if it exists
@@ -603,6 +604,105 @@ def flight_detail_view(request, flight_id):
     }
 
     return render(request, 'users/flight_detail.html', context)
+
+
+@login_required
+def select_swoop_window_view(request, flight_id):
+    """View for manually selecting swoop window and re-analyzing"""
+    # Only allow flight owner to access
+    flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
+
+    if request.method == 'POST':
+        # Get the selected window indices from the form
+        try:
+            start_idx = int(request.POST.get('start_idx', 0))
+            end_idx = int(request.POST.get('end_idx', 0))
+
+            # Validate indices
+            gps_data = flight.get_gps_data()
+            if not gps_data or start_idx < 0 or end_idx >= len(gps_data) or start_idx >= end_idx:
+                messages.error(request, 'Invalid window selection. Please try again.')
+                return redirect('select_swoop_window', flight_id=flight_id)
+
+            # Trim GPS data to selected window
+            trimmed_gps_data = gps_data[start_idx:end_idx + 1]
+
+            # Re-analyze with trimmed data
+            from flights.flight_manager import FlightManager
+            import pandas as pd
+            import numpy as np
+            from datetime import datetime
+
+            # Convert trimmed GPS data to DataFrame for analysis
+            fm = FlightManager()
+
+            # Convert GPS data to DataFrame format
+            data_for_df = {
+                'time': [d.get('timestamp', 0) for d in trimmed_gps_data],
+                'lat': [d.get('lat', 0) for d in trimmed_gps_data],
+                'lon': [d.get('lon', 0) for d in trimmed_gps_data],
+                'hMSL': [d.get('altitude_msl', 0) for d in trimmed_gps_data],
+                'AGL': [d.get('altitude_agl', 0) for d in trimmed_gps_data],
+                'velN': [d.get('velocity_north', 0) for d in trimmed_gps_data],
+                'velE': [d.get('velocity_east', 0) for d in trimmed_gps_data],
+                'velD': [d.get('velocity_down', 0) for d in trimmed_gps_data],
+                'heading': [d.get('heading', 0) for d in trimmed_gps_data],
+                'hAcc': [d.get('h_acc', None) for d in trimmed_gps_data],
+                'vAcc': [d.get('v_acc', None) for d in trimmed_gps_data],
+                'sAcc': [d.get('s_acc', None) for d in trimmed_gps_data],
+                'numSV': [d.get('num_sv', 0) for d in trimmed_gps_data],
+            }
+
+            df_trimmed = pd.DataFrame(data_for_df)
+
+            # Convert timestamp column to datetime
+            df_trimmed['time'] = df_trimmed['time'].apply(
+                lambda x: datetime.fromtimestamp(x) if isinstance(x, (int, float)) else x
+            )
+
+            # Calculate derived fields (t_s, gspeed, etc.)
+            # Create relative time in seconds
+            if len(df_trimmed) > 0:
+                start_time = df_trimmed['time'].iloc[0]
+                df_trimmed['t_s'] = (pd.to_datetime(df_trimmed['time']) - start_time).dt.total_seconds()
+
+                # Calculate ground speed
+                df_trimmed['gspeed'] = np.sqrt(df_trimmed['velN']**2 + df_trimmed['velE']**2)
+
+            # Run analysis on trimmed data
+            try:
+                fm.analyze_swoop(flight, df_trimmed)
+                messages.success(request, 'Swoop re-analyzed with selected window. Redirecting...')
+                return redirect('flight_detail', flight_id=flight_id)
+            except Exception as e:
+                flight.analysis_successful = False
+                flight.analysis_error = f"Re-analysis failed: {str(e)}"
+                flight.is_swoop = False
+                flight.save()
+                messages.error(request, f'Re-analysis failed: {str(e)}. Flight marked as undetected swoop.')
+                return redirect('flight_detail', flight_id=flight_id)
+
+        except (ValueError, TypeError) as e:
+            messages.error(request, 'Invalid input. Please try again.')
+            return redirect('select_swoop_window', flight_id=flight_id)
+
+    # GET request - display the window selector
+    import json
+    chart_data_raw = flight.get_chart_data()
+    chart_data = json.dumps(chart_data_raw) if chart_data_raw else None
+
+    gps_data = flight.get_gps_data()
+    total_points = len(gps_data) if gps_data else 0
+    total_seconds = total_points * 0.2  # 5Hz sampling = 0.2s per point
+
+    context = {
+        'flight': flight,
+        'chart_data': chart_data,
+        'total_points': total_points,
+        'total_seconds': round(total_seconds, 1),
+    }
+
+    return render(request, 'users/select_swoop_window.html', context)
 
 
 @login_required

@@ -14,6 +14,7 @@ urlpatterns = [
     path('flight/upload/', views.upload_flight_view, name='upload_flight'),
     path('flight/upload/results/', views.upload_results_view, name='upload_results'),
     path('flight/<int:flight_id>/', views.flight_detail_view, name='flight_detail'),
+    path('flight/<int:flight_id>/select-window/', views.select_swoop_window_view, name='select_swoop_window'),
     path('flight/<int:flight_id>/toggle-incorrect/', views.toggle_data_incorrect_view, name='toggle_data_incorrect'),
     path('flight/<int:flight_id>/update-name/', views.update_flight_name_view, name='update_flight_name'),
     path('flight/<int:flight_id>/update-gate/', views.update_flight_gate_view, name='update_flight_gate'),
