@@ -99,6 +99,11 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+        # Connection pooling for better resource utilization
+        'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
+        'OPTIONS': {
+            'connect_timeout': 10,  # Wait up to 10 seconds for connection
+        }
     }
 }
 

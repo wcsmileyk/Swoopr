@@ -5,6 +5,7 @@ Combines FlySight file ingestion with swoop analysis
 """
 
 import os
+import threading
 import numpy as np
 import pandas as pd
 import joblib
@@ -37,6 +38,44 @@ def unwrap_deg(headings):
 
 class InvalidTrackFile(ValueError):
     pass
+
+
+class MLModelSingleton:
+    """Thread-safe singleton for ML model loading - load once at startup, reuse across all requests"""
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+
+        try:
+            model_path = Path(__file__).parent / 'rotation_prediction_model.pkl'
+            if model_path.exists():
+                model_data = joblib.load(model_path)
+                self.model = model_data['model']
+                self.feature_names = model_data['feature_names']
+                self.improvement = model_data.get('improvement', 0)
+                self._initialized = True
+                print(f"✅ ML rotation model loaded once (improvement: {self.improvement:+.1f}%)")
+            else:
+                print(f"⚠️  ML model not found: {model_path}")
+                self.model = None
+                self.feature_names = None
+                self._initialized = True
+        except Exception as e:
+            print(f"❌ Error loading ML model: {e}")
+            self.model = None
+            self.feature_names = None
+            self._initialized = True
 
 
 class SwoopConfig:
@@ -89,11 +128,11 @@ class FlightManager:
     def __init__(self, cfg=SwoopConfig):
         self.cfg = cfg
 
-        # ML model components
-        self.ml_model = None
-        self.ml_feature_names = None
-        self.ml_model_loaded = False
-        self.load_ml_model()
+        # Use singleton for ML model (loaded once, reused across all instances)
+        ml_singleton = MLModelSingleton()
+        self.ml_model = ml_singleton.model
+        self.ml_feature_names = ml_singleton.feature_names
+        self.ml_model_loaded = ml_singleton.model is not None
 
     def process_file(self, filepath, pilot=None, canopy=None):
         """
@@ -563,7 +602,6 @@ class FlightManager:
             flight.swoop_end_time = df.iloc[landing_idx]['time']
 
             flight.analyzed_at = timezone.now()
-            flight.save()
 
             # Calculate accuracy metrics directly from DataFrame
             if flare_idx is not None and landing_idx is not None:
@@ -1121,21 +1159,6 @@ class FlightManager:
 
         smoothness = 1.0 - (direction_changes + large_jumps) / max_changes
         return max(0.0, min(1.0, smoothness))
-
-    def load_ml_model(self):
-        """Load the trained ML model for rotation prediction"""
-        try:
-            model_path = Path(__file__).parent / 'rotation_prediction_model.pkl'
-            if model_path.exists():
-                model_data = joblib.load(model_path)
-                self.ml_model = model_data['model']
-                self.ml_feature_names = model_data['feature_names']
-                self.ml_model_loaded = True
-                print(f"✅ ML rotation model loaded (improvement: {model_data.get('improvement', 0):+.1f}%)")
-            else:
-                print(f"⚠️  ML model not found: {model_path}")
-        except Exception as e:
-            print(f"❌ Error loading ML model: {e}")
 
     def extract_ml_features(self, df, flare_idx, max_gspeed_idx):
         """Extract features for ML prediction (matching training format)"""
