@@ -33,6 +33,9 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
+# ML Model configuration - disabled in production for stability
+ML_ENABLED = os.getenv('ML_ENABLED', 'True').lower() == 'true'
+
 # Allowed hosts from environment variable
 ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '').split(',') if host.strip()]
 
@@ -384,6 +387,9 @@ if os.getenv('RENDER'):
     # Production settings for Render
     DEBUG = False
     ALLOWED_HOSTS = ['.onrender.com']
+
+    # Disable ML in production for stability (use only traditional algorithm)
+    ML_ENABLED = False
 
     # Force HTTPS in production
     SECURE_SSL_REDIRECT = True

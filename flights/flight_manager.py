@@ -15,6 +15,7 @@ from datetime import datetime
 from django.utils import timezone
 from django.contrib.gis.geos import Point
 from django.db import transaction
+from django.conf import settings
 from .models import Flight, GPSPoint
 
 # Set up logging
@@ -61,6 +62,17 @@ class MLModelSingleton:
         if self._initialized:
             return
 
+        # Check if ML is enabled in settings
+        ml_enabled = getattr(settings, 'ML_ENABLED', True)
+
+        if not ml_enabled:
+            logger.info("ML model disabled via settings (ML_ENABLED=False) - using traditional algorithm only")
+            self.model = None
+            self.feature_names = None
+            self.improvement = 0
+            self._initialized = True
+            return
+
         try:
             model_path = Path(__file__).parent / 'rotation_prediction_model.pkl'
             if model_path.exists():
@@ -69,17 +81,20 @@ class MLModelSingleton:
                 self.feature_names = model_data['feature_names']
                 self.improvement = model_data.get('improvement', 0)
                 self._initialized = True
+                logger.info(f"ML rotation model loaded (improvement: {self.improvement:+.1f}%)")
                 print(f"✅ ML rotation model loaded once (improvement: {self.improvement:+.1f}%)")
             else:
-                print(f"⚠️  ML model not found: {model_path}")
+                logger.warning(f"ML model not found: {model_path}")
                 self.model = None
                 self.feature_names = None
                 self._initialized = True
+                print(f"⚠️  ML model not found: {model_path}")
         except Exception as e:
-            print(f"❌ Error loading ML model: {e}")
+            logger.error(f"Error loading ML model: {e}", exc_info=True)
             self.model = None
             self.feature_names = None
             self._initialized = True
+            print(f"❌ Error loading ML model: {e}")
 
 
 class SwoopConfig:
@@ -541,10 +556,14 @@ class FlightManager:
                 turn_rotation, intended_turn, rotation_confidence, rotation_method = self.get_rotation_with_metadata(df, flare_idx, max_gspeed_idx)
                 logger.info(f"Flight {flight.id}: Legacy rotation | Rotation: {turn_rotation:.1f}° | Confidence: {rotation_confidence:.2f} | Method: {rotation_method}")
 
-            # Get ML prediction
-            logger.debug(f"Flight {flight.id}: Getting ML prediction (ml_model_loaded: {self.ml_model_loaded})...")
-            ml_rotation, ml_intended, ml_confidence, ml_method = self.get_rotation_with_ml_enhancement(df, flare_idx, max_gspeed_idx)
-            logger.debug(f"Flight {flight.id}: ML prediction | Rotation: {ml_rotation if ml_rotation else 'None'} | Confidence: {ml_confidence:.2f} | Method: {ml_method}")
+            # Get ML prediction (if enabled)
+            if self.ml_model_loaded:
+                logger.debug(f"Flight {flight.id}: Getting ML prediction (ML model loaded)...")
+                ml_rotation, ml_intended, ml_confidence, ml_method = self.get_rotation_with_ml_enhancement(df, flare_idx, max_gspeed_idx)
+                logger.debug(f"Flight {flight.id}: ML prediction | Rotation: {ml_rotation if ml_rotation else 'None'} | Confidence: {ml_confidence:.2f} | Method: {ml_method}")
+            else:
+                logger.info(f"Flight {flight.id}: ML model not available (disabled or not loaded) - using traditional algorithm only")
+                ml_rotation, ml_intended, ml_confidence, ml_method = None, None, 0.0, "disabled"
 
             rollout_start_idx, rollout_end_idx = self.get_roll_out(df, max_vspeed_idx, max_gspeed_idx, landing_idx)
 
