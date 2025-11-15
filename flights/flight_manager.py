@@ -198,7 +198,7 @@ class FlightManager:
                 # Step 5: Generate chronological flight name and resequence if needed
                 logger.debug(f"Updating flight naming for flight {flight.id}")
                 self._update_flight_naming(flight)
-                logger.debug(f"Flight naming updated: {flight.name}")
+                logger.debug(f"Flight naming updated: {flight.flight_name}")
 
                 # Step 6: Perform swoop analysis
                 logger.info(f"Starting swoop analysis for flight {flight.id}")
