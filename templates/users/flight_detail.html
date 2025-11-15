@@ -72,11 +72,6 @@
                         Flag as Incorrect
                     {% endif %}
                 </button>
-                {% if flight.is_swoop or not flight.analysis_successful %}
-                <a href="{% url 'select_swoop_window' flight.id %}" class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-crosshair"></i> Select Swoop Window
-                </a>
-                {% endif %}
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="toggleFlightPrivacy()">
                     {% if flight.is_public %}
                         <i class="bi bi-eye-slash"></i> Make Private
