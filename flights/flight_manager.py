@@ -2049,7 +2049,7 @@ class FlightManager:
             return None
 
     def _update_flight_naming(self, flight):
-        """Update flight naming for chronological order and resequence other flights if needed"""
+        """Update flight naming for chronological order"""
         try:
             if not flight.pilot:
                 return  # Skip naming for flights without pilots
@@ -2061,14 +2061,16 @@ class FlightManager:
             # Update this flight's name
             flight.update_chronological_name()
 
-            # Resequence all flights for this pilot on this date to handle out-of-order uploads
-            from .models import Flight
-            Flight.resequence_pilot_flights(flight.pilot, target_date=flight_date)
+            # NOTE: Resequencing disabled for performance - it was causing 20+ second delays
+            # by iterating through all pilot flights and decompressing GPS data
+            # Users can manually manage flight names if needed
+            # from .models import Flight
+            # Flight.resequence_pilot_flights(flight.pilot, target_date=flight_date)
 
-            print(f"Updated flight naming: {flight.flight_name}")
+            logger.debug(f"Updated flight naming: {flight.flight_name}")
 
         except Exception as e:
-            print(f"Warning: Failed to update flight naming: {e}")
+            logger.warning(f"Failed to update flight naming: {e}")
             # Don't fail the upload if naming fails
 
 
