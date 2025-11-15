@@ -9,6 +9,10 @@ from django.core.files.storage import default_storage
 from django.http import JsonResponse
 import os
 import tempfile
+import logging
+import json
+
+logger = logging.getLogger('flights.flight_manager')
 from .forms import SignUpForm, UserLoginForm, CanopyForm, UserProfileForm, FlightUploadForm, BulkPrivacyForm, UserSearchForm
 from .models import Canopy
 from flights.models import Flight
@@ -590,6 +594,49 @@ def flight_detail_view(request, flight_id):
     if is_owner:
         available_gates = CompetitionGate.objects.filter(is_parsed=True).order_by('name')
 
+    # Generate overhead view data if flight has swoop analysis
+    overhead_data = None
+    overhead_data_json = None
+    if flight.is_swoop and flight.analysis_successful and flight.flare_idx is not None:
+        try:
+            from flights.utils.overhead_view import create_overhead_view_data
+            import pandas as pd
+
+            # Get GPS data for the flight
+            gps_points = list(flight.gps_points.order_by('timestamp'))
+            if len(gps_points) > flight.flare_idx:
+                # Get entry gate location (flare point)
+                entry_point = gps_points[flight.flare_idx]
+                entry_lat = entry_point.latitude
+                entry_lon = entry_point.longitude
+
+                # Get entry heading (compass heading at flare)
+                entry_heading = entry_point.heading if entry_point.heading else 0
+
+                # Create DataFrame for flight path
+                flight_df = pd.DataFrame([
+                    {'lat': p.latitude, 'lon': p.longitude}
+                    for p in gps_points
+                ])
+
+                # Generate overhead view data
+                gate_positions = None
+                if flight.competition_gate and flight.competition_gate.gate_positions:
+                    gate_positions = flight.competition_gate.gate_positions
+
+                overhead_data = create_overhead_view_data(
+                    flight_df,
+                    entry_lat,
+                    entry_lon,
+                    entry_heading,
+                    gate_positions
+                )
+
+                # Convert to JSON for template
+                overhead_data_json = json.dumps(overhead_data)
+        except Exception as e:
+            logger.warning(f"Failed to generate overhead view data for flight {flight.id}: {e}")
+
     context = {
         'flight': flight,
         'chart_data': chart_data,
@@ -600,6 +647,7 @@ def flight_detail_view(request, flight_id):
         'rollout_start_altitude': rollout_start_altitude,
         'rollout_end_altitude': rollout_end_altitude,
         'available_gates': available_gates,
+        'overhead_data': overhead_data_json,
         'is_owner': is_owner,
     }
 
