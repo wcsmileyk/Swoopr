@@ -186,24 +186,34 @@ class FlightManager:
 
                 # Step 3: Create GPS points
                 logger.debug(f"Creating {len(df)} GPS points for flight {flight.id}")
+                import time
+                gps_start = time.time()
                 self.create_gps_points(flight, df)
-                logger.debug(f"GPS points created successfully for flight {flight.id}")
+                gps_time = time.time() - gps_start
+                logger.info(f"GPS points created in {gps_time:.2f}s ({len(df)} points) for flight {flight.id}")
 
                 # Step 4: Check for potential duplicates
                 logger.debug(f"Checking for duplicates for flight {flight.id}")
+                dup_start = time.time()
                 duplicate_info = self._check_for_duplicates(flight, df, pilot)
+                dup_time = time.time() - dup_start
+                logger.info(f"Duplicate check completed in {dup_time:.2f}s for flight {flight.id}")
                 if duplicate_info:
                     logger.warning(f"Potential duplicate detected: {duplicate_info['message']}")
 
                 # Step 5: Generate chronological flight name and resequence if needed
                 logger.debug(f"Updating flight naming for flight {flight.id}")
+                naming_start = time.time()
                 self._update_flight_naming(flight)
-                logger.debug(f"Flight naming updated: {flight.flight_name}")
+                naming_time = time.time() - naming_start
+                logger.info(f"Flight naming updated in {naming_time:.2f}s: {flight.flight_name}")
 
                 # Step 6: Perform swoop analysis
                 logger.info(f"Starting swoop analysis for flight {flight.id}")
+                analysis_start = time.time()
                 self.analyze_swoop(flight, df)
-                logger.info(f"Swoop analysis completed for flight {flight.id} | Success: {flight.analysis_successful}")
+                analysis_time = time.time() - analysis_start
+                logger.info(f"Swoop analysis completed in {analysis_time:.2f}s for flight {flight.id} | Success: {flight.analysis_successful}")
 
                 logger.info(f"File processing completed successfully: {file_name} | Flight ID: {flight.id}")
                 return flight
