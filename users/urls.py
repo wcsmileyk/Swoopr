@@ -19,6 +19,7 @@ urlpatterns = [
     path('flight/<int:flight_id>/update-name/', views.update_flight_name_view, name='update_flight_name'),
     path('flight/<int:flight_id>/update-gate/', views.update_flight_gate_view, name='update_flight_gate'),
     path('flight/<int:flight_id>/calculate-gate-metrics/', views.calculate_flight_gate_metrics_view, name='calculate_flight_gate_metrics'),
+    path('gate/upload/', views.upload_gate_file, name='upload_gate_file'),
     path('flight/<int:flight_id>/delete/', views.delete_flight_view, name='delete_flight'),
     path('flights/bulk-delete/', views.bulk_delete_flights_view, name='bulk_delete_flights'),
 

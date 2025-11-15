@@ -1108,3 +1108,99 @@ def public_swoops_view(request):
     }
 
     return render(request, 'users/public_swoops.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def upload_gate_file(request):
+    """Handle gate file uploads and parse them into CompetitionGate objects"""
+    try:
+        from flights.models import CompetitionGate
+        from flights.utils.gate_parser import GateFileParser
+
+        gate_name = request.POST.get('gate_name', '').strip()
+        gate_type = request.POST.get('gate_type', '').strip()
+        gate_file = request.FILES.get('gate_file')
+
+        # Validate inputs
+        if not gate_name or not gate_type or not gate_file:
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+
+        # Validate gate type
+        valid_types = ['speed', 'standard', 'distance']
+        if gate_type not in valid_types:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid gate type. Must be one of: {", ".join(valid_types)}'
+            }, status=400)
+
+        # Check file size (max 5MB)
+        if gate_file.size > 5 * 1024 * 1024:
+            return JsonResponse({
+                'success': False,
+                'error': 'File size exceeds 5MB limit'
+            }, status=400)
+
+        # Check file extension
+        allowed_extensions = ['.csv', '.gsw']
+        file_ext = os.path.splitext(gate_file.name)[1].lower()
+        if file_ext not in allowed_extensions:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid file type. Must be CSV or GSW'
+            }, status=400)
+
+        # Save file temporarily and parse
+        with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
+            for chunk in gate_file.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        try:
+            # Parse the gate file
+            parser = GateFileParser(tmp_path, gate_type=gate_type)
+            gate_positions = parser.extract_gate_positions()
+
+            if not gate_positions:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No gate positions found in file'
+                }, status=400)
+
+            # Create or update CompetitionGate
+            gate, created = CompetitionGate.objects.get_or_create(
+                name=gate_name,
+                defaults={
+                    'gate_type': gate_type,
+                    'gate_positions': gate_positions,
+                    'is_parsed': True
+                }
+            )
+
+            if not created:
+                # Update existing gate
+                gate.gate_type = gate_type
+                gate.gate_positions = gate_positions
+                gate.is_parsed = True
+                gate.save()
+
+            return JsonResponse({
+                'success': True,
+                'message': f'Gate course "{gate_name}" uploaded successfully',
+                'gate_id': gate.id,
+                'gate_count': len(gate_positions)
+            })
+        finally:
+            # Clean up temporary file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    except Exception as e:
+        logger.error(f"Error uploading gate file: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
