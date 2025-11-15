@@ -602,21 +602,21 @@ def flight_detail_view(request, flight_id):
             from flights.utils.overhead_view import create_overhead_view_data
             import pandas as pd
 
-            # Get GPS data for the flight
-            gps_points = list(flight.gps_points.order_by('timestamp'))
-            if len(gps_points) > flight.flare_idx:
+            # Get GPS data for the flight (compressed format)
+            gps_data = flight.get_gps_data()
+            if gps_data and len(gps_data) > flight.flare_idx:
                 # Get entry gate location (flare point)
-                entry_point = gps_points[flight.flare_idx]
-                entry_lat = entry_point.latitude
-                entry_lon = entry_point.longitude
+                entry_point = gps_data[flight.flare_idx]
+                entry_lat = entry_point.get('lat', 0)
+                entry_lon = entry_point.get('lon', 0)
 
                 # Get entry heading (compass heading at flare)
-                entry_heading = entry_point.heading if entry_point.heading else 0
+                entry_heading = entry_point.get('heading', 0)
 
                 # Create DataFrame for flight path
                 flight_df = pd.DataFrame([
-                    {'lat': p.latitude, 'lon': p.longitude}
-                    for p in gps_points
+                    {'lat': p.get('lat', 0), 'lon': p.get('lon', 0)}
+                    for p in gps_data
                 ])
 
                 # Generate overhead view data
