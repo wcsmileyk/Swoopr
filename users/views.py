@@ -597,7 +597,7 @@ def flight_detail_view(request, flight_id):
     # Generate overhead view data if flight has swoop analysis
     overhead_data = None
     overhead_data_json = None
-    if flight.is_swoop and flight.analysis_successful and flight.flare_idx is not None:
+    if flight.is_swoop and flight.analysis_successful and flight.flare_idx is not None and flight.landing_idx is not None:
         try:
             from flights.utils.overhead_view import create_overhead_view_data
             import pandas as pd
@@ -605,18 +605,21 @@ def flight_detail_view(request, flight_id):
             # Get GPS data for the flight (compressed format)
             gps_data = flight.get_gps_data()
             if gps_data and len(gps_data) > flight.flare_idx:
-                # Get entry gate location (flare point)
-                entry_point = gps_data[flight.flare_idx]
+                # Narrow GPS data to just the swoop window (flare to landing)
+                swoop_gps_data = gps_data[flight.flare_idx:flight.landing_idx + 1]
+
+                # Get entry gate location (first point in swoop window = flare point)
+                entry_point = swoop_gps_data[0]
                 entry_lat = entry_point.get('lat', 0)
                 entry_lon = entry_point.get('lon', 0)
 
                 # Get entry heading (compass heading at flare)
                 entry_heading = entry_point.get('heading', 0)
 
-                # Create DataFrame for flight path
+                # Create DataFrame for flight path (swoop window only)
                 flight_df = pd.DataFrame([
                     {'lat': p.get('lat', 0), 'lon': p.get('lon', 0)}
-                    for p in gps_data
+                    for p in swoop_gps_data
                 ])
 
                 # Generate overhead view data
