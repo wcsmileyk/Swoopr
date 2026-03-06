@@ -578,13 +578,13 @@ class FlightManager:
             rollout_start_idx, rollout_end_idx = self.get_roll_out(df, max_vspeed_idx, max_gspeed_idx, landing_idx)
 
             # Calculate metrics
-            flare_time = df.iloc[flare_idx]['t_s']
-            max_gspeed_time = df.iloc[max_gspeed_idx]['t_s']
-            landing_time = df.iloc[landing_idx]['t_s']
+            flare_time = float(df.iloc[flare_idx]['t_s'])
+            max_gspeed_time = float(df.iloc[max_gspeed_idx]['t_s'])
+            landing_time = self._interpolate_landing_time(df, landing_idx)
             rollout_time = df.iloc[rollout_end_idx]['t_s'] - df.iloc[rollout_start_idx]['t_s']
 
-            max_vspeed_ms = abs(df.iloc[max_vspeed_idx]['velD'])
-            max_gspeed_ms = df.iloc[max_gspeed_idx]['gspeed']
+            # Windowed peak speeds (3-second sliding window, FlyS ight-style)
+            max_vspeed_ms, max_gspeed_ms = self.find_windowed_peak_speeds(df, flare_idx, landing_idx)
 
             # Update flight with analysis results
             flight.is_swoop = True
@@ -647,10 +647,14 @@ class FlightManager:
             flight.max_vertical_speed_mph = max_vspeed_ms * MPH_PER_MPS
             flight.max_ground_speed_mph = max_gspeed_ms * MPH_PER_MPS
             flight.turn_time = max_gspeed_time - flare_time
+
+            # G-force loads during swoop turn
+            flight.max_g_force, flight.avg_g_force_turn = self.calculate_g_forces(df, flare_idx, landing_idx)
             flight.rollout_time = rollout_time
 
             # Store altitudes
-            flight.exit_altitude_agl = df['AGL'].max()
+            # Use rolling median around peak to smooth out GPS noise spikes
+            flight.exit_altitude_agl = float(df['AGL'].rolling(5, center=True, min_periods=1).median().max())
             flight.flare_altitude_agl = df.iloc[flare_idx]['AGL']
             flight.max_vspeed_altitude_agl = df.iloc[max_vspeed_idx]['AGL']
             flight.max_gspeed_altitude_agl = df.iloc[max_gspeed_idx]['AGL']
@@ -938,6 +942,87 @@ class FlightManager:
         mgspeed_rel = int(np.nanargmax(gspeed[right_of_max_vspeed]))
         max_gspeed_idx = int(right_of_max_vspeed[mgspeed_rel])
         return max_vspeed_idx, max_gspeed_idx
+
+    def find_windowed_peak_speeds(self, df, flare_idx, landing_idx, window_s=3.0):
+        """
+        Find peak speeds using a sliding window average (FlyS ight-style 3-second window).
+        More robust than instantaneous max — eliminates GPS noise spikes.
+        Returns (peak_vspeed_ms, peak_gspeed_ms).
+        """
+        t_s = df['t_s'].to_numpy().astype(float)
+        vspeed = np.abs(df['velD'].to_numpy().astype(float))
+        gspeed = df['gspeed'].to_numpy().astype(float)
+
+        idxs = np.where((np.arange(len(df)) >= flare_idx) & (np.arange(len(df)) <= landing_idx))[0]
+        if idxs.size < 2:
+            return float(vspeed[flare_idx]), float(gspeed[flare_idx])
+
+        best_vspeed = 0.0
+        best_gspeed = 0.0
+
+        for i in idxs:
+            t_end = t_s[i] + window_s
+            win = (t_s >= t_s[i]) & (t_s <= t_end) & (np.arange(len(df)) <= landing_idx)
+            if win.sum() < 2:
+                continue
+            avg_v = float(np.mean(vspeed[win]))
+            avg_g = float(np.mean(gspeed[win]))
+            if avg_v > best_vspeed:
+                best_vspeed = avg_v
+            if avg_g > best_gspeed:
+                best_gspeed = avg_g
+
+        return best_vspeed, best_gspeed
+
+    def calculate_g_forces(self, df, flare_idx, landing_idx):
+        """
+        Calculate g-force loads during the swoop turn (flare to landing).
+        Uses np.gradient for accurate per-sample acceleration from velocity components.
+        Returns (max_g, avg_g) or (None, None) if insufficient data.
+        """
+        t_s = df['t_s'].to_numpy().astype(float)
+        velN = df['velN'].to_numpy().astype(float)
+        velE = df['velE'].to_numpy().astype(float)
+        velD = df['velD'].to_numpy().astype(float)
+
+        if len(t_s) < 3:
+            return None, None
+
+        aN = np.gradient(velN, t_s)
+        aE = np.gradient(velE, t_s)
+        aD = np.gradient(velD, t_s)
+        accel_mag = np.sqrt(aN**2 + aE**2 + aD**2)
+        g_forces = accel_mag / 9.81
+
+        swoop_g = g_forces[flare_idx:landing_idx + 1]
+        if len(swoop_g) == 0:
+            return None, None
+
+        return float(np.max(swoop_g)), float(np.mean(swoop_g))
+
+    def _interpolate_landing_time(self, df, landing_idx):
+        """
+        Get a more precise landing time by linearly interpolating between the sample
+        just before landing detection and the landing sample, weighted by ground speed
+        decay through the stop threshold.
+        """
+        t_s = df['t_s'].to_numpy().astype(float)
+        if landing_idx <= 0:
+            return float(t_s[landing_idx])
+
+        gspeed = df['gspeed'].to_numpy().astype(float)
+        g1 = float(gspeed[landing_idx - 1])
+        g2 = float(gspeed[landing_idx])
+        t1 = float(t_s[landing_idx - 1])
+        t2 = float(t_s[landing_idx])
+        threshold = self.cfg.fwd_gspeed_max
+
+        if g1 > threshold >= g2 and g1 != g2:
+            alpha = (g1 - threshold) / (g1 - g2)
+            alpha = max(0.0, min(1.0, alpha))
+            return t1 + alpha * (t2 - t1)
+
+        return float(t_s[landing_idx])
 
     def get_rotation(self, df, flare_idx, max_gspeed_idx):
         """Calculate turn rotation with improved algorithm"""

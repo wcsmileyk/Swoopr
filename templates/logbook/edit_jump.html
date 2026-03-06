@@ -1,0 +1,360 @@
+{% extends 'base.html' %}
+{% block title %}Edit Jump — Flare{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="{% url 'jump_list' %}" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+    </svg>
+  </a>
+  <h1 class="text-2xl font-bold text-white">Edit Jump</h1>
+  <span class="text-gray-500 text-sm">
+    {% if jump.jump_number %}#{{ jump.jump_number }} · {% endif %}
+    {{ jump.date }}{% if jump.jump_type %} · {{ jump.jump_type.name }}{% endif %}
+  </span>
+</div>
+
+<script>
+  var dzOptions = {{ dz_options_json|safe }};
+</script>
+
+<form method="post"
+      x-data="{
+        swoop: {{ jump.swoop|yesno:'true,false' }},
+        working: {{ jump.jump_type.working_jump|yesno:'true,false'|default:'false' }},
+        onTypeChange(e) {
+          const opt = e.target.selectedOptions[0];
+          this.working = opt ? opt.dataset.working === 'true' : false;
+        }
+      }">
+  {% csrf_token %}
+
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-6 mb-5">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+      <!-- Date -->
+      <div>
+        <label class="block text-xs text-gray-400 mb-1.5">Date</label>
+        <input type="date" name="date"
+               value="{{ jump.date|date:'Y-m-d' }}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+      </div>
+
+      <!-- Dropzone — searchable + inline add -->
+      <div x-data="{ adding: false }">
+        <label class="block text-xs text-gray-400 mb-1.5">Dropzone</label>
+        <div x-show="!adding" class="flex gap-2">
+          <div class="flex-1 relative"
+               x-data="searchSelect({ options: dzOptions, value: '{{ jump.dropzone_id }}', name: 'dropzone', placeholder: '— select —' })"
+               @keydown.escape="open = false">
+            <input type="hidden" :name="name" :value="selected">
+            <button type="button" @click="open = !open"
+                    class="w-full flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-left focus:outline-none focus:border-sky-500 transition-colors"
+                    :class="open ? 'border-sky-500' : ''">
+              <span :class="selected ? 'text-gray-100' : 'text-gray-500'" x-text="selectedLabel || placeholder"></span>
+              <svg class="w-4 h-4 text-gray-500 shrink-0 transition-transform" :class="open ? 'rotate-180' : ''"
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <div x-show="open" x-cloak x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                 @click.outside="open = false; search = ''"
+                 class="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
+              <div class="p-2 border-b border-gray-700">
+                <input type="text" x-model="search" x-ref="dzSearch"
+                       x-init="$watch('open', v => v && $nextTick(() => $refs.dzSearch?.focus()))"
+                       placeholder="Search…" @click.stop
+                       class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-sky-500">
+              </div>
+              <ul class="max-h-52 overflow-y-auto py-1">
+                <template x-for="opt in filtered" :key="opt.value">
+                  <li @click="select(opt)" class="px-3 py-2 text-sm cursor-pointer transition-colors"
+                      :class="String(opt.value) === selected ? 'bg-sky-600/20 text-sky-300' : 'text-gray-200 hover:bg-gray-700'">
+                    <span x-text="opt.label"></span>
+                  </li>
+                </template>
+                <li x-show="filtered.length === 0" class="px-3 py-2 text-sm text-gray-500 text-center">No results</li>
+              </ul>
+            </div>
+          </div>
+          <button type="button" @click="adding = true"
+                  class="shrink-0 text-xs text-sky-500 hover:text-sky-300 border border-gray-700 hover:border-sky-700 rounded-lg px-2.5 transition-colors">
+            + New
+          </button>
+        </div>
+        <div x-show="adding" x-cloak class="flex gap-2">
+          <input type="text" name="new_dropzone" placeholder="Dropzone name"
+                 class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          <button type="button" @click="adding = false"
+                  class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>
+        </div>
+      </div>
+
+      <!-- Aircraft — inline add -->
+      <div x-data="{ adding: false }">
+        <label class="block text-xs text-gray-400 mb-1.5">Aircraft</label>
+        <div x-show="!adding" class="flex gap-2">
+          <select name="aircraft"
+                  class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+            <option value="">— optional —</option>
+            {% for ac in aircraft_list %}
+              <option value="{{ ac.id }}" {% if ac.id == jump.aircraft_id %}selected{% endif %}>{{ ac.model }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" @click="adding = true"
+                  class="shrink-0 text-xs text-sky-500 hover:text-sky-300 border border-gray-700 hover:border-sky-700 rounded-lg px-2.5 transition-colors">
+            + New
+          </button>
+        </div>
+        <div x-show="adding" x-cloak class="flex gap-2">
+          <input type="text" name="new_aircraft" placeholder="e.g. Twin Otter"
+                 class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          <button type="button" @click="adding = false"
+                  class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>
+        </div>
+      </div>
+
+      <!-- Canopy — inline add -->
+      <div x-data="{ adding: false }">
+        <label class="block text-xs text-gray-400 mb-1.5">Canopy</label>
+        <div x-show="!adding" class="flex gap-2">
+          <select name="canopy"
+                  class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+            <option value="">—</option>
+            {% for c in canopies %}
+              <option value="{{ c.id }}" {% if c.id == jump.canopy_id %}selected{% endif %}>{{ c.display_name }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" @click="adding = true"
+                  class="shrink-0 text-xs text-sky-500 hover:text-sky-300 border border-gray-700 hover:border-sky-700 rounded-lg px-2.5 transition-colors">
+            + New
+          </button>
+        </div>
+        <div x-show="adding" x-cloak class="space-y-2">
+          <div class="flex gap-2">
+            <input type="text" name="new_canopy_model" placeholder="Model (e.g. Katana)"
+                   class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+            <input type="number" name="new_canopy_size" placeholder="sqft" min="1" max="999"
+                   class="w-20 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          </div>
+          <div class="flex gap-2">
+            <input type="text" name="new_canopy_mfr" placeholder="Manufacturer (optional)"
+                   class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+            <button type="button" @click="adding = false"
+                    class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Jump Type — inline add -->
+      <div x-data="{ adding: false }">
+        <label class="block text-xs text-gray-400 mb-1.5">Jump Type</label>
+        <div x-show="!adding" class="flex gap-2">
+          <select name="jump_type"
+                  @change="onTypeChange($event)"
+                  class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+            <option value="">—</option>
+            {% for jt in jump_types %}
+              <option value="{{ jt.id }}"
+                      data-working="{{ jt.working_jump|yesno:'true,false' }}"
+                      {% if jt.id == jump.jump_type_id %}selected{% endif %}>{{ jt.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" @click="adding = true"
+                  class="shrink-0 text-xs text-sky-500 hover:text-sky-300 border border-gray-700 hover:border-sky-700 rounded-lg px-2.5 transition-colors">
+            + New
+          </button>
+        </div>
+        <div x-show="adding" x-cloak class="flex gap-2">
+          <input type="text" name="new_jump_type" placeholder="e.g. Canopy Piloting"
+                 class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          <button type="button" @click="adding = false"
+                  class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>
+        </div>
+      </div>
+
+      <!-- Altitude -->
+      <div>
+        <label class="block text-xs text-gray-400 mb-1.5">Altitude (ft)</label>
+        <input type="number" name="altitude"
+               value="{{ jump.altitude|default:'' }}"
+               placeholder="14000" min="1000" max="30000"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+      </div>
+
+      <!-- Swoop -->
+      <div>
+        <label class="block text-xs text-gray-400 mb-1.5">Swoop</label>
+        <label class="flex items-center gap-2 cursor-pointer mt-2">
+          <input type="checkbox" name="swoop" value="1"
+                 x-model="swoop"
+                 {% if jump.swoop %}checked{% endif %}
+                 class="w-4 h-4 accent-sky-500">
+          <span class="text-sm text-gray-300">This was a swoop</span>
+        </label>
+      </div>
+
+      <!-- Turn Rotation -->
+      <div x-show="swoop" x-transition>
+        <label class="block text-xs text-gray-400 mb-1.5">Turn Rotation (°)</label>
+        <input type="number" name="turn_rotation"
+               value="{{ jump.turn_rotation|default:'' }}"
+               placeholder="270" min="0" max="1800"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+      </div>
+
+      <!-- Formation Size -->
+      <div x-show="working" x-transition>
+        <label class="block text-xs text-gray-400 mb-1.5">Formation Size</label>
+        <input type="number" name="formation_size"
+               value="{{ jump.formation_size|default:'' }}"
+               placeholder="4" min="1" max="200"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+      </div>
+
+      <!-- Notes -->
+      <div class="md:col-span-3">
+        <label class="block text-xs text-gray-400 mb-1.5">Notes</label>
+        <textarea name="notes" rows="2" placeholder="Optional notes…"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500 resize-none">{{ jump.notes }}</textarea>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <button type="submit"
+            class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+      Save Changes
+    </button>
+    <a href="{% url 'jump_list' %}"
+       class="text-gray-400 hover:text-gray-200 text-sm px-4 py-2 rounded-lg transition-colors">
+      Cancel
+    </a>
+    <form method="post" action="{% url 'delete_jump' jump.pk %}"
+          class="ml-auto"
+          onsubmit="return confirm('Delete this jump? This cannot be undone.')">
+      {% csrf_token %}
+      <button type="submit"
+              class="text-sm text-gray-500 hover:text-red-400 px-4 py-2 rounded-lg border border-transparent hover:border-red-800 transition-colors">
+        Delete Jump
+      </button>
+    </form>
+  </div>
+</form>
+
+<!-- GPS Flight Section -->
+<div class="mt-5 bg-gray-900 rounded-xl border border-gray-800 p-5">
+  <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">GPS Flight</h2>
+
+  {% if jump.flight_id %}
+  <!-- Linked flight -->
+  <div class="flex items-center gap-4 flex-wrap">
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>
+      <span class="text-sm text-gray-200">
+        {% if jump.flight.flight_name %}{{ jump.flight.flight_name }}{% elif jump.flight.filename %}{{ jump.flight.filename }}{% else %}Flight #{{ jump.flight_id }}{% endif %}
+      </span>
+      {% if jump.flight.is_swoop %}
+        <span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">swoop</span>
+      {% endif %}
+    </div>
+    <div class="flex items-center gap-2 ml-auto">
+      <a href="{% url 'flight_detail' jump.flight_id %}"
+         class="text-sm text-sky-500 hover:text-sky-300 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-sky-700 transition-colors">
+        View GPS
+      </a>
+      <form method="post" action="{% url 'unlink_flight' jump.pk %}"
+            onsubmit="return confirm('Detach GPS flight from this jump? The flight record will not be deleted.')">
+        {% csrf_token %}
+        <button type="submit"
+                class="text-sm text-gray-500 hover:text-red-400 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-red-800 transition-colors">
+          Unlink
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {% else %}
+  <!-- No GPS linked -->
+  <div class="space-y-4" x-data="{ mode: 'none' }">
+
+    <!-- Mode picker -->
+    <div class="flex gap-2" x-show="mode === 'none'">
+      <button type="button" @click="mode = 'upload'"
+              class="flex items-center gap-2 text-sm text-gray-300 hover:text-white px-3 py-2 rounded-lg border border-gray-700 hover:border-sky-700 transition-colors">
+        <svg class="w-4 h-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        Upload GPS File
+      </button>
+      {% if unlinked_flights %}
+      <button type="button" @click="mode = 'link'"
+              class="flex items-center gap-2 text-sm text-gray-300 hover:text-white px-3 py-2 rounded-lg border border-gray-700 hover:border-sky-700 transition-colors">
+        <svg class="w-4 h-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        Link Existing Flight
+      </button>
+      {% endif %}
+    </div>
+
+    <!-- Upload form -->
+    <form x-show="mode === 'upload'" x-cloak
+          method="post" action="{% url 'attach_gps' jump.pk %}"
+          enctype="multipart/form-data"
+          class="flex items-center gap-3 flex-wrap">
+      {% csrf_token %}
+      <label class="flex-1 min-w-0 cursor-pointer bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-2"
+             x-data="{ fname: '' }">
+        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+        </svg>
+        <span x-text="fname || 'Choose FlySight CSV…'"></span>
+        <input type="file" name="gps_file" accept=".csv,.CSV" class="hidden"
+               @change="fname = $event.target.files[0]?.name || ''">
+      </label>
+      <button type="submit"
+              class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+        Analyze &amp; Link
+      </button>
+      <button type="button" @click="mode = 'none'"
+              class="shrink-0 text-gray-500 hover:text-gray-300 text-sm px-3 py-2 rounded-lg border border-gray-700 transition-colors">
+        Cancel
+      </button>
+    </form>
+
+    <!-- Link existing form -->
+    {% if unlinked_flights %}
+    <form x-show="mode === 'link'" x-cloak
+          method="post" action="{% url 'link_flight' jump.pk %}"
+          class="flex items-center gap-3 flex-wrap">
+      {% csrf_token %}
+      <select name="flight_id"
+              class="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+        <option value="">— select a flight —</option>
+        {% for f in unlinked_flights %}
+        <option value="{{ f.id }}">
+          {% if f.flight_name %}{{ f.flight_name }}{% elif f.filename %}{{ f.filename }}{% else %}Flight #{{ f.id }}{% endif %}
+          {% if f.is_swoop %} · swoop{% endif %}
+          · {{ f.created_at|date:"M j, Y" }}
+        </option>
+        {% endfor %}
+      </select>
+      <button type="submit"
+              class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+        Link
+      </button>
+      <button type="button" @click="mode = 'none'"
+              class="shrink-0 text-gray-500 hover:text-gray-300 text-sm px-3 py-2 rounded-lg border border-gray-700 transition-colors">
+        Cancel
+      </button>
+    </form>
+    {% endif %}
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

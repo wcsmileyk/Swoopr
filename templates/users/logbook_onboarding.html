@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}Set Up Your Logbook — Flare{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto mt-4">
+
+  <!-- Welcome header -->
+  <div class="text-center mb-8">
+    <h1 class="text-3xl font-bold text-white mb-2">You're in. Welcome to Flare.</h1>
+    <p class="text-gray-400">Let's get your logbook set up. This takes about 60 seconds.</p>
+  </div>
+
+  <!-- Path cards -->
+  <div class="space-y-4 mb-8">
+
+    <!-- Path 1: Import CSV -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+      <div class="flex items-start gap-4">
+        <div class="w-10 h-10 rounded-lg bg-sky-600/20 border border-sky-600/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg class="w-5 h-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <h2 class="text-base font-semibold text-white mb-1">I have a digital logbook I can export</h2>
+          <p class="text-sm text-gray-400 mb-4">
+            Most apps (Protrack, Cypres, spreadsheets) can export a CSV file. Upload it and Flare will
+            walk you through mapping the columns and matching your dropzones — no duplicate entries.
+            Your jump numbers will be preserved automatically.
+          </p>
+          <a href="{% url 'logbook_import' %}"
+             class="inline-block bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+            Import CSV →
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Path 2: Set jump number -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+      <div class="flex items-start gap-4">
+        <div class="w-10 h-10 rounded-lg bg-emerald-600/20 border border-emerald-600/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <h2 class="text-base font-semibold text-white mb-1">I have a paper logbook (or just know my jump count)</h2>
+          <p class="text-sm text-gray-400 mb-4">
+            Tell Flare what jump number to start from. Your next logged jump will be numbered
+            accordingly, keeping things continuous with your physical logbook.
+          </p>
+          <form method="post" action="{% url 'logbook_onboarding' %}" class="flex items-end gap-3">
+            {% csrf_token %}
+            <div>
+              <label class="text-xs text-gray-500 block mb-1.5">My next jump will be #</label>
+              <input type="number" name="jump_number_offset"
+                     value="{{ suggested_start }}" min="1"
+                     class="w-36 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-emerald-500">
+            </div>
+            <button type="submit"
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+              Save &amp; Continue →
+            </button>
+          </form>
+          {% if suggested_start > 1 %}
+          <p class="text-xs text-gray-600 mt-2">Pre-filled from your signup — adjust if needed.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Path 3: Start fresh -->
+    <div class="bg-gray-900 rounded-xl border border-gray-700/50 p-6">
+      <div class="flex items-start gap-4">
+        <div class="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <h2 class="text-base font-semibold text-gray-300 mb-1">I'm starting fresh from jump #1</h2>
+          <p class="text-sm text-gray-500 mb-4">
+            No existing logbook to worry about. Just start logging and Flare will number everything
+            from #1. You can always change this later in your profile settings.
+          </p>
+          <a href="{% url 'dashboard' %}"
+             class="inline-block border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-gray-200 text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+            Go to Dashboard →
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="text-center text-xs text-gray-600">
+    You can always import a CSV or change your jump number later from
+    <a href="{% url 'profile' %}" class="text-gray-500 hover:text-gray-400">Profile Settings</a>.
+  </p>
+
+</div>
+{% endblock %}

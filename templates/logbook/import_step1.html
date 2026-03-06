@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Import Logbook — Flare{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="{% url 'jump_list' %}" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+    </svg>
+  </a>
+  <h1 class="text-2xl font-bold text-white">Import Logbook from CSV</h1>
+</div>
+
+{% if error %}
+<div class="bg-red-900/30 border border-red-700 rounded-xl px-5 py-3 mb-5 text-sm text-red-300">
+  {{ error }}
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Upload form -->
+  <div class="lg:col-span-2">
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+      <h2 class="text-sm font-semibold text-white mb-4">Upload your CSV logbook</h2>
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-5">
+          <label class="text-xs text-gray-400 block mb-2">CSV File (max 10 MB)</label>
+          <input type="file" name="csv_file" accept=".csv,.txt,.tsv" required
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-sky-700 file:text-white file:text-xs file:cursor-pointer focus:outline-none focus:border-sky-500">
+        </div>
+        <button type="submit" class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+          Upload &amp; Detect Fields →
+        </button>
+      </form>
+    </div>
+
+    <!-- What happens next -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-6 mt-5">
+      <h2 class="text-sm font-semibold text-white mb-3">How it works</h2>
+      <ol class="space-y-2 text-sm text-gray-400 list-decimal list-inside">
+        <li>Upload your CSV export — we auto-detect the column layout.</li>
+        <li>Confirm which columns map to which logbook fields (date, DZ, canopy, etc.).</li>
+        <li>We fuzzy-match your dropzone and aircraft names against existing records so you don't end up with duplicates like "Z-Hills" and "Skydive City" both created.</li>
+        <li>Set your starting jump number, then confirm the import.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- Tips sidebar -->
+  <div class="space-y-4">
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">Recognized columns</h3>
+      <div class="text-xs text-gray-400 space-y-1">
+        <p><span class="text-gray-300">Date</span> — jump date</p>
+        <p><span class="text-gray-300">Dropzone / DZ</span> — location</p>
+        <p><span class="text-gray-300">Aircraft / Plane</span> — jump plane</p>
+        <p><span class="text-gray-300">Canopy / Main</span> — parachute</p>
+        <p><span class="text-gray-300">Type / Discipline</span> — jump type</p>
+        <p><span class="text-gray-300">Altitude / Alt</span> — exit altitude (ft)</p>
+        <p><span class="text-gray-300">Swoop</span> — yes/no/x</p>
+        <p><span class="text-gray-300">Rotation / Degrees</span> — turn °</p>
+        <p><span class="text-gray-300">Formation Size / FS</span></p>
+        <p><span class="text-gray-300">Notes / Comments</span></p>
+      </div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-3">Starting jump number</h3>
+      <p class="text-xs text-gray-400">
+        If you already have jumps in another logbook, you can set the starting number during import
+        so your numbering stays continuous. You can also change it any time in your profile settings.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load unit_filters %}
 
-{% block title %}Flight Detail - Swoopr{% endblock %}
+{% block title %}{% if linked_jump %}Jump #{{ linked_jump.jump_number }} GPS — Flare{% else %}GPS Flight — Flare{% endif %}{% endblock %}
 
 {% block extra_css %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -10,141 +10,159 @@
 <style>
 .viewer-toggle-btn { font-size: 0.75rem; padding: 2px 8px; border-radius: 3px; cursor: pointer; border: 1px solid; margin: 1px; transition: opacity 0.15s; }
 .viewer-toggle-btn.inactive { opacity: 0.35; }
-.viewer-zoom-btn { font-size: 0.78rem; }
+.viewer-zoom-btn { font-size: 0.78rem; cursor: pointer; transition: all 0.15s; }
 #topViewCanvas { display: block; width: 100%; height: 300px; }
 #sideViewChart, #flightChart { display: block; }
-.viewer-panel-card { height: 100%; }
-.viewer-panel-card .card-body { padding: 8px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">
-        <i class="bi bi-airplane"></i>
-        {% if user.is_authenticated and user == flight.pilot %}
-            <span id="flight-name-display">{{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}</span>
-            <button type="button" class="btn btn-link btn-sm ms-2" onclick="editFlightName()" title="Edit flight name">
-                <i class="bi bi-pencil"></i>
-            </button>
-            <div id="flight-name-edit" style="display: none;" class="d-inline-block ms-2">
-                <input type="text" id="flight-name-input" class="form-control form-control-sm d-inline-block" style="width: 300px;" value="{{ flight.flight_name|default:flight.filename|default:'Unnamed Flight' }}">
-                <button type="button" class="btn btn-success btn-sm ms-1" onclick="saveFlightName()"><i class="bi bi-check"></i></button>
-                <button type="button" class="btn btn-secondary btn-sm ms-1" onclick="cancelEditFlightName()"><i class="bi bi-x"></i></button>
-            </div>
-        {% else %}
-            {{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}
-        {% endif %}
-        {% if flight.is_swoop %}<span class="badge bg-success ms-2">Swoop</span>{% else %}<span class="badge bg-secondary ms-2">Flight</span>{% endif %}
-        {% if flight.performance_grade %}<span class="badge bg-primary ms-1">Grade {{ flight.performance_grade }}</span>{% endif %}
-        {% if flight.data_incorrect %}<span class="badge bg-warning ms-1"><i class="bi bi-flag"></i> Flagged</span>{% endif %}
-        {% if flight.is_public %}<span class="badge bg-success ms-1"><i class="bi bi-eye"></i> Public</span>{% else %}<span class="badge bg-secondary ms-1"><i class="bi bi-eye-slash"></i> Private</span>{% endif %}
-    </h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        {% if user.is_authenticated and user == flight.pilot %}
-            <div class="btn-group me-2">
-                <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload"></i> Upload</a>
-                <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleDataIncorrect()">
-                    <i class="bi bi-flag"></i> {% if flight.data_incorrect %}Remove Flag{% else %}Flag as Incorrect{% endif %}
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-info" onclick="toggleFlightPrivacy()">
-                    {% if flight.is_public %}<i class="bi bi-eye-slash"></i> Make Private{% else %}<i class="bi bi-eye"></i> Make Public{% endif %}
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete()"><i class="bi bi-trash"></i> Delete</button>
-            </div>
-            <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back to Flights</a>
-        {% else %}
-            <div class="btn-group me-2">
-                {% if flight.pilot.profile.public_profile %}
-                    <a href="{% url 'public_profile' flight.pilot.username %}" class="btn btn-sm btn-primary"><i class="bi bi-person"></i> View {{ flight.pilot.profile.display_name }}'s Profile</a>
-                {% endif %}
-                <a href="{% url 'public_swoops' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back to Public Swoops</a>
-            </div>
-        {% endif %}
+<div id="flight-page" x-data="{ showGateModal: false, showFlagModal: false }">
+
+<!-- Header -->
+<div class="flex items-start justify-between gap-4 mb-6">
+  <div>
+    <div class="mb-1">
+      {% if linked_jump %}
+        <a href="{% url 'edit_jump' linked_jump.pk %}" class="text-gray-500 hover:text-gray-300 transition-colors text-xs flex items-center gap-1">
+          <i class="bi bi-arrow-left"></i>
+          Jump{% if linked_jump.jump_number %} #{{ linked_jump.jump_number }}{% endif %}{% if linked_jump.date %} · {{ linked_jump.date }}{% endif %}
+        </a>
+      {% elif user.is_authenticated and user == flight.pilot %}
+        <a href="{% url 'flights' %}" class="text-gray-500 hover:text-gray-300 transition-colors text-xs flex items-center gap-1">
+          <i class="bi bi-arrow-left"></i> GPS Flights
+        </a>
+      {% else %}
+        <a href="{% url 'public_swoops' %}" class="text-gray-500 hover:text-gray-300 transition-colors text-xs flex items-center gap-1">
+          <i class="bi bi-arrow-left"></i> Public Swoops
+        </a>
+      {% endif %}
     </div>
+    <h1 class="text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
+      <i class="bi bi-airplane"></i>
+      {% if linked_jump %}
+        Jump GPS View
+      {% elif user.is_authenticated and user == flight.pilot %}
+        <span id="flight-name-display">{{ flight.flight_name|default:flight.filename|default:"GPS Flight" }}</span>
+        <button type="button" class="text-gray-500 hover:text-gray-300 transition-colors" onclick="editFlightName()" title="Edit flight name">
+          <i class="bi bi-pencil text-base"></i>
+        </button>
+        <div id="flight-name-edit" style="display:none;" class="flex items-center gap-1">
+          <input type="text" id="flight-name-input"
+                 class="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-sky-500 w-64"
+                 value="{{ flight.flight_name|default:flight.filename|default:'GPS Flight' }}">
+          <button type="button" class="bg-emerald-700 hover:bg-emerald-600 text-white text-xs px-2 py-1 rounded transition-colors" onclick="saveFlightName()"><i class="bi bi-check"></i></button>
+          <button type="button" class="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded transition-colors" onclick="cancelEditFlightName()"><i class="bi bi-x"></i></button>
+        </div>
+      {% else %}
+        {{ flight.flight_name|default:flight.filename|default:"GPS Flight" }}
+      {% endif %}
+      {% if flight.is_swoop %}<span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5 font-normal">Swoop</span>
+      {% elif flight.analysis_successful %}<span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5 font-normal">Flight</span>{% endif %}
+      {% if flight.performance_grade %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5 font-normal">Grade {{ flight.performance_grade }}</span>{% endif %}
+      {% if flight.data_incorrect %}<span class="text-xs bg-amber-900/60 text-amber-300 border border-amber-800 rounded-full px-2 py-0.5 font-normal"><i class="bi bi-flag"></i> Flagged</span>{% endif %}
+      {% if flight.is_public %}<span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5 font-normal"><i class="bi bi-eye"></i> Public</span>
+      {% else %}<span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5 font-normal"><i class="bi bi-eye-slash"></i> Private</span>{% endif %}
+    </h1>
+  </div>
+  {% if user.is_authenticated and user == flight.pilot %}
+  <div class="flex items-center gap-2 shrink-0 mt-1">
+    <button type="button" class="text-xs border border-amber-700 text-amber-400 hover:bg-amber-900/30 px-3 py-1.5 rounded-lg transition-colors" onclick="toggleDataIncorrect()">
+      <i class="bi bi-flag"></i> {% if flight.data_incorrect %}Remove Flag{% else %}Flag{% endif %}
+    </button>
+    <button type="button" class="text-xs border border-sky-700 text-sky-400 hover:bg-sky-900/30 px-3 py-1.5 rounded-lg transition-colors" onclick="toggleFlightPrivacy()">
+      {% if flight.is_public %}<i class="bi bi-eye-slash"></i> Make Private{% else %}<i class="bi bi-eye"></i> Make Public{% endif %}
+    </button>
+    <button type="button" class="text-xs border border-red-800 text-red-400 hover:bg-red-900/30 px-3 py-1.5 rounded-lg transition-colors" onclick="confirmDelete()">
+      <i class="bi bi-trash"></i> Delete
+    </button>
+  </div>
+  {% elif flight.pilot.profile.public_profile %}
+  <div class="shrink-0 mt-1">
+    <a href="{% url 'public_profile' flight.pilot.username %}" class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+      <i class="bi bi-person"></i> {{ flight.pilot.profile.display_name }}'s Profile
+    </a>
+  </div>
+  {% endif %}
 </div>
 
-<!-- Flight Info Header -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <h6 class="text-muted">Date & Time</h6>
-                        <p>
-                            {% if flight.swoop_start_time %}{{ flight.swoop_start_time|date:"M d, Y" }}<br><small>{{ flight.swoop_start_time|time:"H:i" }}</small>
-                            {% else %}{{ flight.created_at|date:"M d, Y" }}<br><small>{{ flight.created_at|time:"H:i" }}</small>{% endif %}
-                        </p>
-                    </div>
-                    <div class="col-md-3">
-                        <h6 class="text-muted">Canopy</h6>
-                        <p>
-                            {% if flight.canopy %}{{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
-                            <small>{{ flight.canopy.size|area_display:user_units }}</small>
-                            {% if flight.wing_loading %}<small>({{ flight.wing_loading|wing_loading_display:user_units }})</small>{% endif %}
-                            {% else %}<span class="text-muted">Unknown</span>{% endif %}
-                        </p>
-                    </div>
-                    <div class="col-md-3">
-                        <h6 class="text-muted">Analysis Status</h6>
-                        <p>
-                            {% if flight.analysis_successful %}<span class="text-success"><i class="bi bi-check-circle"></i> Successful</span><br><small>{{ flight.analyzed_at|date:"M d, H:i" }}</small>
-                            {% else %}<span class="text-danger"><i class="bi bi-x-circle"></i> Failed</span><br>{% if flight.analysis_error %}<small class="text-danger">{{ flight.analysis_error }}</small>{% endif %}{% endif %}
-                        </p>
-                    </div>
-                    <div class="col-md-3">
-                        <h6 class="text-muted">Competition Gate</h6>
-                        <p>
-                            {% if is_owner %}
-                                <span id="gate-display">{% if flight.competition_gate %}{{ flight.competition_gate.name }}{% else %}<span class="text-muted">None</span>{% endif %}</span>
-                                <button type="button" class="btn btn-link btn-sm p-0 ms-1" onclick="editGate()" title="Edit competition gate"><i class="bi bi-pencil"></i></button>
-                                <div id="gate-edit" style="display: none;" class="mt-2">
-                                    <select id="gate-select" class="form-select form-select-sm">
-                                        <option value="">No gate</option>
-                                        {% for gate in available_gates %}<option value="{{ gate.id }}" {% if flight.competition_gate and flight.competition_gate.id == gate.id %}selected{% endif %}>{{ gate.name }} ({{ gate.get_gate_type_display }})</option>{% endfor %}
-                                    </select>
-                                    <div class="mt-1">
-                                        <button type="button" class="btn btn-success btn-sm" onclick="saveGate()"><i class="bi bi-check"></i> Save</button>
-                                        <button type="button" class="btn btn-secondary btn-sm" onclick="cancelEditGate()"><i class="bi bi-x"></i> Cancel</button>
-                                    </div>
-                                </div>
-                            {% else %}
-                                {% if flight.competition_gate %}{{ flight.competition_gate.name }}{% else %}<span class="text-muted">None</span>{% endif %}
-                            {% endif %}
-                        </p>
-                    </div>
-                </div>
-                {% if is_owner and flight.competition_gate %}
-                <div class="row mt-3 pt-3 border-top">
-                    <div class="col-md-12">
-                        <h6 class="text-muted mb-3">Gate Metrics {% if flight.gate_speed_mps %}<span class="badge bg-success">Calculated</span>{% else %}<span class="badge bg-warning">Not Calculated</span>{% endif %}</h6>
-                    </div>
-                    {% if flight.gate_speed_mps %}
-                        <div class="col-md-3"><strong>Gate Speed:</strong><br>{{ flight.gate_speed_mps|floatformat:2 }} m/s <small class="text-muted">({{ flight.gate_speed_mps|multiply:2.23694|floatformat:1 }} mph)</small></div>
-                        <div class="col-md-3"><strong>Gate Altitude:</strong><br>{{ flight.gate_altitude_agl|floatformat:2 }} m AGL <small class="text-muted">({{ flight.gate_altitude_agl|multiply:3.28084|floatformat:1 }} ft)</small></div>
-                        <div class="col-md-3"><strong>Passed Between Gates:</strong><br>{% if flight.passed_between_gates %}<span class="text-success"><i class="bi bi-check-circle"></i> Yes</span>{% else %}<span class="text-warning"><i class="bi bi-exclamation-circle"></i> No</span>{% endif %}</div>
-                        <div class="col-md-3"><button type="button" class="btn btn-sm btn-primary" onclick="recalculateGateMetrics()"><i class="bi bi-arrow-clockwise"></i> Recalculate</button></div>
-                    {% else %}
-                        <div class="col-md-12"><p class="text-muted mb-2">Gate metrics have not been calculated yet.</p><button type="button" class="btn btn-sm btn-primary" onclick="calculateGateMetrics()"><i class="bi bi-calculator"></i> Calculate Gate Metrics</button></div>
-                    {% endif %}
-                </div>
-                {% endif %}
-            </div>
-        </div>
+<!-- Flight Info -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-5">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+    <div>
+      <p class="text-xs text-gray-500 mb-1">Date & Time</p>
+      <p class="text-gray-200">
+        {% if flight.swoop_start_time %}{{ flight.swoop_start_time|date:"M d, Y" }}<br><span class="text-xs text-gray-500">{{ flight.swoop_start_time|time:"H:i" }}</span>
+        {% else %}{{ flight.created_at|date:"M d, Y" }}<br><span class="text-xs text-gray-500">{{ flight.created_at|time:"H:i" }}</span>{% endif %}
+      </p>
     </div>
+    <div>
+      <p class="text-xs text-gray-500 mb-1">Canopy</p>
+      <p class="text-gray-200">
+        {% if flight.canopy %}{{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
+        <span class="text-xs text-gray-500">{{ flight.canopy.size|area_display:user_units }}</span>
+        {% if flight.wing_loading %}<span class="text-xs text-gray-500"> ({{ flight.wing_loading|wing_loading_display:user_units }})</span>{% endif %}
+        {% else %}<span class="text-gray-500">Unknown</span>{% endif %}
+      </p>
+    </div>
+    <div>
+      <p class="text-xs text-gray-500 mb-1">Analysis Status</p>
+      <p>
+        {% if flight.analysis_successful %}<span class="text-emerald-400"><i class="bi bi-check-circle"></i> Successful</span><br><span class="text-xs text-gray-500">{{ flight.analyzed_at|date:"M d, H:i" }}</span>
+        {% else %}<span class="text-red-400"><i class="bi bi-x-circle"></i> Failed</span><br>{% if flight.analysis_error %}<span class="text-xs text-red-400">{{ flight.analysis_error }}</span>{% endif %}{% endif %}
+      </p>
+    </div>
+    <div>
+      <p class="text-xs text-gray-500 mb-1">Competition Gate</p>
+      {% if is_owner %}
+        <p id="gate-display" class="text-gray-200">
+          {% if flight.competition_gate %}{{ flight.competition_gate.name }}{% else %}<span class="text-gray-500">None</span>{% endif %}
+          <button type="button" class="text-gray-500 hover:text-gray-300 ml-1" onclick="editGate()" title="Edit gate"><i class="bi bi-pencil text-xs"></i></button>
+        </p>
+        <div id="gate-edit" style="display:none;" class="mt-1 space-y-1">
+          <select id="gate-select" class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 focus:outline-none focus:border-sky-500">
+            <option value="">No gate</option>
+            {% for gate in available_gates %}<option value="{{ gate.id }}" {% if flight.competition_gate and flight.competition_gate.id == gate.id %}selected{% endif %}>{{ gate.name }} ({{ gate.get_gate_type_display }})</option>{% endfor %}
+          </select>
+          <div class="flex gap-1">
+            <button type="button" class="bg-emerald-700 hover:bg-emerald-600 text-white text-xs px-2 py-1 rounded transition-colors" onclick="saveGate()"><i class="bi bi-check"></i> Save</button>
+            <button type="button" class="bg-gray-700 hover:bg-gray-600 text-white text-xs px-2 py-1 rounded transition-colors" onclick="cancelEditGate()"><i class="bi bi-x"></i> Cancel</button>
+          </div>
+        </div>
+      {% else %}
+        <p class="text-gray-200">{% if flight.competition_gate %}{{ flight.competition_gate.name }}{% else %}<span class="text-gray-500">None</span>{% endif %}</p>
+      {% endif %}
+    </div>
+  </div>
+  {% if is_owner and flight.competition_gate %}
+  <div class="mt-4 pt-4 border-t border-gray-800">
+    <p class="text-xs text-gray-500 mb-3">
+      Gate Metrics
+      {% if flight.gate_speed_mps %}<span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5 ml-1">Calculated</span>
+      {% else %}<span class="text-xs bg-amber-900/60 text-amber-300 border border-amber-800 rounded-full px-2 py-0.5 ml-1">Not Calculated</span>{% endif %}
+    </p>
+    {% if flight.gate_speed_mps %}
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div><p class="text-xs text-gray-500">Gate Speed</p><p class="text-gray-200">{{ flight.gate_speed_mps|floatformat:2 }} m/s <span class="text-xs text-gray-500">({{ flight.gate_speed_mps|multiply:2.23694|floatformat:1 }} mph)</span></p></div>
+        <div><p class="text-xs text-gray-500">Gate Altitude</p><p class="text-gray-200">{{ flight.gate_altitude_agl|floatformat:2 }} m AGL <span class="text-xs text-gray-500">({{ flight.gate_altitude_agl|multiply:3.28084|floatformat:1 }} ft)</span></p></div>
+        <div><p class="text-xs text-gray-500">Passed Between Gates</p><p>{% if flight.passed_between_gates %}<span class="text-emerald-400"><i class="bi bi-check-circle"></i> Yes</span>{% else %}<span class="text-amber-400"><i class="bi bi-exclamation-circle"></i> No</span>{% endif %}</p></div>
+        <div><button type="button" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors" onclick="recalculateGateMetrics()"><i class="bi bi-arrow-clockwise"></i> Recalculate</button></div>
+      </div>
+    {% else %}
+      <p class="text-sm text-gray-500 mb-2">Gate metrics have not been calculated yet.</p>
+      <button type="button" class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors" onclick="calculateGateMetrics()"><i class="bi bi-calculator"></i> Calculate Gate Metrics</button>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 
 {% if flight.data_incorrect and flight.notes %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="alert alert-warning" role="alert">
-            <div class="d-flex">
-                <div class="flex-shrink-0"><i class="bi bi-flag-fill fs-4"></i></div>
-                <div class="flex-grow-1 ms-3"><h5 class="alert-heading">Flight Flagged as Incorrect</h5><p class="mb-0">{{ flight.notes|linebreaks }}</p></div>
-            </div>
-        </div>
-    </div>
+<div class="bg-amber-900/20 border border-amber-700/50 rounded-xl p-4 mb-5 flex gap-3">
+  <i class="bi bi-flag-fill text-amber-400 text-xl shrink-0 mt-0.5"></i>
+  <div>
+    <p class="font-semibold text-amber-300 mb-1">Flight Flagged as Incorrect</p>
+    <p class="text-sm text-amber-200/80">{{ flight.notes|linebreaks }}</p>
+  </div>
 </div>
 {% endif %}
 
@@ -153,223 +171,205 @@
 <!-- FLYSIGHT-STYLE VIEWER                                        -->
 <!-- ============================================================ -->
 
-<!-- ROW 1: Time-Series Chart -->
-<div class="row mb-2">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header py-2">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div class="d-flex flex-wrap gap-1 align-items-center">
-                        <span class="text-muted me-1" style="font-size:0.78rem;">Show:</span>
-                        <button class="viewer-toggle-btn" id="tog-elevation" style="background:#1f77b4;color:#fff;border-color:#1f77b4" onclick="toggleSeries('elevation')">Elevation</button>
-                        <button class="viewer-toggle-btn" id="tog-vspeed" style="background:#ff7f0e;color:#fff;border-color:#ff7f0e" onclick="toggleSeries('vspeed')">V-Speed</button>
-                        <button class="viewer-toggle-btn" id="tog-hspeed" style="background:#2ca02c;color:#fff;border-color:#2ca02c" onclick="toggleSeries('hspeed')">H-Speed</button>
-                        <button class="viewer-toggle-btn inactive" id="tog-totalSpeed" style="background:#9467bd;color:#fff;border-color:#9467bd" onclick="toggleSeries('totalSpeed')">Total Speed</button>
-                        <button class="viewer-toggle-btn inactive" id="tog-diveAngle" style="background:#d62728;color:#fff;border-color:#d62728" onclick="toggleSeries('diveAngle')">Dive Angle</button>
-                        <button class="viewer-toggle-btn inactive" id="tog-glideRatio" style="background:#e377c2;color:#fff;border-color:#e377c2" onclick="toggleSeries('glideRatio')">Glide Ratio</button>
-                        <button class="viewer-toggle-btn inactive" id="tog-energy" style="background:#8c7d3a;color:#fff;border-color:#8c7d3a" onclick="toggleSeries('energy')">Energy</button>
-                    </div>
-                    {% if flight.is_swoop %}
-                    <div class="d-flex gap-1">
-                        <button class="btn btn-sm btn-primary viewer-zoom-btn" id="btn-zoom-swoop" onclick="zoomToSwoop()"><i class="bi bi-zoom-in"></i> Swoop</button>
-                        <button class="btn btn-sm btn-outline-secondary viewer-zoom-btn" id="btn-zoom-full" onclick="zoomToFull()"><i class="bi bi-zoom-out"></i> Full Flight</button>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="card-body p-2">
-                <div style="height:320px;position:relative;">
-                    <canvas id="flightChart"></canvas>
-                </div>
-                <!-- Cursor readout -->
-                <div id="cursorReadout" class="mt-1 text-muted" style="font-size:0.75rem;min-height:1.1em;"></div>
-            </div>
-        </div>
+<!-- Time-Series Chart -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 mb-3">
+  <div class="flex items-center justify-between flex-wrap gap-2 px-3 py-2 border-b border-gray-800">
+    <div class="flex flex-wrap gap-1 items-center">
+      <span class="text-gray-500 mr-1" style="font-size:0.78rem;">Show:</span>
+      <button class="viewer-toggle-btn" id="tog-elevation" style="background:#1f77b4;color:#fff;border-color:#1f77b4" onclick="toggleSeries('elevation')">Elevation</button>
+      <button class="viewer-toggle-btn" id="tog-vspeed" style="background:#ff7f0e;color:#fff;border-color:#ff7f0e" onclick="toggleSeries('vspeed')">V-Speed</button>
+      <button class="viewer-toggle-btn" id="tog-hspeed" style="background:#2ca02c;color:#fff;border-color:#2ca02c" onclick="toggleSeries('hspeed')">H-Speed</button>
+      <button class="viewer-toggle-btn inactive" id="tog-totalSpeed" style="background:#9467bd;color:#fff;border-color:#9467bd" onclick="toggleSeries('totalSpeed')">Total Speed</button>
+      <button class="viewer-toggle-btn inactive" id="tog-diveAngle" style="background:#d62728;color:#fff;border-color:#d62728" onclick="toggleSeries('diveAngle')">Dive Angle</button>
+      <button class="viewer-toggle-btn inactive" id="tog-glideRatio" style="background:#e377c2;color:#fff;border-color:#e377c2" onclick="toggleSeries('glideRatio')">Glide Ratio</button>
+      <button class="viewer-toggle-btn inactive" id="tog-energy" style="background:#8c7d3a;color:#fff;border-color:#8c7d3a" onclick="toggleSeries('energy')">Energy</button>
     </div>
+    {% if flight.is_swoop %}
+    <div class="flex gap-1">
+      <button class="viewer-zoom-btn bg-sky-600 text-white border border-sky-600 px-2 py-0.5 rounded" id="btn-zoom-swoop" onclick="zoomToSwoop()"><i class="bi bi-zoom-in"></i> Swoop</button>
+      <button class="viewer-zoom-btn border border-gray-600 text-gray-400 px-2 py-0.5 rounded" id="btn-zoom-full" onclick="zoomToFull()"><i class="bi bi-zoom-out"></i> Full Flight</button>
+    </div>
+    {% endif %}
+  </div>
+  <div class="p-2">
+    <div style="height:320px;position:relative;"><canvas id="flightChart"></canvas></div>
+    <div id="cursorReadout" class="mt-1 text-gray-500 text-xs" style="min-height:1.1em;"></div>
+  </div>
 </div>
 
-<!-- ROW 2: Top View | Side View | Map -->
-<div class="row mb-4 g-2">
-    <!-- Top View (Canvas) -->
-    <div class="col-md-4">
-        <div class="card viewer-panel-card">
-            <div class="card-header py-1"><small class="text-muted"><i class="bi bi-arrow-up-circle"></i> Top View (North Up)</small></div>
-            <div class="card-body p-1">
-                <canvas id="topViewCanvas" style="width:100%;height:300px;display:block;"></canvas>
-            </div>
-        </div>
-    </div>
-    <!-- Side View (Chart.js) -->
-    <div class="col-md-4">
-        <div class="card viewer-panel-card">
-            <div class="card-header py-1"><small class="text-muted"><i class="bi bi-bar-chart"></i> Side View (Elevation Profile)</small></div>
-            <div class="card-body p-1">
-                <div style="height:300px;position:relative;">
-                    <canvas id="sideViewChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Map View (Leaflet) -->
-    <div class="col-md-4">
-        <div class="card viewer-panel-card">
-            <div class="card-header py-1"><small class="text-muted"><i class="bi bi-geo"></i> Map View</small></div>
-            <div class="card-body p-1">
-                <div id="mapView" style="height:300px;width:100%;"></div>
-            </div>
-        </div>
-    </div>
+<!-- Views Row -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+  <!-- Top View -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+    <div class="px-3 py-1.5 border-b border-gray-800"><p class="text-xs text-gray-500"><i class="bi bi-arrow-up-circle"></i> Top View (North Up)</p></div>
+    <div class="p-1"><canvas id="topViewCanvas" style="width:100%;height:300px;display:block;"></canvas></div>
+  </div>
+  <!-- Side View -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+    <div class="px-3 py-1.5 border-b border-gray-800"><p class="text-xs text-gray-500"><i class="bi bi-bar-chart"></i> Side View (Elevation Profile)</p></div>
+    <div class="p-1"><div style="height:300px;position:relative;"><canvas id="sideViewChart"></canvas></div></div>
+  </div>
+  <!-- Map View -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+    <div class="px-3 py-1.5 border-b border-gray-800"><p class="text-xs text-gray-500"><i class="bi bi-geo"></i> Map View</p></div>
+    <div class="p-1"><div id="mapView" style="height:300px;width:100%;"></div></div>
+  </div>
+</div>
+{% endif %}
+
+{% if flight.analysis_successful and not flight.is_swoop %}
+<div class="bg-gray-800/60 border border-gray-700 rounded-xl p-4 mb-5 flex items-center gap-3">
+  <i class="bi bi-info-circle-fill text-gray-400 text-xl shrink-0"></i>
+  <div class="text-sm text-gray-300">
+    <strong>No swoop detected.</strong>
+    Analysis completed successfully but this flight was not identified as a swoop.
+    {% if linked_jump and linked_jump.swoop %}
+      You marked this jump as a swoop in your logbook — the GPS data may not have captured a high-dive turn.
+    {% endif %}
+  </div>
 </div>
 {% endif %}
 
 {% if flight.is_swoop and flight.analysis_successful %}
 <!-- Swoop Analysis Summary -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header"><h5 class="mb-0"><i class="bi bi-bar-chart-line"></i> Swoop Analysis Summary</h5></div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6 mb-4">
-                        <h6 class="text-primary">Turn Analysis</h6>
-                        <div class="row">
-                            <div class="col-6"><strong>Rotation:</strong><br>{% if flight.turn_rotation %}{{ flight.turn_rotation|floatformat:0 }}° {{ flight.turn_direction|title }}{% else %}<span class="text-muted">--</span>{% endif %}</div>
-                            <div class="col-6"><strong>Flare Altitude:</strong><br>{% flight_altitude flight 'flare_altitude_agl' user_units %}</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-4">
-                        <h6 class="text-success">Speed Analysis</h6>
-                        <div class="row">
-                            <div class="col-6"><strong>Max Vertical Speed:</strong><br>{% flight_max_vertical_speed flight user_units %}{% if flight.max_vspeed_altitude_agl %}<br><small class="text-muted">@ {% flight_altitude flight 'max_vspeed_altitude_agl' user_units %}</small>{% endif %}</div>
-                            <div class="col-6"><strong>Max Ground Speed:</strong><br>{% flight_max_ground_speed flight user_units %}{% if flight.max_gspeed_altitude_agl %}<br><small class="text-muted">@ {% flight_altitude flight 'max_gspeed_altitude_agl' user_units %}</small>{% endif %}</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-4">
-                        <h6 class="text-warning">Rollout Analysis</h6>
-                        <div class="row">
-                            <div class="col-6"><strong>Rollout Time:</strong><br>{% if flight.rollout_time %}{{ flight.rollout_time|floatformat:1 }}s{% else %}<span class="text-muted">--</span>{% endif %}</div>
-                            <div class="col-6"><strong>Swoop Distance:</strong><br>{% flight_swoop_distance flight user_units %}</div>
-                        </div>
-                        <div class="row mt-2">
-                            <div class="col-6"><strong>Rollout Start:</strong><br>{% flight_altitude flight 'rollout_start_altitude_agl' user_units %}</div>
-                            <div class="col-6"><strong>Rollout End:</strong><br>{% flight_altitude flight 'rollout_end_altitude_agl' user_units %}</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-4">
-                        <h6 class="text-info">Additional Metrics</h6>
-                        <div class="row">
-                            <div class="col-6"><strong>Avg Swoop Altitude:</strong><br>{% flight_altitude flight 'swoop_avg_altitude_agl' user_units %}</div>
-                            <div class="col-6"><strong>Entry Gate Speed:</strong><br>{% flight_entry_gate_speed flight user_units %}</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-4">
-                        <h6 class="text-secondary">GPS Accuracy</h6>
-                        <div class="row">
-                            <div class="col-4"><strong>Horizontal:</strong><br>{{ flight.swoop_avg_horizontal_accuracy|distance_display:user_units }}</div>
-                            <div class="col-4"><strong>Vertical:</strong><br>{{ flight.swoop_avg_vertical_accuracy|distance_display:user_units }}</div>
-                            <div class="col-4"><strong>Speed:</strong><br>{{ flight.swoop_avg_speed_accuracy|speed_display:user_units }}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="bg-gray-900 rounded-xl border border-gray-800 mb-5">
+  <div class="px-5 py-3 border-b border-gray-800">
+    <h2 class="text-sm font-semibold text-white"><i class="bi bi-bar-chart-line"></i> Swoop Analysis Summary</h2>
+  </div>
+  <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div>
+      <p class="text-xs font-semibold text-sky-400 mb-2">Turn Analysis</p>
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div><p class="text-xs text-gray-500">Rotation</p><p class="text-gray-200">{% if flight.turn_rotation %}{{ flight.turn_rotation|floatformat:0 }}° {{ flight.turn_direction|title }}{% else %}<span class="text-gray-500">--</span>{% endif %}</p></div>
+        <div><p class="text-xs text-gray-500">Flare Altitude</p><p class="text-gray-200">{% flight_altitude flight 'flare_altitude_agl' user_units %}</p></div>
+      </div>
     </div>
+    <div>
+      <p class="text-xs font-semibold text-emerald-400 mb-2">Speed Analysis</p>
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div><p class="text-xs text-gray-500">Max Vertical Speed</p><p class="text-gray-200">{% flight_max_vertical_speed flight user_units %}{% if flight.max_vspeed_altitude_agl %}<br><span class="text-xs text-gray-500">@ {% flight_altitude flight 'max_vspeed_altitude_agl' user_units %}</span>{% endif %}</p></div>
+        <div><p class="text-xs text-gray-500">Max Ground Speed</p><p class="text-gray-200">{% flight_max_ground_speed flight user_units %}{% if flight.max_gspeed_altitude_agl %}<br><span class="text-xs text-gray-500">@ {% flight_altitude flight 'max_gspeed_altitude_agl' user_units %}</span>{% endif %}</p></div>
+      </div>
+    </div>
+    <div>
+      <p class="text-xs font-semibold text-amber-400 mb-2">Rollout Analysis</p>
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div><p class="text-xs text-gray-500">Rollout Time</p><p class="text-gray-200">{% if flight.rollout_time %}{{ flight.rollout_time|floatformat:1 }}s{% else %}<span class="text-gray-500">--</span>{% endif %}</p></div>
+        <div><p class="text-xs text-gray-500">Swoop Distance</p><p class="text-gray-200">{% flight_swoop_distance flight user_units %}</p></div>
+        <div><p class="text-xs text-gray-500">Rollout Start</p><p class="text-gray-200">{% flight_altitude flight 'rollout_start_altitude_agl' user_units %}</p></div>
+        <div><p class="text-xs text-gray-500">Rollout End</p><p class="text-gray-200">{% flight_altitude flight 'rollout_end_altitude_agl' user_units %}</p></div>
+      </div>
+    </div>
+    <div>
+      <p class="text-xs font-semibold text-sky-300 mb-2">Additional Metrics</p>
+      <div class="grid grid-cols-2 gap-3 text-sm mb-3">
+        <div><p class="text-xs text-gray-500">Avg Swoop Altitude</p><p class="text-gray-200">{% flight_altitude flight 'swoop_avg_altitude_agl' user_units %}</p></div>
+        <div><p class="text-xs text-gray-500">Entry Gate Speed</p><p class="text-gray-200">{% flight_entry_gate_speed flight user_units %}</p></div>
+      </div>
+      <p class="text-xs font-semibold text-gray-400 mb-2">GPS Accuracy</p>
+      <div class="grid grid-cols-3 gap-2 text-xs">
+        <div><p class="text-gray-500">Horizontal</p><p class="text-gray-300">{{ flight.swoop_avg_horizontal_accuracy|distance_display:user_units }}</p></div>
+        <div><p class="text-gray-500">Vertical</p><p class="text-gray-300">{{ flight.swoop_avg_vertical_accuracy|distance_display:user_units }}</p></div>
+        <div><p class="text-gray-500">Speed</p><p class="text-gray-300">{{ flight.swoop_avg_speed_accuracy|speed_display:user_units }}</p></div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endif %}
 
-<!-- Gate File Upload Section -->
+<!-- Gate Course Management -->
 {% if is_owner %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header"><h6 class="mb-0"><i class="bi bi-upload"></i> Gate Course Management</h6></div>
-            <div class="card-body">
-                <p class="text-muted">Upload a new gate course file (CSV or GSW format) or select from existing courses.</p>
-                <button class="btn btn-sm btn-primary" onclick="openGateUploadModal()"><i class="bi bi-plus-circle"></i> Upload Gate Course</button>
-            </div>
-        </div>
-    </div>
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-5">
+  <h2 class="text-sm font-semibold text-white mb-1"><i class="bi bi-upload"></i> Gate Course Management</h2>
+  <p class="text-xs text-gray-500 mb-3">Upload a new gate course file (CSV or GSW format) or select from existing courses.</p>
+  <button class="bg-sky-700 hover:bg-sky-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors" @click="showGateModal = true"><i class="bi bi-plus-circle"></i> Upload Gate Course</button>
 </div>
 
-<div class="modal fade" id="gateUploadModal" tabindex="-1" role="dialog" aria-labelledby="gateUploadModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="gateUploadModalLabel">Upload Gate Course</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form id="gateUploadForm" enctype="multipart/form-data">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="form-group mb-3"><label for="gateName" class="form-label">Gate Course Name</label><input type="text" class="form-control" id="gateName" name="gate_name" placeholder="e.g., AZ Speed Gates" required></div>
-                    <div class="form-group mb-3">
-                        <label for="gateType" class="form-label">Gate Type</label>
-                        <select class="form-select" id="gateType" name="gate_type" required>
-                            <option value="">-- Select Gate Type --</option>
-                            <option value="speed">Speed Course (5 gates)</option>
-                            <option value="standard">Accuracy Course (4 gates)</option>
-                            <option value="distance">Distance Course (2 gates)</option>
-                        </select>
-                    </div>
-                    <div class="form-group mb-3"><label for="gateFile" class="form-label">Gate File (.CSV or .GSW)</label><input type="file" class="form-control" id="gateFile" name="gate_file" accept=".csv,.gsw,.CSV,.GSW" required><small class="text-muted">Maximum 5MB</small></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="uploadGateFile()"><i class="bi bi-upload"></i> Upload & Parse</button>
-                </div>
-            </form>
-        </div>
+<!-- Gate Upload Alpine Panel -->
+<div x-show="showGateModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showGateModal = false">
+  <div class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md mx-4 p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-semibold text-white">Upload Gate Course</h3>
+      <button @click="showGateModal = false" class="text-gray-500 hover:text-gray-300"><i class="bi bi-x-lg"></i></button>
     </div>
+    <form id="gateUploadForm" enctype="multipart/form-data" class="space-y-4">
+      {% csrf_token %}
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">Gate Course Name</label>
+        <input type="text" id="gateName" name="gate_name" placeholder="e.g., AZ Speed Gates" required
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">Gate Type</label>
+        <select id="gateType" name="gate_type" required
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          <option value="">-- Select Gate Type --</option>
+          <option value="speed">Speed Course (5 gates)</option>
+          <option value="standard">Accuracy Course (4 gates)</option>
+          <option value="distance">Distance Course (2 gates)</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400 block mb-1">Gate File (.CSV or .GSW)</label>
+        <input type="file" id="gateFile" name="gate_file" accept=".csv,.gsw,.CSV,.GSW" required
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+        <p class="text-xs text-gray-500 mt-0.5">Maximum 5MB</p>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" @click="showGateModal = false" class="border border-gray-700 text-gray-400 hover:text-gray-200 text-sm px-4 py-2 rounded-lg transition-colors">Cancel</button>
+        <button type="button" class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors" onclick="uploadGateFile()"><i class="bi bi-upload"></i> Upload & Parse</button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endif %}
 
 {% if flight.performance_grade %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card border-primary">
-            <div class="card-header bg-primary text-white"><h6 class="mb-0"><i class="bi bi-award"></i> Performance Grade: {{ flight.performance_grade }}</h6></div>
-            <div class="card-body">
-                <p class="mb-2">
-                    {% if flight.performance_grade == 'A' %}<strong>Excellent:</strong> Within 1% of your personal best performance. Outstanding swoop!
-                    {% elif flight.performance_grade == 'B' %}<strong>Very Good:</strong> Within 10% of your personal best. Strong swoop execution.
-                    {% elif flight.performance_grade == 'C' %}<strong>Good:</strong> Within 30% of your personal best. Solid swoop performance.
-                    {% elif flight.performance_grade == 'D' %}<strong>Developing:</strong> Within 50% of your personal best. Room for improvement.
-                    {% elif flight.performance_grade == 'F' %}<strong>Needs Work:</strong> More than 50% off your personal best. Focus on consistency.
-                    {% else %}<strong>No Grade:</strong> Need more flights for comparison data.{% endif %}
-                </p>
-                <small class="text-muted">Grading based on your personal best vertical speed and swoop distance achievements.</small>
-            </div>
-        </div>
-    </div>
+<div class="bg-gray-900 rounded-xl border border-sky-800 mb-5 overflow-hidden">
+  <div class="bg-sky-900/40 px-5 py-3 border-b border-sky-800">
+    <p class="text-sm font-semibold text-sky-300"><i class="bi bi-award"></i> Performance Grade: {{ flight.performance_grade }}</p>
+  </div>
+  <div class="p-5">
+    <p class="text-sm text-gray-300 mb-2">
+      {% if flight.performance_grade == 'A' %}<strong>Excellent:</strong> Within 1% of your personal best performance. Outstanding swoop!
+      {% elif flight.performance_grade == 'B' %}<strong>Very Good:</strong> Within 10% of your personal best. Strong swoop execution.
+      {% elif flight.performance_grade == 'C' %}<strong>Good:</strong> Within 30% of your personal best. Solid swoop performance.
+      {% elif flight.performance_grade == 'D' %}<strong>Developing:</strong> Within 50% of your personal best. Room for improvement.
+      {% elif flight.performance_grade == 'F' %}<strong>Needs Work:</strong> More than 50% off your personal best. Focus on consistency.
+      {% else %}<strong>No Grade:</strong> Need more flights for comparison data.{% endif %}
+    </p>
+    <p class="text-xs text-gray-500">Grading based on your personal best vertical speed and swoop distance achievements.</p>
+  </div>
 </div>
 {% endif %}
 
-<!-- Notes Modal -->
-<div class="modal fade" id="notesModal" tabindex="-1" aria-labelledby="notesModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="notesModalLabel">{% if flight.data_incorrect %}Update Notes for Flagged Flight{% else %}Flag Flight as Incorrect{% endif %}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="flagForm" method="post" action="{% url 'toggle_data_incorrect' flight.id %}">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <label for="flagNotes" class="form-label">What's wrong with this flight data?</label>
-                        <textarea class="form-control" id="flagNotes" name="notes" rows="4" placeholder="Please describe what issues you found with this flight data...">{{ flight.notes }}</textarea>
-                        <div class="form-text">This will help improve data quality and analysis accuracy.</div>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" onclick="submitFlagForm()"><i class="bi bi-flag"></i> Flag as Incorrect</button>
-            </div>
-        </div>
+<!-- Flag Notes Alpine Panel -->
+<div x-show="showFlagModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showFlagModal = false">
+  <div class="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md mx-4 p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-semibold text-white">{% if flight.data_incorrect %}Update Notes for Flagged Flight{% else %}Flag Flight as Incorrect{% endif %}</h3>
+      <button @click="showFlagModal = false" class="text-gray-500 hover:text-gray-300"><i class="bi bi-x-lg"></i></button>
     </div>
+    <form id="flagForm" method="post" action="{% url 'toggle_data_incorrect' flight.id %}">
+      {% csrf_token %}
+      <div class="mb-4">
+        <label class="text-xs text-gray-400 block mb-1">What's wrong with this flight data?</label>
+        <textarea id="flagNotes" name="notes" rows="4"
+                  placeholder="Please describe what issues you found with this flight data..."
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">{{ flight.notes }}</textarea>
+        <p class="text-xs text-gray-500 mt-1">This will help improve data quality and analysis accuracy.</p>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button type="button" @click="showFlagModal = false" class="border border-gray-700 text-gray-400 hover:text-gray-200 text-sm px-4 py-2 rounded-lg transition-colors">Cancel</button>
+        <button type="button" class="bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors" onclick="submitFlagForm()">
+          <i class="bi bi-flag"></i> {% if flight.data_incorrect %}Remove Flag{% else %}Flag as Incorrect{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
+</div><!-- end #flight-page -->
 {% endblock %}
 
 {% block extra_js %}
@@ -461,6 +461,27 @@ const eventLinesPlugin = {
 };
 
 // ============================================================
+// DRAG-ZOOM PLUGIN (draws selection rect on top of chart)
+// ============================================================
+let dragZoom = { active: false, x1: null, x2: null };
+const dragZoomPlugin = {
+    id: 'dragZoom',
+    afterDraw(chart) {
+        if (!dragZoom.active || dragZoom.x1 === null || dragZoom.x2 === null) return;
+        const { ctx, chartArea: ca } = chart;
+        const px1 = Math.min(dragZoom.x1, dragZoom.x2);
+        const px2 = Math.max(dragZoom.x1, dragZoom.x2);
+        ctx.save();
+        ctx.fillStyle = 'rgba(31,119,180,0.15)';
+        ctx.fillRect(px1, ca.top, px2 - px1, ca.height);
+        ctx.strokeStyle = 'rgba(31,119,180,0.7)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px1, ca.top, px2 - px1, ca.height);
+        ctx.restore();
+    }
+};
+
+// ============================================================
 // MAIN CHART
 // ============================================================
 function buildDatasets() {
@@ -482,7 +503,7 @@ function buildDatasets() {
 const flightChart = new Chart(document.getElementById('flightChart').getContext('2d'), {
     type: 'line',
     data: { datasets: buildDatasets() },
-    plugins: [eventLinesPlugin],
+    plugins: [eventLinesPlugin, dragZoomPlugin],
     options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -500,10 +521,6 @@ const flightChart = new Chart(document.getElementById('flightChart').getContext(
                     },
                 },
             },
-        },
-        onHover: (event, elements) => {
-            if (elements.length > 0) updateCursor(elements[0].index);
-            else clearCursor();
         },
         scales: {
             x: {
@@ -529,36 +546,50 @@ function toggleSeries(key) {
     document.getElementById('tog-' + key).classList.toggle('inactive', !SERIES_VISIBLE[key]);
 }
 
-function applyZoom(startIdx, endIdx) {
+function applyZoom(startIdx, endIdx, mapBounds) {
     viewStart = startIdx; viewEnd = endIdx;
     flightChart.options.scales.x.min = CD.timestamps[startIdx];
     flightChart.options.scales.x.max = CD.timestamps[endIdx];
     flightChart.update('none');
-    // Sync map bounds
-    if (zoomedToSwoop && VD.swoop_bounds) {
-        leafletMap.fitBounds(VD.swoop_bounds, { padding: [15, 15] });
+    // Sync side view X axis (distance) to same index range
+    sideViewChart.options.scales.x.min = distData[startIdx];
+    sideViewChart.options.scales.x.max = distData[endIdx];
+    sideViewChart.update('none');
+    // Sync top view projection to visible range
+    drawTopView();
+    // Sync map: use explicit bounds if provided, else compute from visible coords
+    if (mapBounds) {
+        leafletMap.fitBounds(mapBounds, { padding: [15, 15] });
     } else {
-        leafletMap.fitBounds(VD.full_bounds, { padding: [15, 15] });
+        const vis = VD.coordinates.slice(startIdx, endIdx + 1);
+        if (vis.length > 0) leafletMap.fitBounds(L.latLngBounds(vis), { padding: [15, 15] });
+    }
+}
+
+function setZoomActive(btn, active) {
+    if (!btn) return;
+    if (active) {
+        btn.classList.remove('border-gray-600', 'text-gray-400');
+        btn.classList.add('bg-sky-600', 'text-white', 'border-sky-600');
+    } else {
+        btn.classList.remove('bg-sky-600', 'text-white', 'border-sky-600');
+        btn.classList.add('border-gray-600', 'text-gray-400');
     }
 }
 
 function zoomToSwoop() {
     if (EV.flare === undefined || EV.landing === undefined) return;
     zoomedToSwoop = true;
-    document.getElementById('btn-zoom-swoop').classList.remove('btn-outline-primary');
-    document.getElementById('btn-zoom-swoop').classList.add('btn-primary');
-    document.getElementById('btn-zoom-full').classList.remove('btn-primary');
-    document.getElementById('btn-zoom-full').classList.add('btn-outline-secondary');
-    applyZoom(Math.max(0, EV.flare - CONTEXT_STEPS), Math.min(N - 1, EV.landing + CONTEXT_STEPS));
+    setZoomActive(document.getElementById('btn-zoom-swoop'), true);
+    setZoomActive(document.getElementById('btn-zoom-full'), false);
+    applyZoom(Math.max(0, EV.flare - CONTEXT_STEPS), Math.min(N - 1, EV.landing + CONTEXT_STEPS), VD.swoop_bounds);
 }
 
 function zoomToFull() {
     zoomedToSwoop = false;
-    document.getElementById('btn-zoom-full').classList.remove('btn-outline-secondary');
-    document.getElementById('btn-zoom-full').classList.add('btn-primary');
-    document.getElementById('btn-zoom-swoop').classList.remove('btn-primary');
-    document.getElementById('btn-zoom-swoop').classList.add('btn-outline-primary');
-    applyZoom(0, N - 1);
+    setZoomActive(document.getElementById('btn-zoom-full'), true);
+    setZoomActive(document.getElementById('btn-zoom-swoop'), false);
+    applyZoom(0, N - 1, VD.full_bounds);
 }
 
 // ============================================================
@@ -606,28 +637,50 @@ function drawTopView() {
 
     const coords = VD.coordinates;
     const swS = VD.swoop_start_idx, swE = VD.swoop_end_idx;
+    const visS = viewStart, visE = Math.min(viewEnd, coords.length - 1);
 
-    // Full flight path (gray)
-    if (coords.length > 1) {
+    // Compute bounding box from visible range only (so the view zooms with the chart)
+    let vxMin = Infinity, vxMax = -Infinity, vyMin = Infinity, vyMax = -Infinity;
+    for (let i = visS; i <= visE; i++) {
+        const { x, y } = latLonToMeters(coords[i][0], coords[i][1]);
+        if (x < vxMin) vxMin = x; if (x > vxMax) vxMax = x;
+        if (y < vyMin) vyMin = y; if (y > vyMax) vyMax = y;
+    }
+    const vxRange = vxMax - vxMin || 1;
+    const vyRange = vyMax - vyMin || 1;
+
+    function proj(lat, lon) {
+        const PAD = 20;
+        const scale = Math.min((W - 2 * PAD) / vxRange, (H - 2 * PAD) / vyRange);
+        const drawW = vxRange * scale, drawH = vyRange * scale;
+        const ox = (W - drawW) / 2, oy = (H - drawH) / 2;
+        const { x, y } = latLonToMeters(lat, lon);
+        return { px: ox + (x - vxMin) * scale, py: oy + (y - vyMin) * scale };
+    }
+
+    // Visible flight path (gray)
+    if (visE > visS) {
         topCtx.beginPath();
         topCtx.strokeStyle = '#ccc'; topCtx.lineWidth = 1.5;
-        const p0 = project(coords[0][0], coords[0][1]);
+        const p0 = proj(coords[visS][0], coords[visS][1]);
         topCtx.moveTo(p0.px, p0.py);
-        for (let i = 1; i < coords.length; i++) {
-            const p = project(coords[i][0], coords[i][1]);
+        for (let i = visS + 1; i <= visE; i++) {
+            const p = proj(coords[i][0], coords[i][1]);
             topCtx.lineTo(p.px, p.py);
         }
         topCtx.stroke();
     }
 
-    // Swoop portion (blue)
-    if (swS !== null && swE !== null && swE > swS) {
+    // Swoop portion (blue) — only what's within the visible range
+    const swDrawS = Math.max(swS ?? visS, visS);
+    const swDrawE = Math.min(swE ?? visE, visE);
+    if (swS !== null && swE !== null && swDrawE > swDrawS) {
         topCtx.beginPath();
         topCtx.strokeStyle = '#1f77b4'; topCtx.lineWidth = 2.5;
-        const ps = project(coords[swS][0], coords[swS][1]);
+        const ps = proj(coords[swDrawS][0], coords[swDrawS][1]);
         topCtx.moveTo(ps.px, ps.py);
-        for (let i = swS + 1; i <= swE; i++) {
-            const p = project(coords[i][0], coords[i][1]);
+        for (let i = swDrawS + 1; i <= swDrawE; i++) {
+            const p = proj(coords[i][0], coords[i][1]);
             topCtx.lineTo(p.px, p.py);
         }
         topCtx.stroke();
@@ -645,25 +698,25 @@ function drawTopView() {
     topCtx.moveTo(W - 17, 22); topCtx.lineTo(W - 20, 28); topCtx.lineTo(W - 14, 28); topCtx.closePath(); topCtx.fill();
     topCtx.restore();
 
-    // Event markers
+    // Event markers — only if within visible range
     const evMarkers = [
-        { key: 'flare',         color: '#d62728', label: 'F', r: 5 },
-        { key: 'max_vspeed',    color: '#9467bd', label: 'VS', r: 4 },
-        { key: 'max_gspeed',    color: '#2ca02c', label: 'HS', r: 4 },
-        { key: 'rollout_start', color: '#ff7f0e', label: 'R', r: 4 },
-        { key: 'landing',       color: '#8c564b', label: 'L', r: 5 },
+        { key: 'flare',         color: '#d62728', r: 5 },
+        { key: 'max_vspeed',    color: '#9467bd', r: 4 },
+        { key: 'max_gspeed',    color: '#2ca02c', r: 4 },
+        { key: 'rollout_start', color: '#ff7f0e', r: 4 },
+        { key: 'landing',       color: '#8c564b', r: 5 },
     ];
     for (const { key, color, r } of evMarkers) {
         const idx = EV[key];
-        if (idx === undefined || idx >= coords.length) continue;
-        const { px, py } = project(coords[idx][0], coords[idx][1]);
+        if (idx === undefined || idx < visS || idx > visE || idx >= coords.length) continue;
+        const { px, py } = proj(coords[idx][0], coords[idx][1]);
         topCtx.beginPath(); topCtx.arc(px, py, r, 0, 2 * Math.PI);
         topCtx.fillStyle = color; topCtx.fill();
     }
 
-    // Cursor dot
-    if (cursorIdx >= 0 && cursorIdx < coords.length) {
-        const { px, py } = project(coords[cursorIdx][0], coords[cursorIdx][1]);
+    // Cursor dot — only if within visible range
+    if (cursorIdx >= 0 && cursorIdx >= visS && cursorIdx <= visE && cursorIdx < coords.length) {
+        const { px, py } = proj(coords[cursorIdx][0], coords[cursorIdx][1]);
         topCtx.beginPath(); topCtx.arc(px, py, 6, 0, 2 * Math.PI);
         topCtx.fillStyle = 'rgba(255,107,107,0.85)'; topCtx.fill();
         topCtx.strokeStyle = '#fff'; topCtx.lineWidth = 1.5; topCtx.stroke();
@@ -842,6 +895,85 @@ function clearCursor() {
     flightChart.draw();
 }
 
+// ============================================================
+// DRAG-TO-ZOOM + CURSOR (native canvas events)
+// Drag to select a time range → zooms all 4 panels.
+// Double-click → reset to full flight.
+// ============================================================
+(function() {
+    const fc = flightChart.canvas;
+    fc.style.cursor = 'crosshair';
+    let dragActive = false, dragStartPx = null, dragStartT = null;
+
+    fc.addEventListener('mousedown', e => {
+        const rect = fc.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const ca = flightChart.chartArea;
+        if (x < ca.left || x > ca.right) return;
+        dragActive = true;
+        dragStartPx = x;
+        dragStartT = flightChart.scales.x.getValueForPixel(x);
+        dragZoom.active = false;
+        dragZoom.x1 = x; dragZoom.x2 = x;
+        e.preventDefault();
+    });
+
+    fc.addEventListener('mousemove', e => {
+        const rect = fc.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const ca = flightChart.chartArea;
+
+        if (dragActive && Math.abs(x - dragStartPx) > 5) {
+            dragZoom.active = true;
+            dragZoom.x2 = x;
+            flightChart.draw();
+        }
+
+        // Update linked cursor across all panels
+        if (x >= ca.left && x <= ca.right) {
+            const tVal = flightChart.scales.x.getValueForPixel(x);
+            let lo = viewStart, hi = viewEnd;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (CD.timestamps[mid] < tVal) lo = mid + 1; else hi = mid;
+            }
+            updateCursor(lo);
+        }
+    });
+
+    fc.addEventListener('mouseup', e => {
+        if (!dragActive) return;
+        const rect = fc.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const wasDrag = dragZoom.active;
+        dragActive = false;
+        dragZoom.active = false; dragZoom.x1 = null; dragZoom.x2 = null;
+
+        if (wasDrag) {
+            const t1 = Math.min(dragStartT, flightChart.scales.x.getValueForPixel(x));
+            const t2 = Math.max(dragStartT, flightChart.scales.x.getValueForPixel(x));
+            let si = CD.timestamps.findIndex(t => t >= t1);
+            let ei = CD.timestamps.reduce((best, t, i) => t <= t2 ? i : best, 0);
+            if (si < 0) si = viewStart;
+            if (si >= ei) { flightChart.draw(); return; }
+            zoomedToSwoop = false;
+            setZoomActive(document.getElementById('btn-zoom-swoop'), false);
+            setZoomActive(document.getElementById('btn-zoom-full'), false);
+            applyZoom(si, ei);
+        }
+        flightChart.draw();
+    });
+
+    fc.addEventListener('mouseleave', () => {
+        dragActive = false;
+        dragZoom.active = false; dragZoom.x1 = null; dragZoom.x2 = null;
+        clearCursor();
+        flightChart.draw();
+    });
+
+    fc.addEventListener('dblclick', () => zoomToFull());
+})();
+
 // Initial draw
 drawTopView();
 </script>
@@ -849,7 +981,7 @@ drawTopView();
 
 <script>
 // ============================================================
-// GATE / FLIGHT MANAGEMENT FUNCTIONS (unchanged)
+// GATE / FLIGHT MANAGEMENT FUNCTIONS
 // ============================================================
 function selectGate() {
     const selector = document.getElementById('gateSelector');
@@ -861,8 +993,6 @@ function selectGate() {
     }).then(r => r.json()).then(d => { if (d.success) window.location.reload(); else alert('Failed: ' + (d.error || 'Unknown error')); })
     .catch(e => alert('Error: ' + e));
 }
-
-function openGateUploadModal() { new bootstrap.Modal(document.getElementById('gateUploadModal')).show(); }
 
 function uploadGateFile() {
     const gateName = document.getElementById('gateName').value;
@@ -876,17 +1006,16 @@ function uploadGateFile() {
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Uploading...'; btn.disabled = true;
     fetch('{% url "upload_gate_file" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: fd })
     .then(r => r.json()).then(d => {
-        if (d.success) { alert('Uploaded successfully!'); document.getElementById('gateUploadModal').querySelector('.btn-close').click(); setTimeout(() => window.location.reload(), 500); }
-        else { alert('Failed: ' + (d.error || 'Unknown error')); btn.innerHTML = orig; btn.disabled = false; }
+        if (d.success) {
+            alert('Uploaded successfully!');
+            Alpine.$data(document.getElementById('flight-page')).showGateModal = false;
+            setTimeout(() => window.location.reload(), 500);
+        } else { alert('Failed: ' + (d.error || 'Unknown error')); btn.innerHTML = orig; btn.disabled = false; }
     }).catch(e => { alert('Error: ' + e); btn.innerHTML = orig; btn.disabled = false; });
 }
 
 function toggleDataIncorrect() {
-    const modal = new bootstrap.Modal(document.getElementById('notesModal'));
-    const submitBtn = document.querySelector('#notesModal .btn-warning');
-    {% if flight.data_incorrect %}submitBtn.innerHTML = '<i class="bi bi-flag"></i> Remove Flag';
-    {% else %}submitBtn.innerHTML = '<i class="bi bi-flag"></i> Flag as Incorrect';{% endif %}
-    modal.show();
+    Alpine.$data(document.getElementById('flight-page')).showFlagModal = true;
 }
 
 function submitFlagForm() { document.getElementById('flagForm').submit(); }
@@ -910,7 +1039,7 @@ function confirmDelete() {
 
 function editFlightName() {
     document.getElementById('flight-name-display').style.display = 'none';
-    document.getElementById('flight-name-edit').style.display = 'inline-block';
+    document.getElementById('flight-name-edit').style.display = 'flex';
     document.getElementById('flight-name-input').focus();
 }
 function cancelEditFlightName() {
@@ -921,7 +1050,7 @@ function cancelEditFlightName() {
 function saveFlightName() {
     const newName = document.getElementById('flight-name-input').value.trim();
     if (!newName) { alert('Flight name cannot be empty'); return; }
-    const btn = document.querySelector('#flight-name-edit .btn-success');
+    const btn = document.querySelector('#flight-name-edit button');
     const orig = btn.innerHTML; btn.innerHTML = '<i class="bi bi-hourglass-split"></i>'; btn.disabled = true;
     fetch('{% url "update_flight_name" flight.id %}', {
         method: 'POST',
@@ -935,10 +1064,10 @@ function saveFlightName() {
 }
 
 function editGate() { document.getElementById('gate-display').style.display = 'none'; document.getElementById('gate-edit').style.display = 'block'; }
-function cancelEditGate() { document.getElementById('gate-display').style.display = 'inline'; document.getElementById('gate-edit').style.display = 'none'; }
+function cancelEditGate() { document.getElementById('gate-display').style.display = 'block'; document.getElementById('gate-edit').style.display = 'none'; }
 function saveGate() {
     const gateId = document.getElementById('gate-select').value;
-    const btn = document.querySelector('#gate-edit .btn-success');
+    const btn = document.querySelector('#gate-edit .bg-emerald-700');
     const orig = btn.innerHTML; btn.innerHTML = '<i class="bi bi-hourglass-split"></i>'; btn.disabled = true;
     fetch('{% url "update_flight_gate" flight.id %}', {
         method: 'POST',

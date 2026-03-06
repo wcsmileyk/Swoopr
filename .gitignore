@@ -27,6 +27,12 @@ Thumbs.db
 venv/
 env/
 .venv/
+lib/
+pyvenv.cfg
+CACHEDIR.TAG
+
+# Claude Code memory
+.claude/
 
 # Database files
 *.db

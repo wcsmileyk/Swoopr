@@ -25,6 +25,8 @@ class UserProfile(models.Model):
     coach = models.BooleanField(default=False)
     affi = models.BooleanField(default=False)
     ti = models.BooleanField(default=False)
+    videographer = models.BooleanField(default=False)
+    pro_rating = models.BooleanField(default=False, help_text='USPA Pro rating')
 
     # Jump experience
     total_jumps = models.IntegerField(null=True, blank=True)
@@ -32,7 +34,11 @@ class UserProfile(models.Model):
     exit_weight = models.FloatField(null=True, blank=True, help_text="Exit weight in lbs")
 
     # Contact and location
-    home_dz = models.CharField(max_length=100, blank=True, help_text="Home drop zone")
+    home_dz = models.CharField(max_length=100, blank=True, help_text="Home drop zone (legacy text)")
+    home_dropzone = models.ForeignKey(
+        'logbook.Dropzone', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='home_pilots'
+    )
     phone = models.CharField(max_length=20, blank=True)
     emergency_contact = models.CharField(max_length=100, blank=True)
     emergency_phone = models.CharField(max_length=20, blank=True)
@@ -46,6 +52,12 @@ class UserProfile(models.Model):
     timezone = models.CharField(max_length=50, default='UTC')
     public_profile = models.BooleanField(default=False, help_text="Allow others to see your stats")
     auto_public_flights = models.BooleanField(default=False, help_text="Automatically make all uploaded flights public")
+
+    # Logbook settings
+    jump_number_offset = models.PositiveIntegerField(
+        default=1,
+        help_text='Starting jump number. All jumps are renumbered from this value.'
+    )
 
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
@@ -98,6 +110,11 @@ class Canopy(models.Model):
     model = models.CharField(max_length=50, help_text="e.g., Sabre2, Katana")
     size = models.IntegerField(help_text="Size in square feet")
     year_manufactured = models.IntegerField(null=True, blank=True)
+
+    # Canopy type flags
+    elliptical = models.BooleanField(default=False, help_text='Highly elliptical planform')
+    cross_braced = models.BooleanField(default=False, help_text='Cross-braced (e.g. Velocity, VK)')
+    schuemann = models.BooleanField(default=False, help_text='Schümann planform (e.g. Crossfire, Katana)')
 
     # Configuration
     line_set = models.CharField(max_length=50, blank=True, help_text="Line set type if modified")

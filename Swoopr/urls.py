@@ -23,4 +23,5 @@ urlpatterns = [
     path('', lambda request: redirect('/users/dashboard/')),  # Redirect root to dashboard
     path('users/', include('users.urls')),
     path('flights/', include('flights.urls')),
+    path('logbook/', include('logbook.urls')),
 ]

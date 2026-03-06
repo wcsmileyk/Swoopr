@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% block title %}Jump Log — Flare{% endblock %}
+
+{% block content %}
+<div x-data="{
+       sort: '{{ current_sort }}',
+       dir:  '{{ current_dir }}',
+       setSort(col) {
+         if (this.sort === col) {
+           this.dir = this.dir === 'desc' ? 'asc' : 'desc';
+         } else {
+           this.sort = col;
+           this.dir = 'desc';
+         }
+         this.$dispatch('sortChange');
+       }
+     }">
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-white">Jump Log</h1>
+    <span id="result-count" class="text-sm text-gray-400">{{ total_count }} jump{{ total_count|pluralize }}</span>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
+    <form id="filter-form"
+          class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"
+          hx-get="{% url 'jump_list' %}"
+          hx-trigger="change, sortChange from:body"
+          hx-target="#jump-tbody"
+          hx-indicator="#spinner">
+
+      <input type="hidden" name="sort" :value="sort">
+      <input type="hidden" name="dir"  :value="dir">
+
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">From</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">To</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Dropzone</label>
+        <select name="dropzone"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+          <option value="">All</option>
+          {% for dz in dropzones %}
+            <option value="{{ dz.id }}" {% if filters.dropzone == dz.id|stringformat:"s" %}selected{% endif %}>{{ dz.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Jump Type</label>
+        <select name="jump_type"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+          <option value="">All</option>
+          {% for jt in jump_types %}
+            <option value="{{ jt.id }}" {% if filters.jump_type == jt.id|stringformat:"s" %}selected{% endif %}>{{ jt.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Canopy</label>
+        <select name="canopy"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+          <option value="">All</option>
+          {% for c in canopies %}
+            <option value="{{ c.id }}" {% if filters.canopy == c.id|stringformat:"s" %}selected{% endif %}>{{ c.display_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex items-end">
+        <label class="flex items-center gap-2 cursor-pointer pb-2">
+          <input type="checkbox" name="swoop_only" value="1"
+                 {% if filters.swoop_only %}checked{% endif %}
+                 class="w-4 h-4 accent-sky-500">
+          <span class="text-sm text-gray-300">Swoops only</span>
+        </label>
+      </div>
+    </form>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+    <div id="spinner" class="htmx-indicator h-0.5 bg-sky-500 w-full"></div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-800 text-xs uppercase tracking-widest text-gray-500 select-none">
+
+          {% with col="jump_num" label="#" %}
+          <th class="px-4 py-3 text-left w-16">
+            <button type="button" @click="setSort('{{ col }}')"
+                    class="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
+                    :class="sort === '{{ col }}' ? 'text-gray-200' : ''">
+              {{ label }}
+              <span x-show="sort === '{{ col }}'" x-text="dir === 'desc' ? '↓' : '↑'" class="text-sky-400"></span>
+            </button>
+          </th>
+          {% endwith %}
+
+          {% with col="date" label="Date" %}
+          <th class="px-4 py-3 text-left">
+            <button type="button" @click="setSort('{{ col }}')"
+                    class="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
+                    :class="sort === '{{ col }}' ? 'text-gray-200' : ''">
+              {{ label }}
+              <span x-show="sort === '{{ col }}'" x-text="dir === 'desc' ? '↓' : '↑'" class="text-sky-400"></span>
+            </button>
+          </th>
+          {% endwith %}
+
+          {% with col="dropzone" label="Dropzone" %}
+          <th class="px-4 py-3 text-left">
+            <button type="button" @click="setSort('{{ col }}')"
+                    class="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
+                    :class="sort === '{{ col }}' ? 'text-gray-200' : ''">
+              {{ label }}
+              <span x-show="sort === '{{ col }}'" x-text="dir === 'desc' ? '↓' : '↑'" class="text-sky-400"></span>
+            </button>
+          </th>
+          {% endwith %}
+
+          {% with col="aircraft" label="Aircraft" %}
+          <th class="px-4 py-3 text-left">
+            <button type="button" @click="setSort('{{ col }}')"
+                    class="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
+                    :class="sort === '{{ col }}' ? 'text-gray-200' : ''">
+              {{ label }}
+              <span x-show="sort === '{{ col }}'" x-text="dir === 'desc' ? '↓' : '↑'" class="text-sky-400"></span>
+            </button>
+          </th>
+          {% endwith %}
+
+          {% with col="canopy" label="Canopy" %}
+          <th class="px-4 py-3 text-left">
+            <button type="button" @click="setSort('{{ col }}')"
+                    class="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
+                    :class="sort === '{{ col }}' ? 'text-gray-200' : ''">
+              {{ label }}
+              <span x-show="sort === '{{ col }}'" x-text="dir === 'desc' ? '↓' : '↑'" class="text-sky-400"></span>
+            </button>
+          </th>
+          {% endwith %}
+
+          {% with col="jump_type" label="Type" %}
+          <th class="px-4 py-3 text-left">
+            <button type="button" @click="setSort('{{ col }}')"
+                    class="flex items-center gap-1.5 hover:text-gray-300 transition-colors"
+                    :class="sort === '{{ col }}' ? 'text-gray-200' : ''">
+              {{ label }}
+              <span x-show="sort === '{{ col }}'" x-text="dir === 'desc' ? '↓' : '↑'" class="text-sky-400"></span>
+            </button>
+          </th>
+          {% endwith %}
+
+          {% with col="altitude" label="Alt (ft)" %}
+          <th class="px-4 py-3 text-right">
+            <button type="button" @click="setSort('{{ col }}')"
+                    class="flex items-center justify-end gap-1.5 w-full hover:text-gray-300 transition-colors"
+                    :class="sort === '{{ col }}' ? 'text-gray-200' : ''">
+              {{ label }}
+              <span x-show="sort === '{{ col }}'" x-text="dir === 'desc' ? '↓' : '↑'" class="text-sky-400"></span>
+            </button>
+          </th>
+          {% endwith %}
+
+          <th class="px-4 py-3 text-center">Swoop</th>
+          <th class="px-4 py-3 text-center">GPS</th>
+
+          <th class="px-4 py-3 w-10"></th>
+        </tr>
+      </thead>
+      <tbody id="jump-tbody">
+        {% include 'logbook/partials/jump_table_body.html' %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target.id === 'jump-tbody') {
+      const count = e.detail.target.querySelectorAll('tr[data-jump]').length;
+      document.getElementById('result-count').textContent =
+        count + ' jump' + (count !== 1 ? 's' : '');
+    }
+  });
+</script>
+{% endblock %}

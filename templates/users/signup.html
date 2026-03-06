@@ -1,154 +1,98 @@
 {% extends 'base.html' %}
-
-{% block title %}Sign Up - Swoopr{% endblock %}
+{% block title %}Sign Up — Flare{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8 col-lg-6">
-            <div class="card shadow">
-                <div class="card-header bg-primary text-white">
-                    <h3 class="card-title mb-0">
-                        <i class="bi bi-person-plus"></i> Create Your Swoopr Account
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted mb-4">Join the community and start tracking your swoops!</p>
+<div class="max-w-2xl mx-auto">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-8">
+    <h1 class="text-xl font-bold text-white mb-1">Create your account</h1>
+    <p class="text-sm text-gray-400 mb-6">Join the community and start tracking your swoops.</p>
 
-                    <form method="post">
-                        {% csrf_token %}
+    <form method="post" class="space-y-6">
+      {% csrf_token %}
 
-                        <!-- Account Information -->
-                        <h5 class="mb-3">Account Information</h5>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.username.id_for_label }}" class="form-label">Username *</label>
-                                {{ form.username }}
-                                {% if form.username.errors %}
-                                    <div class="text-danger small">{{ form.username.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.email.id_for_label }}" class="form-label">Email *</label>
-                                {{ form.email }}
-                                {% if form.email.errors %}
-                                    <div class="text-danger small">{{ form.email.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.first_name.id_for_label }}" class="form-label">First Name</label>
-                                {{ form.first_name }}
-                                {% if form.first_name.errors %}
-                                    <div class="text-danger small">{{ form.first_name.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.last_name.id_for_label }}" class="form-label">Last Name</label>
-                                {{ form.last_name }}
-                                {% if form.last_name.errors %}
-                                    <div class="text-danger small">{{ form.last_name.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.password1.id_for_label }}" class="form-label">Password *</label>
-                                {{ form.password1 }}
-                                {% if form.password1.errors %}
-                                    <div class="text-danger small">{{ form.password1.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.password2.id_for_label }}" class="form-label">Confirm Password *</label>
-                                {{ form.password2 }}
-                                {% if form.password2.errors %}
-                                    <div class="text-danger small">{{ form.password2.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <!-- Pilot Information -->
-                        <hr class="my-4">
-                        <h5 class="mb-3">Pilot Information <small class="text-muted">(Optional)</small></h5>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.license_number.id_for_label }}" class="form-label">License Number</label>
-                                {{ form.license_number }}
-                                {% if form.license_number.errors %}
-                                    <div class="text-danger small">{{ form.license_number.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.uspa_number.id_for_label }}" class="form-label">USPA Number</label>
-                                {{ form.uspa_number }}
-                                {% if form.uspa_number.errors %}
-                                    <div class="text-danger small">{{ form.uspa_number.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.license_level.id_for_label }}" class="form-label">License Level</label>
-                                {{ form.license_level }}
-                                {% if form.license_level.errors %}
-                                    <div class="text-danger small">{{ form.license_level.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="{{ form.home_dz.id_for_label }}" class="form-label">Home Drop Zone</label>
-                                {{ form.home_dz }}
-                                {% if form.home_dz.errors %}
-                                    <div class="text-danger small">{{ form.home_dz.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label for="{{ form.total_jumps.id_for_label }}" class="form-label">Total Jumps</label>
-                                {{ form.total_jumps }}
-                                {% if form.total_jumps.errors %}
-                                    <div class="text-danger small">{{ form.total_jumps.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <label for="{{ form.swoop_jumps.id_for_label }}" class="form-label">Swoop Jumps</label>
-                                {{ form.swoop_jumps }}
-                                {% if form.swoop_jumps.errors %}
-                                    <div class="text-danger small">{{ form.swoop_jumps.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <label for="{{ form.exit_weight.id_for_label }}" class="form-label">Exit Weight (lbs)</label>
-                                {{ form.exit_weight }}
-                                {% if form.exit_weight.errors %}
-                                    <div class="text-danger small">{{ form.exit_weight.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="bi bi-person-plus"></i> Create Account
-                            </button>
-                        </div>
-                    </form>
-
-                    <hr class="my-4">
-                    <div class="text-center">
-                        <p class="mb-0">Already have an account?
-                            <a href="{% url 'login' %}" class="text-primary">Sign in here</a>
-                        </p>
-                    </div>
-                </div>
-            </div>
+      <!-- Account info -->
+      <div>
+        <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Account</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Username <span class="text-red-400">*</span></label>
+            {{ form.username }}
+            {% if form.username.errors %}<p class="text-xs text-red-400 mt-1">{{ form.username.errors|join:", " }}</p>{% endif %}
+          </div>
+          <div>
+            <label class="form-label">Email <span class="text-red-400">*</span></label>
+            {{ form.email }}
+            {% if form.email.errors %}<p class="text-xs text-red-400 mt-1">{{ form.email.errors|join:", " }}</p>{% endif %}
+          </div>
+          <div>
+            <label class="form-label">First Name</label>
+            {{ form.first_name }}
+          </div>
+          <div>
+            <label class="form-label">Last Name</label>
+            {{ form.last_name }}
+          </div>
+          <div>
+            <label class="form-label">Password <span class="text-red-400">*</span></label>
+            {{ form.password1 }}
+            {% if form.password1.errors %}<p class="text-xs text-red-400 mt-1">{{ form.password1.errors|join:", " }}</p>{% endif %}
+          </div>
+          <div>
+            <label class="form-label">Confirm Password <span class="text-red-400">*</span></label>
+            {{ form.password2 }}
+            {% if form.password2.errors %}<p class="text-xs text-red-400 mt-1">{{ form.password2.errors|join:", " }}</p>{% endif %}
+          </div>
         </div>
+      </div>
+
+      <!-- Pilot info -->
+      <div class="pt-4 border-t border-gray-800">
+        <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Pilot Info <span class="normal-case text-gray-600">(optional)</span></h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">License Number</label>
+            {{ form.license_number }}
+          </div>
+          <div>
+            <label class="form-label">USPA Number</label>
+            {{ form.uspa_number }}
+          </div>
+          <div>
+            <label class="form-label">License Level</label>
+            {{ form.license_level }}
+          </div>
+          <div>
+            <label class="form-label">Home Drop Zone</label>
+            {{ form.home_dz }}
+          </div>
+          <div>
+            <label class="form-label">Total Jumps</label>
+            {{ form.total_jumps }}
+          </div>
+          <div>
+            <label class="form-label">Swoop Jumps</label>
+            {{ form.swoop_jumps }}
+          </div>
+          <div>
+            <label class="form-label">Exit Weight (lbs)</label>
+            {{ form.exit_weight }}
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2">
+        <button type="submit"
+                class="w-full bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors">
+          Create Account
+        </button>
+      </div>
+    </form>
+
+    <div class="mt-6 pt-5 border-t border-gray-800 text-center">
+      <p class="text-sm text-gray-500">Already have an account?
+        <a href="{% url 'login' %}" class="text-sky-400 hover:text-sky-300">Sign in here</a>
+      </p>
     </div>
+  </div>
 </div>
 {% endblock %}

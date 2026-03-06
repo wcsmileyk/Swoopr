@@ -38,7 +38,7 @@ def signup_view(request):
                     user = authenticate(username=username, password=password)
                     if user:
                         login(request, user)
-                        return redirect('dashboard')
+                        return redirect('logbook_onboarding')
 
             except Exception as e:
                 messages.error(request, f'There was an error creating your account: {str(e)}')
@@ -100,7 +100,75 @@ def logout_view(request):
 @login_required
 def dashboard_view(request):
     """User dashboard showing flight statistics and recent activity"""
+    from logbook.models import Jump
+    from django.db.models import Count
+    from django.db.models.functions import TruncMonth
+    from datetime import date, timedelta
     user = request.user
+
+    # Logbook stats
+    logbook_qs = Jump.objects.filter(user=user)
+    logbook_total = logbook_qs.count()
+    logbook_swoops = logbook_qs.filter(swoop=True).count()
+    last_jump = logbook_qs.select_related('dropzone', 'jump_type').order_by('-date', '-created_at').first()
+    recent_logbook_jumps = (
+        logbook_qs
+        .select_related('dropzone', 'jump_type', 'canopy')
+        .order_by('-date', '-created_at')[:5]
+    )
+
+    # --- Chart data ---
+
+    # Monthly activity: last 12 calendar months
+    today = date.today()
+    monthly_labels = []
+    monthly_data_map = {}
+    for i in range(11, -1, -1):
+        m, y = today.month - i, today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        label = date(y, m, 1).strftime('%b %Y')
+        monthly_labels.append(label)
+        monthly_data_map[label] = 0
+
+    cutoff_m, cutoff_y = today.month - 11, today.year
+    while cutoff_m <= 0:
+        cutoff_m += 12
+        cutoff_y -= 1
+    monthly_db = (
+        logbook_qs
+        .filter(date__gte=date(cutoff_y, cutoff_m, 1))
+        .annotate(month=TruncMonth('date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    for entry in monthly_db:
+        label = entry['month'].strftime('%b %Y')
+        if label in monthly_data_map:
+            monthly_data_map[label] = entry['count']
+    monthly_counts = [monthly_data_map[l] for l in monthly_labels]
+
+    # Jump type breakdown
+    type_rows = (
+        logbook_qs
+        .values('jump_type__name')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+    )
+    type_labels = [t['jump_type__name'] or 'Unspecified' for t in type_rows]
+    type_counts_data = [t['count'] for t in type_rows]
+
+    # Top dropzones
+    dz_rows = (
+        logbook_qs
+        .values('dropzone__name')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:7]
+    )
+    dz_labels = [d['dropzone__name'] for d in dz_rows]
+    dz_counts_data = [d['count'] for d in dz_rows]
 
     # Get user's flights and statistics
     flights = Flight.objects.filter(pilot=user).order_by('-created_at')
@@ -209,6 +277,30 @@ def dashboard_view(request):
 
             stats['personal_bests'] = personal_bests
 
+    # GPS swoop progression (last 40 analyzed swoops with rotation, ordered oldest→newest)
+    gps_prog_qs = list(
+        swoops
+        .filter(analysis_successful=True, turn_rotation__isnull=False)
+        .order_by('swoop_start_time', 'created_at')
+        .values('id', 'swoop_start_time', 'created_at', 'turn_rotation', 'max_vertical_speed_mph')
+    )[-40:]
+    gps_prog_labels = [
+        (s['swoop_start_time'] or s['created_at']).strftime('%b %d, %Y')
+        for s in gps_prog_qs
+    ]
+    gps_prog_rotation = [round(abs(s['turn_rotation']), 1) for s in gps_prog_qs]
+    gps_prog_speed = [
+        round(s['max_vertical_speed_mph'], 1) if s['max_vertical_speed_mph'] else None
+        for s in gps_prog_qs
+    ]
+
+    chart_data = {
+        'monthly':  {'labels': monthly_labels,     'data': monthly_counts},
+        'types':    {'labels': type_labels,         'data': type_counts_data},
+        'dzs':      {'labels': dz_labels,           'data': dz_counts_data},
+        'gps':      {'labels': gps_prog_labels,     'rotation': gps_prog_rotation, 'speed': gps_prog_speed},
+    }
+
     # Recent flights
     recent_flights = flights[:5]
 
@@ -221,9 +313,46 @@ def dashboard_view(request):
         'recent_flights': recent_flights,
         'canopies': canopies,
         'has_profile': hasattr(user, 'profile'),
+        'logbook_total': logbook_total,
+        'logbook_swoops': logbook_swoops,
+        'last_jump': last_jump,
+        'recent_logbook_jumps': recent_logbook_jumps,
+        'chart_data': chart_data,
+        'has_chart_data': logbook_total > 0,
+        'has_gps_progression': len(gps_prog_qs) >= 2,
     }
 
     return render(request, 'users/dashboard.html', context)
+
+
+@login_required
+def logbook_onboarding_view(request):
+    """One-time logbook setup page shown to new users after registration."""
+    from logbook.models import Jump
+
+    if request.method == 'POST':
+        try:
+            start = int(request.POST.get('jump_number_offset', '1'))
+            if start >= 1:
+                profile = request.user.profile
+                profile.jump_number_offset = start
+                profile.save(update_fields=['jump_number_offset'])
+        except (ValueError, Exception):
+            pass
+        return redirect('dashboard')
+
+    # Suggest next jump number based on total_jumps entered at signup
+    suggested_start = 1
+    try:
+        total = request.user.profile.total_jumps
+        if total and total > 0:
+            suggested_start = total + 1
+    except Exception:
+        pass
+
+    return render(request, 'users/logbook_onboarding.html', {
+        'suggested_start': suggested_start,
+    })
 
 
 @login_required
@@ -232,7 +361,11 @@ def profile_view(request):
     if request.method == 'POST':
         form = UserProfileForm(request.POST, instance=request.user.profile)
         if form.is_valid():
+            old_offset = request.user.profile.jump_number_offset
             form.save()
+            if form.cleaned_data.get('jump_number_offset') != old_offset:
+                from logbook.models import Jump
+                Jump.renumber_for_user(request.user)
             messages.success(request, 'Profile updated successfully!')
             return redirect('profile')
         else:
@@ -640,8 +773,12 @@ def flight_detail_view(request, flight_id):
         except Exception as e:
             logger.warning(f"Failed to generate overhead view data for flight {flight.id}: {e}")
 
+    # Linked jump (may not exist for flights uploaded directly via GPS Flights)
+    linked_jump = getattr(flight, 'jump', None)
+
     context = {
         'flight': flight,
+        'linked_jump': linked_jump,
         'chart_data': chart_data,
         'viz_3d_data': viz_3d_data,
         'swoop_distance': swoop_distance,

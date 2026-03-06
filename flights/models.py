@@ -247,6 +247,8 @@ class Flight(models.Model):
     max_vertical_speed_ms = models.FloatField(null=True, blank=True)
     max_ground_speed_mph = models.FloatField(null=True, blank=True)
     max_ground_speed_ms = models.FloatField(null=True, blank=True)
+    max_g_force = models.FloatField(null=True, blank=True, help_text="Peak g-force load during swoop turn")
+    avg_g_force_turn = models.FloatField(null=True, blank=True, help_text="Average g-force during swoop turn phase")
     turn_time = models.FloatField(null=True, blank=True, help_text="Turn time in seconds")
     rollout_time = models.FloatField(null=True, blank=True, help_text="Rollout time in seconds")
     swoop_distance_ft = models.FloatField(null=True, blank=True, help_text="Swoop distance from rollout end to landing in feet")

@@ -1,315 +1,167 @@
 {% extends 'base.html' %}
 {% load unit_filters %}
-
-{% block title %}{{ profile_user.profile.display_name }} - Public Profile - Swoopr{% endblock %}
+{% block title %}{{ profile_user.profile.display_name }} — Flare{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">
-        <i class="bi bi-person-circle"></i> {{ profile_user.profile.display_name }}
-        <small class="text-muted">@{{ profile_user.username }}</small>
-    </h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{% url 'user_search' %}" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Back to Search
-        </a>
-    </div>
+<div class="flex items-center gap-3 mb-6">
+  <a href="{% url 'user_search' %}" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+    </svg>
+  </a>
+  <div>
+    <h1 class="text-2xl font-bold text-white">{{ profile_user.profile.display_name }}</h1>
+    <p class="text-sm text-gray-500">@{{ profile_user.username }}</p>
+  </div>
 </div>
 
-<!-- Profile Info -->
-<div class="row mb-4">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-person"></i> Pilot Information
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        {% if profile_user.profile.license_level %}
-                            <p><strong>License:</strong> {{ profile_user.profile.get_license_level_display }}</p>
-                        {% endif %}
-                        {% if profile_user.profile.total_jumps %}
-                            <p><strong>Total Jumps:</strong> {{ profile_user.profile.total_jumps|floatformat:0 }}</p>
-                        {% endif %}
-                        {% if profile_user.profile.swoop_jumps %}
-                            <p><strong>Swoop Jumps:</strong> {{ profile_user.profile.swoop_jumps|floatformat:0 }}</p>
-                        {% endif %}
-                    </div>
-                    <div class="col-md-6">
-                        {% if profile_user.profile.home_dz %}
-                            <p><strong>Home DZ:</strong> {{ profile_user.profile.home_dz }}</p>
-                        {% endif %}
-                        {% if profile_user.profile.exit_weight %}
-                            <p><strong>Exit Weight:</strong> {{ profile_user.profile.exit_weight|floatformat:0 }} lbs</p>
-                        {% endif %}
-                        {% if profile_user.profile.uspa_number %}
-                            <p><strong>USPA #:</strong> {{ profile_user.profile.uspa_number }}</p>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <!-- Instructor Badges -->
-                {% if profile_user.profile.coach or profile_user.profile.affi or profile_user.profile.ti %}
-                    <hr>
-                    <div>
-                        <strong>Qualifications:</strong>
-                        {% if profile_user.profile.coach %}
-                            <span class="badge bg-primary ms-1">Coach</span>
-                        {% endif %}
-                        {% if profile_user.profile.affi %}
-                            <span class="badge bg-success ms-1">AFF Instructor</span>
-                        {% endif %}
-                        {% if profile_user.profile.ti %}
-                            <span class="badge bg-info ms-1">Tandem Instructor</span>
-                        {% endif %}
-                    </div>
-                {% endif %}
-            </div>
-        </div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+  <!-- Pilot info -->
+  <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-6">
+    <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Pilot Info</h2>
+    <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+      {% if profile_user.profile.license_level %}
+      <div><p class="text-gray-500 text-xs">License</p><p class="text-gray-100">{{ profile_user.profile.get_license_level_display }}</p></div>
+      {% endif %}
+      {% if profile_user.profile.total_jumps %}
+      <div><p class="text-gray-500 text-xs">Total Jumps</p><p class="text-gray-100">{{ profile_user.profile.total_jumps|floatformat:0 }}</p></div>
+      {% endif %}
+      {% if profile_user.profile.swoop_jumps %}
+      <div><p class="text-gray-500 text-xs">Swoop Jumps</p><p class="text-gray-100">{{ profile_user.profile.swoop_jumps|floatformat:0 }}</p></div>
+      {% endif %}
+      {% if profile_user.profile.home_dz %}
+      <div><p class="text-gray-500 text-xs">Home DZ</p><p class="text-gray-100">{{ profile_user.profile.home_dz }}</p></div>
+      {% endif %}
+      {% if profile_user.profile.exit_weight %}
+      <div><p class="text-gray-500 text-xs">Exit Weight</p><p class="text-gray-100">{{ profile_user.profile.exit_weight|floatformat:0 }} lbs</p></div>
+      {% endif %}
+      {% if profile_user.profile.uspa_number %}
+      <div><p class="text-gray-500 text-xs">USPA #</p><p class="text-gray-100">{{ profile_user.profile.uspa_number }}</p></div>
+      {% endif %}
     </div>
-
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-bar-chart"></i> Public Flight Stats
-                </h5>
-            </div>
-            <div class="card-body text-center">
-                <div class="row">
-                    <div class="col-6">
-                        <h4 class="text-primary">{{ stats.total_public_flights }}</h4>
-                        <small>Public Flights</small>
-                    </div>
-                    <div class="col-6">
-                        <h4 class="text-success">{{ stats.total_public_swoops }}</h4>
-                        <small>Public Swoops</small>
-                    </div>
-                </div>
-            </div>
-        </div>
+    {% if profile_user.profile.coach or profile_user.profile.affi or profile_user.profile.ti %}
+    <div class="pt-4 border-t border-gray-800">
+      <p class="text-xs text-gray-500 mb-2">Qualifications</p>
+      <div class="flex gap-2 flex-wrap">
+        {% if profile_user.profile.coach %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Coach</span>{% endif %}
+        {% if profile_user.profile.affi %}<span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5">AFF Instructor</span>{% endif %}
+        {% if profile_user.profile.ti %}<span class="text-xs bg-purple-900/60 text-purple-300 border border-purple-800 rounded-full px-2 py-0.5">Tandem Instructor</span>{% endif %}
+      </div>
     </div>
+    {% endif %}
+  </div>
+
+  <!-- Stats -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+    <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Public Stats</h2>
+    <div class="grid grid-cols-2 gap-3 text-center mb-4">
+      <div class="bg-gray-800 rounded-lg p-3">
+        <p class="text-2xl font-bold text-white">{{ stats.total_public_flights }}</p>
+        <p class="text-xs text-gray-500 mt-0.5">Flights</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-3">
+        <p class="text-2xl font-bold text-sky-400">{{ stats.total_public_swoops }}</p>
+        <p class="text-xs text-gray-500 mt-0.5">Swoops</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% if stats.total_public_swoops > 0 %}
-<!-- Swoop Performance Stats -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-trophy"></i> Public Swoop Performance
-                </h5>
-                <small class="text-muted">Based on {{ stats.total_public_swoops }} public swoop{{ stats.total_public_swoops|pluralize }}</small>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <!-- Turn Analysis -->
-                    {% if stats.max_rotation %}
-                    <div class="col-md-3 mb-3">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <h6 class="text-primary">Turn Performance</h6>
-                                <h4>{{ stats.max_rotation|floatformat:0 }}°</h4>
-                                <small>Max Rotation</small>
-                                {% if stats.avg_rotation %}
-                                    <br><small class="text-muted">Avg: {{ stats.avg_rotation|floatformat:0 }}°</small>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Speed Analysis -->
-                    {% if stats.max_speed %}
-                    <div class="col-md-3 mb-3">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <h6 class="text-success">Vertical Speed</h6>
-                                <h4>{{ stats.max_speed|floatformat:1 }}</h4>
-                                <small>mph (max)</small>
-                                {% if stats.avg_speed %}
-                                    <br><small class="text-muted">Avg: {{ stats.avg_speed|floatformat:1 }} mph</small>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Ground Speed -->
-                    {% if stats.max_ground_speed %}
-                    <div class="col-md-3 mb-3">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <h6 class="text-warning">Ground Speed</h6>
-                                <h4>{{ stats.max_ground_speed|floatformat:1 }}</h4>
-                                <small>mph (max)</small>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Distance -->
-                    {% if stats.max_swoop_distance %}
-                    <div class="col-md-3 mb-3">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <h6 class="text-info">Distance</h6>
-                                <h4>{{ stats.max_swoop_distance|floatformat:0 }}</h4>
-                                <small>feet (max)</small>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
+<!-- Performance -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-6 mb-6">
+  <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">
+    Public Swoop Performance
+    <span class="normal-case text-gray-600 ml-1">{{ stats.total_public_swoops }} swoop{{ stats.total_public_swoops|pluralize }}</span>
+  </h2>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {% if stats.max_rotation %}
+    <div class="bg-gray-800 rounded-xl p-4 text-center">
+      <p class="text-2xl font-bold text-sky-400">{{ stats.max_rotation|floatformat:0 }}°</p>
+      <p class="text-xs text-gray-500 mt-1">Max Turn</p>
+      {% if stats.avg_rotation %}<p class="text-xs text-gray-600 mt-0.5">avg {{ stats.avg_rotation|floatformat:0 }}°</p>{% endif %}
     </div>
+    {% endif %}
+    {% if stats.max_speed %}
+    <div class="bg-gray-800 rounded-xl p-4 text-center">
+      <p class="text-2xl font-bold text-emerald-400">{{ stats.max_speed|floatformat:1 }}</p>
+      <p class="text-xs text-gray-500 mt-1">Max V-Speed mph</p>
+      {% if stats.avg_speed %}<p class="text-xs text-gray-600 mt-0.5">avg {{ stats.avg_speed|floatformat:1 }}</p>{% endif %}
+    </div>
+    {% endif %}
+    {% if stats.max_ground_speed %}
+    <div class="bg-gray-800 rounded-xl p-4 text-center">
+      <p class="text-2xl font-bold text-amber-400">{{ stats.max_ground_speed|floatformat:1 }}</p>
+      <p class="text-xs text-gray-500 mt-1">Max G-Speed mph</p>
+    </div>
+    {% endif %}
+    {% if stats.max_swoop_distance %}
+    <div class="bg-gray-800 rounded-xl p-4 text-center">
+      <p class="text-2xl font-bold text-cyan-400">{{ stats.max_swoop_distance|floatformat:0 }}</p>
+      <p class="text-xs text-gray-500 mt-1">Max Distance ft</p>
+    </div>
+    {% endif %}
+  </div>
 </div>
 {% endif %}
 
-<!-- Recent Public Flights -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-clock-history"></i> Recent Public Flights
-                </h5>
-            </div>
-            <div class="card-body">
-                {% if recent_flights %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Type</th>
-                                    <th>Performance</th>
-                                    <th>Details</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for flight in recent_flights %}
-                                <tr style="cursor: pointer;" onclick="window.location='{% url 'flight_detail' flight.id %}'">
-                                    <td>
-                                        <strong>{{ flight.created_at|date:"M d, Y" }}</strong><br>
-                                        <small class="text-muted">{{ flight.created_at|time:"H:i" }}</small>
-                                    </td>
-                                    <td>
-                                        {% if flight.is_swoop %}
-                                            <span class="badge bg-success">Swoop</span>
-                                            {% if flight.performance_grade %}
-                                                <span class="badge bg-primary ms-1">Grade {{ flight.performance_grade }}</span>
-                                            {% endif %}
-                                        {% else %}
-                                            <span class="badge bg-secondary">Flight</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if flight.is_swoop and flight.analysis_successful %}
-                                            {% if flight.turn_rotation %}
-                                                <strong>{{ flight.turn_rotation|floatformat:0 }}°</strong> {{ flight.turn_direction|title }}<br>
-                                            {% endif %}
-                                            {% if flight.max_vertical_speed_mph %}
-                                                <small>{{ flight.max_vertical_speed_mph|floatformat:1 }} mph</small>
-                                            {% endif %}
-                                        {% elif not flight.analysis_successful %}
-                                            <span class="text-muted">Analysis failed</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if flight.canopy %}
-                                            <small class="text-muted">{{ flight.canopy.manufacturer }} {{ flight.canopy.model }} {{ flight.canopy.size }}</small>
-                                        {% endif %}
-                                        <br><small class="text-primary"><i class="bi bi-eye"></i> Click to view details</small>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-eye-slash display-4"></i>
-                        <p class="mt-2">No public flights available</p>
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
+<!-- Recent public flights -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-gray-800">
+    <h2 class="text-sm font-semibold text-white">Recent Public Flights</h2>
+  </div>
+  {% if recent_flights %}
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+        <th class="px-5 py-3 text-left">Date</th>
+        <th class="px-5 py-3 text-left">Type</th>
+        <th class="px-5 py-3 text-left">Performance</th>
+        <th class="px-5 py-3 text-left">Canopy</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for flight in recent_flights %}
+      <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 cursor-pointer transition-colors"
+          onclick="window.location='{% url 'flight_detail' flight.id %}'">
+        <td class="px-5 py-3">
+          <p class="text-gray-200">{{ flight.created_at|date:"M d, Y" }}</p>
+          <p class="text-xs text-gray-500">{{ flight.created_at|time:"H:i" }}</p>
+        </td>
+        <td class="px-5 py-3">
+          {% if flight.is_swoop %}
+            <span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Swoop</span>
+            {% if flight.performance_grade %}<span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5 ml-1">{{ flight.performance_grade }}</span>{% endif %}
+          {% else %}
+            <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">Flight</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3 text-gray-300">
+          {% if flight.is_swoop and flight.analysis_successful %}
+            {% if flight.turn_rotation %}<span class="font-medium">{{ flight.turn_rotation|floatformat:0 }}°</span> {{ flight.turn_direction|title }}<br>{% endif %}
+            {% if flight.max_vertical_speed_mph %}<span class="text-xs text-gray-500">{{ flight.max_vertical_speed_mph|floatformat:1 }} mph</span>{% endif %}
+          {% elif not flight.analysis_successful %}
+            <span class="text-gray-600 text-xs">Analysis failed</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3 text-xs text-gray-500">
+          {% if flight.canopy %}{{ flight.canopy.manufacturer }} {{ flight.canopy.model }} {{ flight.canopy.size }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="text-center py-10 text-gray-500 text-sm">No public flights available.</div>
+  {% endif %}
 </div>
 
-{% if public_swoops %}
-<!-- Top Public Swoops -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-star"></i> Notable Public Swoops
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    {% for swoop in public_swoops|slice:":6" %}
-                    <div class="col-md-6 col-lg-4 mb-3">
-                        <div class="card border-success" style="cursor: pointer;" onclick="window.location='{% url 'flight_detail' swoop.id %}'">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-start mb-2">
-                                    <small class="text-muted">{{ swoop.created_at|date:"M d, Y" }}</small>
-                                    {% if swoop.performance_grade %}
-                                        <span class="badge bg-primary">{{ swoop.performance_grade }}</span>
-                                    {% endif %}
-                                </div>
-
-                                {% if swoop.turn_rotation %}
-                                    <h6 class="text-success">{{ swoop.turn_rotation|floatformat:0 }}° {{ swoop.turn_direction|title }}</h6>
-                                {% endif %}
-
-                                <div class="small">
-                                    {% if swoop.max_vertical_speed_mph %}
-                                        <div><strong>V-Speed:</strong> {{ swoop.max_vertical_speed_mph|floatformat:1 }} mph</div>
-                                    {% endif %}
-                                    {% if swoop.max_ground_speed_mph %}
-                                        <div><strong>G-Speed:</strong> {{ swoop.max_ground_speed_mph|floatformat:1 }} mph</div>
-                                    {% endif %}
-                                    {% if swoop.swoop_distance_ft %}
-                                        <div><strong>Distance:</strong> {{ swoop.swoop_distance_ft|floatformat:0 }} ft</div>
-                                    {% endif %}
-                                    <div class="text-primary mt-2"><i class="bi bi-eye"></i> Click to view details</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Contact Info -->
 {% if profile_user.profile.coach or profile_user.profile.affi or profile_user.profile.ti %}
-<div class="row">
-    <div class="col-12">
-        <div class="alert alert-info">
-            <h6><i class="bi bi-info-circle"></i> Coaching & Instruction</h6>
-            <p class="mb-0">
-                {{ profile_user.profile.display_name }} is a qualified instructor/coach.
-                {% if user.is_authenticated %}
-                    Contact information may be available through your home drop zone or skydiving community.
-                {% else %}
-                    <a href="{% url 'login' %}" class="alert-link">Log in</a> to connect with instructors.
-                {% endif %}
-            </p>
-        </div>
-    </div>
+<div class="bg-sky-900/20 border border-sky-800/40 rounded-xl px-5 py-4 text-sm text-sky-300">
+  <span class="font-medium">{{ profile_user.profile.display_name }}</span> is a qualified instructor/coach.
+  {% if not user.is_authenticated %}
+    <a href="{% url 'login' %}" class="underline ml-1 text-sky-400 hover:text-sky-300">Log in</a> to connect.
+  {% endif %}
 </div>
 {% endif %}
-
 {% endblock %}

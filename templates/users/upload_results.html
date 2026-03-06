@@ -1,166 +1,104 @@
 {% extends 'base.html' %}
 {% load unit_filters %}
-
-{% block title %}Upload Results - Swoopr{% endblock %}
+{% block title %}Upload Results — Flare{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">
-        <i class="bi bi-check-circle"></i> Upload Results
-    </h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary me-2">
-            <i class="bi bi-upload"></i> Upload More
-        </a>
-        <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-list"></i> View All Flights
-        </a>
-    </div>
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-white">Upload Results</h1>
+  <div class="flex items-center gap-3">
+    <a href="{% url 'upload_flight' %}"
+       class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+      Upload More
+    </a>
+    <a href="{% url 'flights' %}"
+       class="text-gray-400 hover:text-gray-200 text-sm px-4 py-2 rounded-lg border border-gray-700 transition-colors">
+      View All Flights
+    </a>
+  </div>
 </div>
 
-<!-- Summary Card -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-md-4">
-                        <h3 class="text-primary">{{ upload_results.total_files }}</h3>
-                        <p class="text-muted">Total Files</p>
-                    </div>
-                    <div class="col-md-4">
-                        <h3 class="text-success">{{ upload_results.successful_uploads }}</h3>
-                        <p class="text-muted">Successful Uploads</p>
-                    </div>
-                    <div class="col-md-4">
-                        <h3 class="text-danger">{{ upload_results.failed_uploads|default:"0" }}</h3>
-                        <p class="text-muted">Failed Uploads</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<!-- Summary -->
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+    <p class="text-2xl font-bold text-white">{{ upload_results.total_files }}</p>
+    <p class="text-xs text-gray-500 mt-1">Total Files</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+    <p class="text-2xl font-bold text-emerald-400">{{ upload_results.successful_uploads }}</p>
+    <p class="text-xs text-gray-500 mt-1">Successful</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+    <p class="text-2xl font-bold text-red-400">{{ upload_results.failed_uploads|default:"0" }}</p>
+    <p class="text-xs text-gray-500 mt-1">Failed</p>
+  </div>
 </div>
 
-<!-- Detailed Results -->
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-list-check"></i> File Upload Details
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>File Name</th>
-                                <th>Status</th>
-                                <th>Analysis</th>
-                                <th>Swoop</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for result in upload_results.results %}
-                            <tr>
-                                <td>
-                                    <i class="bi bi-file-earmark-text me-1"></i>
-                                    {{ result.filename }}
-                                </td>
-                                <td>
-                                    {% if result.success %}
-                                        <span class="badge bg-success">
-                                            <i class="bi bi-check-circle"></i> Uploaded
-                                        </span>
-                                    {% else %}
-                                        <span class="badge bg-danger">
-                                            <i class="bi bi-x-circle"></i> Failed
-                                        </span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if result.success %}
-                                        {% if result.analysis_successful %}
-                                            <span class="badge bg-success">
-                                                <i class="bi bi-graph-up"></i> Analyzed
-                                            </span>
-                                        {% else %}
-                                            <span class="badge bg-warning">
-                                                <i class="bi bi-exclamation-triangle"></i> Analysis Failed
-                                            </span>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if result.success and result.analysis_successful %}
-                                        {% if result.swoop_detected %}
-                                            <span class="badge bg-primary">
-                                                <i class="bi bi-airplane"></i>
-                                                {{ result.turn_rotation|floatformat:0 }}° Swoop
-                                            </span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">
-                                                <i class="bi bi-dash"></i> No Swoop
-                                            </span>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if result.success %}
-                                        <a href="{% url 'flight_detail' flight_id=result.flight_id %}"
-                                           class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-eye"></i> View Details
-                                        </a>
-                                    {% else %}
-                                        <small class="text-danger">
-                                            <i class="bi bi-exclamation-circle"></i>
-                                            {{ result.error|truncatechars:50 }}
-                                        </small>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Analysis Errors Section (if any) -->
-{% if upload_results.results %}
-    {% for result in upload_results.results %}
-        {% if result.success and not result.analysis_successful and result.analysis_error %}
-            {% if forloop.first %}
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <div class="card border-warning">
-                            <div class="card-header bg-warning text-dark">
-                                <h6 class="mb-0">
-                                    <i class="bi bi-exclamation-triangle"></i> Analysis Issues
-                                </h6>
-                            </div>
-                            <div class="card-body">
+<!-- Results table -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden mb-6">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-gray-800 text-xs uppercase tracking-widest text-gray-500">
+        <th class="px-5 py-3 text-left">File</th>
+        <th class="px-5 py-3 text-left">Upload</th>
+        <th class="px-5 py-3 text-left">Analysis</th>
+        <th class="px-5 py-3 text-left">Swoop</th>
+        <th class="px-5 py-3 text-left">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for result in upload_results.results %}
+      <tr class="border-b border-gray-800 last:border-0">
+        <td class="px-5 py-3 text-gray-200">{{ result.filename }}</td>
+        <td class="px-5 py-3">
+          {% if result.success %}
+            <span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5">Uploaded</span>
+          {% else %}
+            <span class="text-xs bg-red-900/60 text-red-300 border border-red-800 rounded-full px-2 py-0.5">Failed</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3">
+          {% if result.success %}
+            {% if result.analysis_successful %}
+              <span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5">Analyzed</span>
+            {% else %}
+              <span class="text-xs bg-amber-900/60 text-amber-300 border border-amber-800 rounded-full px-2 py-0.5">Failed</span>
             {% endif %}
-                <div class="alert alert-warning">
-                    <strong>{{ result.filename }}:</strong> {{ result.analysis_error }}
-                </div>
-            {% if forloop.last %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+          {% else %}
+            <span class="text-gray-600">—</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3">
+          {% if result.success and result.analysis_successful %}
+            {% if result.swoop_detected %}
+              <span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">{{ result.turn_rotation|floatformat:0 }}° Swoop</span>
+            {% else %}
+              <span class="text-gray-500 text-xs">No swoop</span>
             {% endif %}
-        {% endif %}
-    {% endfor %}
-{% endif %}
+          {% else %}
+            <span class="text-gray-600">—</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3">
+          {% if result.success %}
+            <a href="{% url 'flight_detail' flight_id=result.flight_id %}"
+               class="text-sky-500 hover:text-sky-300 text-xs transition-colors">View →</a>
+          {% else %}
+            <span class="text-red-400 text-xs">{{ result.error|truncatechars:50 }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
+<!-- Analysis errors detail -->
+{% for result in upload_results.results %}
+  {% if result.success and not result.analysis_successful and result.analysis_error %}
+  <div class="bg-amber-900/20 border border-amber-800/50 rounded-xl px-5 py-3 mb-3 text-sm">
+    <span class="text-amber-300 font-medium">{{ result.filename }}:</span>
+    <span class="text-amber-400 ml-2">{{ result.analysis_error }}</span>
+  </div>
+  {% endif %}
+{% endfor %}
 {% endblock %}

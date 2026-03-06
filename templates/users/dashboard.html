@@ -1,280 +1,457 @@
 {% extends 'base.html' %}
-
-{% block title %}Dashboard - Swoopr{% endblock %}
+{% block title %}Dashboard — Flare{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">
-        <i class="bi bi-speedometer2"></i> Dashboard
-    </h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2">
-            <a href="{% url 'add_canopy' %}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-plus-circle"></i> Add Canopy
-            </a>
-            <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-upload"></i> Upload Flight
-            </a>
-        </div>
-    </div>
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-white">Dashboard</h1>
+  <div class="flex items-center gap-2">
+    <a href="{% url 'log_jumps' %}"
+       class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+      + Log Jumps
+    </a>
+    <a href="{% url 'upload_flight' %}"
+       class="text-sm text-gray-400 hover:text-gray-200 px-3 py-2 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors">
+      Upload GPS
+    </a>
+    <a href="{% url 'add_canopy' %}"
+       class="text-sm text-gray-400 hover:text-gray-200 px-3 py-2 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors">
+      Add Canopy
+    </a>
+  </div>
 </div>
 
-<!-- Welcome Message -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="alert alert-primary" role="alert">
-            <h4 class="alert-heading">
-                <i class="bi bi-person-circle"></i> Welcome, {{ user.get_full_name|default:user.username }}!
-            </h4>
-            <p class="mb-0">
-                {% if stats.total_flights > 0 %}
-                    You have {{ stats.total_swoops }} swoops out of {{ stats.total_flights }} total flights.
-                    {% if stats.success_rate > 0 %}
-                        Your analysis success rate is {{ stats.success_rate|floatformat:1 }}%.
-                    {% endif %}
-                {% else %}
-                    Ready to start tracking your swoops? Add a canopy and upload your first flight!
-                {% endif %}
+<!-- Welcome bar -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4 mb-6 text-sm text-gray-300">
+  <span class="font-medium text-white">Welcome, {{ user.get_full_name|default:user.username }}.</span>
+  {% if logbook_total > 0 %}
+    {{ logbook_total }} jump{{ logbook_total|pluralize }} logged{% if logbook_swoops > 0 %}, {{ logbook_swoops }} swoop{{ logbook_swoops|pluralize }}{% endif %}.
+    {% if stats.total_flights > 0 %}
+      {{ stats.total_flights }} GPS flight{{ stats.total_flights|pluralize }} uploaded.
+    {% endif %}
+  {% elif stats.total_flights > 0 %}
+    {{ stats.total_swoops }} swoop{{ stats.total_swoops|pluralize }} out of {{ stats.total_flights }} GPS flight{{ stats.total_flights|pluralize }}.
+  {% else %}
+    Ready to start? <a href="{% url 'log_jumps' %}" class="text-sky-400 hover:text-sky-300">Log your first jump</a> or <a href="{% url 'upload_flight' %}" class="text-sky-400 hover:text-sky-300">upload a GPS flight</a>.
+  {% endif %}
+</div>
+
+<!-- Stat cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+    <p class="text-3xl font-bold text-white">{{ logbook_total }}</p>
+    <p class="text-xs text-gray-500 mt-1">Total Jumps</p>
+    {% if last_jump %}
+    <p class="text-xs text-gray-600 mt-1">Last: {{ last_jump.date|date:"M j" }}</p>
+    {% endif %}
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+    <p class="text-3xl font-bold text-sky-400">{{ logbook_swoops }}</p>
+    <p class="text-xs text-gray-500 mt-1">Swoop Jumps</p>
+    <p class="text-xs text-gray-600 mt-1">{{ stats.total_flights }} GPS flight{{ stats.total_flights|pluralize }}</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+    <p class="text-3xl font-bold text-emerald-400">{% if stats.avg_rotation %}{{ stats.avg_rotation|floatformat:0 }}°{% else %}—{% endif %}</p>
+    <p class="text-xs text-gray-500 mt-1">Avg Rotation</p>
+    {% if stats.max_rotation %}
+    <p class="text-xs text-gray-600 mt-1">best {{ stats.max_rotation|floatformat:0 }}°</p>
+    {% endif %}
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+    <p class="text-3xl font-bold text-amber-400">{% if stats.avg_speed %}{{ stats.avg_speed|floatformat:1 }}{% else %}—{% endif %}</p>
+    <p class="text-xs text-gray-500 mt-1">Avg Speed (mph)</p>
+    {% if stats.max_speed %}
+    <p class="text-xs text-gray-600 mt-1">best {{ stats.max_speed|floatformat:1 }}</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if has_chart_data %}
+<!-- Activity + Type charts -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+  <!-- Monthly activity (bar) -->
+  <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h2 class="text-sm font-semibold text-white mb-4">Activity — Last 12 Months</h2>
+    <div class="h-48">
+      <canvas id="chartMonthly"></canvas>
+    </div>
+  </div>
+
+  <!-- Jump type breakdown (doughnut) -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h2 class="text-sm font-semibold text-white mb-4">Jump Types</h2>
+    <div class="h-48 flex items-center justify-center">
+      <canvas id="chartTypes"></canvas>
+    </div>
+  </div>
+
+</div>
+{% endif %}
+
+<!-- GPS progression chart -->
+{% if has_gps_progression %}
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
+  <h2 class="text-sm font-semibold text-white mb-1">Swoop Progression (GPS)</h2>
+  <p class="text-xs text-gray-500 mb-4">Rotation and vertical speed over your last GPS swoops</p>
+  <div class="h-56">
+    <canvas id="chartGps"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- Main content grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- Left: Recent logbook jumps + GPS flights -->
+  <div class="lg:col-span-2 space-y-6">
+
+    <!-- Recent Logbook Jumps -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <h2 class="text-sm font-semibold text-white">Recent Jumps</h2>
+        <div class="flex items-center gap-3">
+          <a href="{% url 'logbook_import' %}" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">Import CSV</a>
+          <a href="{% url 'jump_list' %}" class="text-xs text-sky-500 hover:text-sky-300 transition-colors">View all →</a>
+        </div>
+      </div>
+      {% if recent_logbook_jumps %}
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+            <th class="px-5 py-3 text-left">#</th>
+            <th class="px-5 py-3 text-left">Date</th>
+            <th class="px-5 py-3 text-left">Location</th>
+            <th class="px-5 py-3 text-left">Type</th>
+            <th class="px-5 py-3 text-left">Canopy</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for jump in recent_logbook_jumps %}
+          <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 cursor-pointer transition-colors"
+              onclick="window.location='{% url 'edit_jump' jump.pk %}'">
+            <td class="px-5 py-3 text-gray-500 text-xs">{% if jump.jump_number %}#{{ jump.jump_number }}{% else %}—{% endif %}</td>
+            <td class="px-5 py-3 text-gray-300">{{ jump.date|date:"M j, Y" }}</td>
+            <td class="px-5 py-3 text-gray-300">{% if jump.dropzone %}{{ jump.dropzone.name }}{% else %}—{% endif %}</td>
+            <td class="px-5 py-3">
+              {% if jump.jump_type %}<span class="text-xs text-gray-400">{{ jump.jump_type.name }}</span>{% else %}—{% endif %}
+              {% if jump.swoop %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5 ml-1">Swoop</span>{% endif %}
+            </td>
+            <td class="px-5 py-3 text-xs text-gray-500">
+              {% if jump.canopy %}{{ jump.canopy.model }} {{ jump.canopy.size }}{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="text-center py-12">
+        <p class="text-gray-500 mb-4">No jumps logged yet.</p>
+        <div class="flex items-center justify-center gap-3">
+          <a href="{% url 'log_jumps' %}" class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">Log Jumps</a>
+          <a href="{% url 'logbook_import' %}" class="border border-gray-700 text-gray-400 hover:text-gray-200 text-sm px-5 py-2 rounded-lg transition-colors">Import CSV</a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Recent GPS Flights (only if any exist) -->
+    {% if recent_flights %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <h2 class="text-sm font-semibold text-white">Recent GPS Flights</h2>
+        <a href="{% url 'flights' %}" class="text-xs text-sky-500 hover:text-sky-300 transition-colors">View all →</a>
+      </div>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+            <th class="px-5 py-3 text-left">Date</th>
+            <th class="px-5 py-3 text-left">Type</th>
+            <th class="px-5 py-3 text-left">Rotation</th>
+            <th class="px-5 py-3 text-left">Speed</th>
+            <th class="px-5 py-3 text-left">Grade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for flight in recent_flights %}
+          <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 cursor-pointer transition-colors"
+              onclick="window.location='{% url 'flight_detail' flight.id %}'">
+            <td class="px-5 py-3 text-gray-300">
+              {% if flight.swoop_start_time %}{{ flight.swoop_start_time|date:"M j, Y" }}
+              {% else %}{{ flight.created_at|date:"M j, Y" }}{% endif %}
+            </td>
+            <td class="px-5 py-3">
+              {% if flight.is_swoop %}
+                <span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Swoop</span>
+              {% else %}
+                <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">Flight</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3 text-gray-300">{% if flight.turn_rotation %}{{ flight.rotation_magnitude|floatformat:0 }}° {{ flight.turn_direction }}{% else %}—{% endif %}</td>
+            <td class="px-5 py-3 text-gray-300">{% if flight.max_vertical_speed_mph %}{{ flight.max_vertical_speed_mph|floatformat:1 }} mph{% else %}—{% endif %}</td>
+            <td class="px-5 py-3 font-bold text-sky-400">{% if flight.performance_grade %}{{ flight.performance_grade }}{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Right sidebar -->
+  <div class="space-y-4">
+
+    <!-- Top Dropzones -->
+    {% if has_chart_data %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h2 class="text-sm font-semibold text-white mb-4">Top Dropzones</h2>
+      <div class="h-44">
+        <canvas id="chartDzs"></canvas>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- My Canopies -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <h2 class="text-sm font-semibold text-white">My Canopies</h2>
+        <a href="{% url 'add_canopy' %}" class="text-xs text-sky-500 hover:text-sky-300 transition-colors">+ Add</a>
+      </div>
+      {% if canopies %}
+      <div class="divide-y divide-gray-800">
+        {% for canopy in canopies %}
+        <div class="flex items-center justify-between px-5 py-3">
+          <div>
+            <p class="text-sm text-gray-200">
+              {{ canopy.manufacturer }} {{ canopy.model }}
+              {% if canopy.is_primary %}<span class="text-xs text-amber-400 ml-1">★</span>{% endif %}
             </p>
+            <p class="text-xs text-gray-500">{{ canopy.size }} sq ft{% if canopy.wing_loading %} · {{ canopy.wing_loading }} lbs/sqft{% endif %}</p>
+          </div>
+          <a href="{% url 'edit_canopy' canopy.id %}" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">Edit</a>
         </div>
-    </div>
-</div>
-
-<!-- Statistics Cards -->
-<div class="row mb-4">
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card text-center">
-            <div class="card-body">
-                <h5 class="card-title text-primary">{{ stats.total_flights }}</h5>
-                <p class="card-text text-muted">Total Flights</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card text-center">
-            <div class="card-body">
-                <h5 class="card-title text-success">{{ stats.total_swoops }}</h5>
-                <p class="card-text text-muted">Swoops Detected</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card text-center">
-            <div class="card-body">
-                <h5 class="card-title text-info">
-                    {% if stats.avg_rotation %}{{ stats.avg_rotation|floatformat:0 }}°{% else %}--{% endif %}
-                </h5>
-                <p class="card-text text-muted">Avg Rotation</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card text-center">
-            <div class="card-body">
-                <h5 class="card-title text-warning">
-                    {% if stats.avg_speed %}{{ stats.avg_speed|floatformat:1 }} mph{% else %}--{% endif %}
-                </h5>
-                <p class="card-text text-muted">Avg Speed</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <!-- Recent Flights -->
-    <div class="col-md-8 mb-4">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="bi bi-clock-history"></i> Recent Flights
-                </h5>
-                <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-primary">View All</a>
-            </div>
-            <div class="card-body">
-                {% if recent_flights %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Flight Name</th>
-                                    <th>Type</th>
-                                    <th>Rotation</th>
-                                    <th>Speed</th>
-                                    <th>Grade</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for flight in recent_flights %}
-                                <tr onclick="window.location='{% url 'flight_detail' flight.id %}'" style="cursor: pointer;">
-                                    <td>
-                                        <strong>{{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}</strong>
-                                        <br>
-                                        <small class="text-muted">
-                                            {% if flight.swoop_start_time %}
-                                                {{ flight.swoop_start_time|date:"M d, Y H:i" }}
-                                            {% else %}
-                                                {{ flight.created_at|date:"M d, Y H:i" }}
-                                            {% endif %}
-                                        </small>
-                                    </td>
-                                    <td>
-                                        {% if flight.is_swoop %}
-                                            <span class="badge bg-success">Swoop</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Flight</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if flight.turn_rotation %}
-                                            {{ flight.rotation_magnitude|floatformat:0 }}° {{ flight.turn_direction }}
-                                        {% else %}
-                                            --
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if flight.max_vertical_speed_mph %}
-                                            {{ flight.max_vertical_speed_mph|floatformat:1 }} mph
-                                        {% else %}
-                                            --
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if flight.performance_grade %}
-                                            <span class="performance-grade-{{ flight.performance_grade }}">
-                                                <strong>{{ flight.performance_grade }}</strong>
-                                            </span>
-                                        {% else %}
-                                            --
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="text-center py-4">
-                        <i class="bi bi-airplane text-muted" style="font-size: 3rem;"></i>
-                        <p class="text-muted mt-2">No flights yet. Upload your first FlySight file to get started!</p>
-                        <a href="{% url 'upload_flight' %}" class="btn btn-primary">
-                            <i class="bi bi-upload"></i> Upload Flight
-                        </a>
-                    </div>
-                {% endif %}
-            </div>
-        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-8">
+        <p class="text-gray-500 text-sm mb-3">No canopies yet.</p>
+        <a href="{% url 'add_canopy' %}" class="text-sm text-sky-500 hover:text-sky-300 transition-colors">Add your first canopy →</a>
+      </div>
+      {% endif %}
     </div>
 
-    <!-- Canopies -->
-    <div class="col-md-4 mb-4">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="bi bi-gear"></i> My Canopies
-                </h5>
-                <a href="{% url 'add_canopy' %}" class="btn btn-sm btn-outline-primary">Add</a>
-            </div>
-            <div class="card-body">
-                {% if canopies %}
-                    {% for canopy in canopies %}
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <strong>{{ canopy.manufacturer }} {{ canopy.model }}</strong>
-                            {% if canopy.is_primary %}
-                                <i class="bi bi-star-fill text-warning" title="Primary canopy"></i>
-                            {% endif %}
-                            <br>
-                            <small class="text-muted">
-                                {{ canopy.size }} sq ft
-                                {% if canopy.wing_loading %}
-                                    • {{ canopy.wing_loading }} lbs/sq ft
-                                {% endif %}
-                            </small>
-                        </div>
-                        <div>
-                            <a href="{% url 'edit_canopy' canopy.id %}" class="btn btn-sm btn-outline-secondary">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="text-center py-3">
-                        <i class="bi bi-gear text-muted" style="font-size: 2rem;"></i>
-                        <p class="text-muted mt-2 mb-3">No canopies added yet.</p>
-                        <a href="{% url 'add_canopy' %}" class="btn btn-primary btn-sm">
-                            <i class="bi bi-plus-circle"></i> Add Your First Canopy
-                        </a>
-                    </div>
-                {% endif %}
-            </div>
+    <!-- Personal Bests (GPS) -->
+    {% if stats.total_swoops > 0 %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Personal Bests (GPS)</h2>
+      <div class="grid grid-cols-3 gap-3 text-center text-sm mb-4">
+        <div>
+          {% if stats.personal_bests.max_rotation_flight_id %}
+            <a href="{% url 'flight_detail' stats.personal_bests.max_rotation_flight_id %}" class="text-sky-400 hover:text-sky-300 font-bold block">{{ stats.max_rotation|floatformat:0 }}°</a>
+          {% else %}
+            <p class="text-sky-400 font-bold">{{ stats.max_rotation|floatformat:0 }}°</p>
+          {% endif %}
+          <p class="text-xs text-gray-500">Max Turn</p>
         </div>
-
-        <!-- Performance Stats -->
-        {% if stats.total_swoops > 0 %}
-        <div class="card mt-3">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="bi bi-bar-chart"></i> Performance Records
-                </h6>
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-4">
-                        <div class="border-end">
-                            {% if stats.personal_bests.max_rotation_flight_id %}
-                                <a href="{% url 'flight_detail' stats.personal_bests.max_rotation_flight_id %}" class="text-decoration-none">
-                                    <h6 class="text-primary">{{ stats.max_rotation|floatformat:0 }}°</h6>
-                                </a>
-                            {% else %}
-                                <h6 class="text-primary">{{ stats.max_rotation|floatformat:0 }}°</h6>
-                            {% endif %}
-                            <small class="text-muted">Max Rotation</small>
-                        </div>
-                    </div>
-                    <div class="col-4">
-                        <div class="border-end">
-                            {% if stats.personal_bests.max_speed_flight_id %}
-                                <a href="{% url 'flight_detail' stats.personal_bests.max_speed_flight_id %}" class="text-decoration-none">
-                                    <h6 class="text-success">{{ stats.max_speed|floatformat:1 }}</h6>
-                                </a>
-                            {% else %}
-                                <h6 class="text-success">{{ stats.max_speed|floatformat:1 }}</h6>
-                            {% endif %}
-                            <small class="text-muted">Max Vertical (mph)</small>
-                        </div>
-                    </div>
-                    <div class="col-4">
-                        {% if stats.personal_bests.max_ground_speed_flight_id %}
-                            <a href="{% url 'flight_detail' stats.personal_bests.max_ground_speed_flight_id %}" class="text-decoration-none">
-                                <h6 class="text-warning">
-                                    {% if stats.max_ground_speed %}{{ stats.max_ground_speed|floatformat:1 }}{% else %}--{% endif %}
-                                </h6>
-                            </a>
-                        {% else %}
-                            <h6 class="text-warning">
-                                {% if stats.max_ground_speed %}{{ stats.max_ground_speed|floatformat:1 }}{% else %}--{% endif %}
-                            </h6>
-                        {% endif %}
-                        <small class="text-muted">Max Ground (mph)</small>
-                    </div>
-                </div>
-                {% if stats.max_swoop_distance %}
-                <hr class="my-3">
-                <div class="text-center">
-                    {% if stats.personal_bests.max_distance_flight_id %}
-                        <a href="{% url 'flight_detail' stats.personal_bests.max_distance_flight_id %}" class="text-decoration-none">
-                            <h6 class="text-info">{{ stats.max_swoop_distance|floatformat:0 }} ft</h6>
-                        </a>
-                    {% else %}
-                        <h6 class="text-info">{{ stats.max_swoop_distance|floatformat:0 }} ft</h6>
-                    {% endif %}
-                    <small class="text-muted">Max Swoop Distance</small>
-                </div>
-                {% endif %}
-            </div>
+        <div>
+          {% if stats.personal_bests.max_speed_flight_id %}
+            <a href="{% url 'flight_detail' stats.personal_bests.max_speed_flight_id %}" class="text-emerald-400 hover:text-emerald-300 font-bold block">{{ stats.max_speed|floatformat:1 }}</a>
+          {% else %}
+            <p class="text-emerald-400 font-bold">{{ stats.max_speed|floatformat:1 }}</p>
+          {% endif %}
+          <p class="text-xs text-gray-500">V-Speed mph</p>
         </div>
+        <div>
+          {% if stats.personal_bests.max_ground_speed_flight_id %}
+            <a href="{% url 'flight_detail' stats.personal_bests.max_ground_speed_flight_id %}" class="text-amber-400 hover:text-amber-300 font-bold block">{% if stats.max_ground_speed %}{{ stats.max_ground_speed|floatformat:1 }}{% else %}—{% endif %}</a>
+          {% else %}
+            <p class="text-amber-400 font-bold">{% if stats.max_ground_speed %}{{ stats.max_ground_speed|floatformat:1 }}{% else %}—{% endif %}</p>
+          {% endif %}
+          <p class="text-xs text-gray-500">G-Speed mph</p>
+        </div>
+      </div>
+      {% if stats.max_swoop_distance %}
+      <div class="text-center pt-3 border-t border-gray-800">
+        {% if stats.personal_bests.max_distance_flight_id %}
+          <a href="{% url 'flight_detail' stats.personal_bests.max_distance_flight_id %}" class="text-cyan-400 hover:text-cyan-300 font-bold text-lg block">{{ stats.max_swoop_distance|floatformat:0 }} ft</a>
+        {% else %}
+          <p class="text-cyan-400 font-bold text-lg">{{ stats.max_swoop_distance|floatformat:0 }} ft</p>
         {% endif %}
+        <p class="text-xs text-gray-500">Max Distance</p>
+      </div>
+      {% endif %}
     </div>
+    {% endif %}
+
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if has_chart_data %}
+{{ chart_data|json_script:"chart-data" }}
+<script>
+(function () {
+  const d = JSON.parse(document.getElementById('chart-data').textContent);
+
+  const GRID   = 'rgba(255,255,255,0.06)';
+  const TICK   = '#6b7280';
+  const TOOLTIP_BG = '#1f2937';
+
+  const baseScales = {
+    x: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 11 } } },
+    y: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 11 } }, beginAtZero: true },
+  };
+
+  const baseTooltip = {
+    backgroundColor: TOOLTIP_BG,
+    titleColor: '#f9fafb',
+    bodyColor: '#d1d5db',
+    borderColor: '#374151',
+    borderWidth: 1,
+    cornerRadius: 8,
+  };
+
+  // ── Monthly activity bar ──────────────────────────────────────
+  new Chart(document.getElementById('chartMonthly'), {
+    type: 'bar',
+    data: {
+      labels: d.monthly.labels,
+      datasets: [{
+        label: 'Jumps',
+        data: d.monthly.data,
+        backgroundColor: 'rgba(14,165,233,0.7)',
+        borderColor: 'rgba(14,165,233,1)',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { ...baseTooltip } },
+      scales: baseScales,
+    }
+  });
+
+  // ── Jump type doughnut ────────────────────────────────────────
+  if (d.types.labels.length) {
+    const TYPE_COLORS = [
+      '#0ea5e9','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16'
+    ];
+    new Chart(document.getElementById('chartTypes'), {
+      type: 'doughnut',
+      data: {
+        labels: d.types.labels,
+        datasets: [{
+          data: d.types.data,
+          backgroundColor: TYPE_COLORS.slice(0, d.types.labels.length),
+          borderWidth: 0,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: TICK, font: { size: 11 }, padding: 10, boxWidth: 12, usePointStyle: true },
+          },
+          tooltip: { ...baseTooltip },
+        },
+        cutout: '60%',
+      }
+    });
+  }
+
+  // ── Top dropzones horizontal bar ─────────────────────────────
+  if (d.dzs.labels.length) {
+    new Chart(document.getElementById('chartDzs'), {
+      type: 'bar',
+      data: {
+        labels: d.dzs.labels,
+        datasets: [{
+          label: 'Jumps',
+          data: d.dzs.data,
+          backgroundColor: 'rgba(16,185,129,0.7)',
+          borderColor: 'rgba(16,185,129,1)',
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { ...baseTooltip } },
+        scales: {
+          x: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 } }, beginAtZero: true },
+          y: { grid: { display: false }, ticks: { color: '#d1d5db', font: { size: 11 } } },
+        },
+      }
+    });
+  }
+
+  {% if has_gps_progression %}
+  // ── GPS swoop progression dual-line ──────────────────────────
+  new Chart(document.getElementById('chartGps'), {
+    type: 'line',
+    data: {
+      labels: d.gps.labels,
+      datasets: [
+        {
+          label: 'Rotation (°)',
+          data: d.gps.rotation,
+          borderColor: '#0ea5e9',
+          backgroundColor: 'rgba(14,165,233,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          yAxisID: 'yRot',
+        },
+        {
+          label: 'V-Speed (mph)',
+          data: d.gps.speed,
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.08)',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 3,
+          yAxisID: 'ySpd',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: TICK, font: { size: 11 }, usePointStyle: true, padding: 16 }
+        },
+        tooltip: { ...baseTooltip },
+      },
+      scales: {
+        x: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 10 }, maxTicksLimit: 10 } },
+        yRot: {
+          position: 'left',
+          grid: { color: GRID },
+          ticks: { color: '#0ea5e9', font: { size: 11 } },
+          title: { display: true, text: 'Rotation °', color: '#0ea5e9', font: { size: 11 } },
+        },
+        ySpd: {
+          position: 'right',
+          grid: { display: false },
+          ticks: { color: '#f59e0b', font: { size: 11 } },
+          title: { display: true, text: 'mph', color: '#f59e0b', font: { size: 11 } },
+        },
+      }
+    }
+  });
+  {% endif %}
+
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -1,341 +1,213 @@
 {% extends 'base.html' %}
-
-{% block title %}Privacy Settings - Swoopr{% endblock %}
+{% block title %}Privacy Settings — Flare{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">
-        <i class="bi bi-shield-lock"></i> Privacy Settings
-    </h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{% url 'profile' %}" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-arrow-left"></i> Back to Profile
-        </a>
-    </div>
+<div class="flex items-center gap-3 mb-6">
+  <a href="{% url 'profile' %}" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+    </svg>
+  </a>
+  <h1 class="text-2xl font-bold text-white">Privacy Settings</h1>
 </div>
 
-<!-- Profile Privacy -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-person"></i> Profile Privacy
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-8">
-                        <h6>Public Profile</h6>
-                        <p class="text-muted">
-                            When enabled, other users can find your profile and view your public flights for coaching and comparison purposes.
-                        </p>
-                        <div class="form-check">
-                            <input
-                                class="form-check-input"
-                                type="checkbox"
-                                {% if user.profile.public_profile %}checked{% endif %}
-                                id="profilePublic"
-                                onchange="toggleProfilePublic()"
-                            >
-                            <label class="form-check-label" for="profilePublic">
-                                Allow others to view my profile and stats
-                            </label>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <small class="text-muted">Current Status</small><br>
-                                {% if user.profile.public_profile %}
-                                    <span class="badge bg-success">
-                                        <i class="bi bi-eye"></i> Public
-                                    </span>
-                                {% else %}
-                                    <span class="badge bg-secondary">
-                                        <i class="bi bi-eye-slash"></i> Private
-                                    </span>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<!-- Profile privacy -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-6 mb-5">
+  <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Profile Privacy</h2>
+  <div class="flex items-start justify-between gap-6">
+    <div class="flex-1">
+      <p class="text-sm font-medium text-gray-200 mb-1">Public Profile</p>
+      <p class="text-sm text-gray-500 mb-3">When enabled, other users can find your profile and view your public flights for coaching and comparison.</p>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="profilePublic" class="w-4 h-4 accent-sky-500"
+               {% if user.profile.public_profile %}checked{% endif %}
+               onchange="toggleProfilePublic()">
+        <span class="text-sm text-gray-300">Allow others to view my profile and stats</span>
+      </label>
     </div>
+    <div class="shrink-0">
+      {% if user.profile.public_profile %}
+        <span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-3 py-1">Public</span>
+      {% else %}
+        <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-3 py-1">Private</span>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
-<!-- Flight Privacy -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-airplane"></i> Flight Privacy
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row mb-3">
-                    <div class="col-md-4">
-                        <div class="card bg-info text-white">
-                            <div class="card-body text-center">
-                                <h4>{{ total_flights }}</h4>
-                                <small>Total Flights</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card bg-success text-white">
-                            <div class="card-body text-center">
-                                <h4>{{ public_flights }}</h4>
-                                <small>Public Flights</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card bg-secondary text-white">
-                            <div class="card-body text-center">
-                                <h4>{{ total_flights|add:"-"|add:public_flights }}</h4>
-                                <small>Private Flights</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+<!-- Flight privacy -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+  <div class="px-5 py-4 border-b border-gray-800">
+    <h2 class="text-sm font-semibold text-white">Flight Privacy</h2>
+  </div>
 
-                <!-- Bulk Actions -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="alert alert-info">
-                            <h6><i class="bi bi-info-circle"></i> Flight Privacy Controls</h6>
-                            <p class="mb-2">Individual flights are private by default. You can:</p>
-                            <ul class="mb-3">
-                                <li>Select flights below and use bulk actions to make them public/private</li>
-                                <li>Toggle privacy for individual flights from their detail pages</li>
-                                <li>Only flights marked as public will be visible to coaches and other users</li>
-                            </ul>
-
-                            <!-- Bulk action form -->
-                            <form id="bulkPrivacyForm" method="post" action="{% url 'bulk_privacy_update' %}">
-                                {% csrf_token %}
-                                <div class="row align-items-end">
-                                    <div class="col-md-6">
-                                        <label for="bulkAction" class="form-label">Bulk Action</label>
-                                        <select class="form-control" id="bulkAction" name="action">
-                                            <option value="make_public">Make Selected Flights Public</option>
-                                            <option value="make_private">Make Selected Flights Private</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <button type="submit" class="btn btn-primary" id="bulkSubmit" disabled>
-                                            <i class="bi bi-check2-square"></i> Apply to Selected
-                                        </button>
-                                        <button type="button" class="btn btn-outline-secondary" onclick="selectAll()">
-                                            Select All
-                                        </button>
-                                        <button type="button" class="btn btn-outline-secondary" onclick="selectNone()">
-                                            Select None
-                                        </button>
-                                    </div>
-                                </div>
-                                <input type="hidden" name="flight_ids" id="selectedFlightIds">
-                            </form>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Flight List -->
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th width="50">
-                                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleAll()">
-                                </th>
-                                <th>Date</th>
-                                <th>Type</th>
-                                <th>Analysis</th>
-                                <th>Privacy</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for flight in flights %}
-                            <tr>
-                                <td>
-                                    <input
-                                        type="checkbox"
-                                        class="flight-checkbox"
-                                        value="{{ flight.id }}"
-                                        onchange="updateBulkButton()"
-                                    >
-                                </td>
-                                <td>
-                                    <strong>{{ flight.created_at|date:"M d, Y" }}</strong><br>
-                                    <small class="text-muted">{{ flight.created_at|time:"H:i" }}</small>
-                                </td>
-                                <td>
-                                    {% if flight.is_swoop %}
-                                        <span class="badge bg-success">Swoop</span>
-                                        {% if flight.turn_rotation %}
-                                            <br><small>{{ flight.turn_rotation|floatformat:0 }}° {{ flight.turn_direction|title }}</small>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="badge bg-secondary">Flight</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if flight.analysis_successful %}
-                                        <span class="text-success"><i class="bi bi-check-circle"></i> Success</span>
-                                    {% else %}
-                                        <span class="text-danger"><i class="bi bi-x-circle"></i> Failed</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if flight.is_public %}
-                                        <span class="badge bg-success">
-                                            <i class="bi bi-eye"></i> Public
-                                        </span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">
-                                            <i class="bi bi-eye-slash"></i> Private
-                                        </span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <a href="{% url 'flight_detail' flight.id %}" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
-                                    <button
-                                        class="btn btn-sm btn-outline-warning"
-                                        onclick="toggleFlightPrivacy({{ flight.id }})"
-                                        title="Toggle Privacy"
-                                    >
-                                        {% if flight.is_public %}
-                                            <i class="bi bi-eye-slash"></i>
-                                        {% else %}
-                                            <i class="bi bi-eye"></i>
-                                        {% endif %}
-                                    </button>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="6" class="text-center text-muted">
-                                    No flights uploaded yet. <a href="{% url 'upload_flight' %}">Upload your first flight</a>!
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+  <!-- Stats -->
+  <div class="grid grid-cols-3 gap-px bg-gray-800 border-b border-gray-800">
+    <div class="bg-gray-900 p-4 text-center">
+      <p class="text-2xl font-bold text-white">{{ total_flights }}</p>
+      <p class="text-xs text-gray-500 mt-1">Total Flights</p>
     </div>
-</div>
+    <div class="bg-gray-900 p-4 text-center">
+      <p class="text-2xl font-bold text-emerald-400">{{ public_flights }}</p>
+      <p class="text-xs text-gray-500 mt-1">Public</p>
+    </div>
+    <div class="bg-gray-900 p-4 text-center">
+      <p class="text-2xl font-bold text-gray-400">{{ total_flights|add:"-"|add:public_flights }}</p>
+      <p class="text-xs text-gray-500 mt-1">Private</p>
+    </div>
+  </div>
 
+  <!-- Bulk actions -->
+  <div class="px-5 py-4 border-b border-gray-800 bg-sky-900/10">
+    <form id="bulkPrivacyForm" method="post" action="{% url 'bulk_privacy_update' %}">
+      {% csrf_token %}
+      <div class="flex items-center gap-3 flex-wrap">
+        <select id="bulkAction" name="action"
+                class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          <option value="make_public">Make Selected Public</option>
+          <option value="make_private">Make Selected Private</option>
+        </select>
+        <button type="submit" id="bulkSubmit" disabled
+                class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          Apply to Selected
+        </button>
+        <button type="button" onclick="selectAll()"
+                class="text-sm text-gray-400 hover:text-gray-200 px-3 py-2 rounded-lg border border-gray-700 transition-colors">
+          All
+        </button>
+        <button type="button" onclick="selectNone()"
+                class="text-sm text-gray-400 hover:text-gray-200 px-3 py-2 rounded-lg border border-gray-700 transition-colors">
+          None
+        </button>
+        <input type="hidden" name="flight_ids" id="selectedFlightIds">
+      </div>
+    </form>
+  </div>
+
+  <!-- Flight list -->
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+        <th class="px-5 py-3 text-left w-8">
+          <input type="checkbox" id="selectAllCheckbox" onchange="toggleAll()" class="accent-sky-500">
+        </th>
+        <th class="px-5 py-3 text-left">Date</th>
+        <th class="px-5 py-3 text-left">Type</th>
+        <th class="px-5 py-3 text-left">Analysis</th>
+        <th class="px-5 py-3 text-left">Privacy</th>
+        <th class="px-5 py-3 text-left">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for flight in flights %}
+      <tr class="border-b border-gray-800 last:border-0">
+        <td class="px-5 py-3">
+          <input type="checkbox" class="flight-checkbox accent-sky-500" value="{{ flight.id }}" onchange="updateBulkButton()">
+        </td>
+        <td class="px-5 py-3">
+          <p class="text-gray-200">{{ flight.created_at|date:"M d, Y" }}</p>
+          <p class="text-xs text-gray-500">{{ flight.created_at|time:"H:i" }}</p>
+        </td>
+        <td class="px-5 py-3">
+          {% if flight.is_swoop %}
+            <span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Swoop</span>
+            {% if flight.turn_rotation %}<p class="text-xs text-gray-500 mt-0.5">{{ flight.turn_rotation|floatformat:0 }}° {{ flight.turn_direction|title }}</p>{% endif %}
+          {% else %}
+            <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">Flight</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3">
+          {% if flight.analysis_successful %}
+            <span class="text-emerald-400 text-xs">✓ Success</span>
+          {% else %}
+            <span class="text-red-400 text-xs">✗ Failed</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3">
+          {% if flight.is_public %}
+            <span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5">Public</span>
+          {% else %}
+            <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">Private</span>
+          {% endif %}
+        </td>
+        <td class="px-5 py-3">
+          <div class="flex items-center gap-2">
+            <a href="{% url 'flight_detail' flight.id %}" class="text-sky-500 hover:text-sky-300 text-xs transition-colors">View</a>
+            <button onclick="toggleFlightPrivacy({{ flight.id }})"
+                    class="text-xs text-gray-500 hover:text-amber-400 transition-colors">
+              {% if flight.is_public %}Make Private{% else %}Make Public{% endif %}
+            </button>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="6" class="px-5 py-10 text-center text-gray-500">
+          No flights yet. <a href="{% url 'upload_flight' %}" class="text-sky-500 hover:text-sky-300">Upload your first flight</a>.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 function toggleProfilePublic() {
-    const checkbox = document.getElementById('profilePublic');
-    const isPublic = checkbox.checked;
-
-    // Create form to submit the change
-    const form = document.createElement('form');
-    form.method = 'post';
-    form.action = '{% url "profile" %}';
-
-    const csrfToken = document.createElement('input');
-    csrfToken.type = 'hidden';
-    csrfToken.name = 'csrfmiddlewaretoken';
-    csrfToken.value = '{{ csrf_token }}';
-    form.appendChild(csrfToken);
-
-    const publicProfileField = document.createElement('input');
-    publicProfileField.type = 'hidden';
-    publicProfileField.name = 'public_profile';
-    publicProfileField.value = isPublic ? 'on' : '';
-    form.appendChild(publicProfileField);
-
-    // Add other profile fields as hidden to maintain data
-    const fieldsToInclude = [
-        'license_number', 'uspa_number', 'license_level', 'exit_weight',
-        'home_dz', 'phone', 'emergency_contact', 'emergency_phone', 'units'
-    ];
-
-    document.body.appendChild(form);
-    form.submit();
+  const isPublic = document.getElementById('profilePublic').checked;
+  const form = document.createElement('form');
+  form.method = 'post';
+  form.action = '{% url "profile" %}';
+  const csrf = document.createElement('input');
+  csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken'; csrf.value = '{{ csrf_token }}';
+  form.appendChild(csrf);
+  const field = document.createElement('input');
+  field.type = 'hidden'; field.name = 'public_profile'; field.value = isPublic ? 'on' : '';
+  form.appendChild(field);
+  document.body.appendChild(form);
+  form.submit();
 }
 
 function toggleFlightPrivacy(flightId) {
-    const form = document.createElement('form');
-    form.method = 'post';
-    form.action = `/users/flight/${flightId}/toggle-privacy/`;
-
-    const csrfToken = document.createElement('input');
-    csrfToken.type = 'hidden';
-    csrfToken.name = 'csrfmiddlewaretoken';
-    csrfToken.value = '{{ csrf_token }}';
-    form.appendChild(csrfToken);
-
-    document.body.appendChild(form);
-    form.submit();
+  const form = document.createElement('form');
+  form.method = 'post';
+  form.action = `/users/flight/${flightId}/toggle-privacy/`;
+  const csrf = document.createElement('input');
+  csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken'; csrf.value = '{{ csrf_token }}';
+  form.appendChild(csrf);
+  document.body.appendChild(form);
+  form.submit();
 }
 
 function updateBulkButton() {
-    const checkboxes = document.querySelectorAll('.flight-checkbox:checked');
-    const submitBtn = document.getElementById('bulkSubmit');
-    const flightIds = Array.from(checkboxes).map(cb => cb.value);
-
-    document.getElementById('selectedFlightIds').value = flightIds.join(',');
-    submitBtn.disabled = checkboxes.length === 0;
+  const checked = document.querySelectorAll('.flight-checkbox:checked');
+  document.getElementById('selectedFlightIds').value = Array.from(checked).map(c => c.value).join(',');
+  document.getElementById('bulkSubmit').disabled = checked.length === 0;
 }
 
 function toggleAll() {
-    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-    const flightCheckboxes = document.querySelectorAll('.flight-checkbox');
-
-    flightCheckboxes.forEach(checkbox => {
-        checkbox.checked = selectAllCheckbox.checked;
-    });
-
-    updateBulkButton();
+  const all = document.getElementById('selectAllCheckbox').checked;
+  document.querySelectorAll('.flight-checkbox').forEach(cb => cb.checked = all);
+  updateBulkButton();
 }
 
 function selectAll() {
-    const flightCheckboxes = document.querySelectorAll('.flight-checkbox');
-    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-
-    flightCheckboxes.forEach(checkbox => {
-        checkbox.checked = true;
-    });
-    selectAllCheckbox.checked = true;
-
-    updateBulkButton();
+  document.querySelectorAll('.flight-checkbox').forEach(cb => cb.checked = true);
+  document.getElementById('selectAllCheckbox').checked = true;
+  updateBulkButton();
 }
 
 function selectNone() {
-    const flightCheckboxes = document.querySelectorAll('.flight-checkbox');
-    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-
-    flightCheckboxes.forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    selectAllCheckbox.checked = false;
-
-    updateBulkButton();
+  document.querySelectorAll('.flight-checkbox').forEach(cb => cb.checked = false);
+  document.getElementById('selectAllCheckbox').checked = false;
+  updateBulkButton();
 }
 
-// Handle bulk form submission
 document.getElementById('bulkPrivacyForm').addEventListener('submit', function(e) {
-    const selectedCount = document.querySelectorAll('.flight-checkbox:checked').length;
-    const action = document.getElementById('bulkAction').value;
-    const actionText = action === 'make_public' ? 'public' : 'private';
-
-    if (!confirm(`Are you sure you want to make ${selectedCount} flight(s) ${actionText}?`)) {
-        e.preventDefault();
-    }
+  const count = document.querySelectorAll('.flight-checkbox:checked').length;
+  const action = document.getElementById('bulkAction').value === 'make_public' ? 'public' : 'private';
+  if (!confirm(`Make ${count} flight(s) ${action}?`)) e.preventDefault();
 });
 </script>
 {% endblock %}
