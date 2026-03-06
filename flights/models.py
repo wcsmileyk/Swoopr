@@ -633,267 +633,238 @@ class Flight(models.Model):
             return "F"
 
     def get_chart_data(self):
-        """Get GPS data formatted for time series charts"""
-        # Try new JSON storage first, fallback to legacy
+        """Get GPS data formatted for FlySight-style time series viewer. All speeds in m/s, altitudes in m."""
+        import math
+
         gps_data = self.get_gps_data()
         if not gps_data:
             return self._get_chart_data_legacy()
-
         if not gps_data:
             return None
 
-        # Convert to lists for JSON serialization
+        G = 9.81  # m/s²
         timestamps = []
-        altitudes_agl = []
-        altitudes_msl = []
-        vertical_speeds = []
-        ground_speeds = []
-        headings = []
+        altitude_agl = []
+        vertical_speed = []
+        ground_speed = []
+        total_speed = []
+        dive_angle = []
+        glide_ratio = []
+        specific_energy = []
 
-        # Convert to seconds from start for x-axis using index position and 5Hz sampling rate
         for i, point in enumerate(gps_data):
-            # FlySight records at 5Hz, so each index represents 0.2 seconds
-            time_offset = i * 0.2
-            timestamps.append(time_offset)
-            altitudes_agl.append(point.get('altitude_agl', 0))
-            altitudes_msl.append(point.get('altitude_msl', 0))
-            vertical_speeds.append(point.get('velocity_down', 0) * 2.23694)  # Convert to mph
-            ground_speeds.append(point.get('ground_speed', 0) * 2.23694)  # Convert to mph
-            headings.append(point.get('heading', 0))
+            gs = float(point.get('ground_speed', 0) or 0)   # m/s horizontal
+            vd = float(point.get('velocity_down', 0) or 0)  # m/s, positive = descending
+            alt = float(point.get('altitude_agl', 0) or 0)  # meters AGL
 
-        # Mark important indices as timestamps
-        important_points = {}
-        if self.flare_idx is not None and self.flare_idx < len(timestamps):
-            important_points['flare'] = timestamps[self.flare_idx]
-        if self.max_vspeed_idx is not None and self.max_vspeed_idx < len(timestamps):
-            important_points['max_vspeed'] = timestamps[self.max_vspeed_idx]
-        if self.max_gspeed_idx is not None and self.max_gspeed_idx < len(timestamps):
-            important_points['max_gspeed'] = timestamps[self.max_gspeed_idx]
-        if self.landing_idx is not None and self.landing_idx < len(timestamps):
-            important_points['landing'] = timestamps[self.landing_idx]
-        if self.rollout_start_idx is not None and self.rollout_start_idx < len(timestamps):
-            important_points['rollout_start'] = timestamps[self.rollout_start_idx]
+            ts = math.sqrt(gs * gs + vd * vd)  # total 3D speed m/s
+
+            if gs > 0.1:
+                da = math.degrees(math.atan2(abs(vd), gs))
+            elif abs(vd) > 0.1:
+                da = 90.0
+            else:
+                da = 0.0
+
+            if abs(vd) > 0.1:
+                gr = min(30.0, max(-30.0, gs / abs(vd)))
+            else:
+                gr = 30.0  # effectively infinite when nearly level
+
+            se = G * alt + 0.5 * ts * ts  # J/kg specific mechanical energy
+
+            timestamps.append(round(i * 0.2, 1))
+            altitude_agl.append(round(alt, 2))
+            vertical_speed.append(round(vd, 3))
+            ground_speed.append(round(gs, 3))
+            total_speed.append(round(ts, 3))
+            dive_angle.append(round(da, 2))
+            glide_ratio.append(round(gr, 2))
+            specific_energy.append(round(se, 1))
+
+        n = len(timestamps)
+        important_indices = {}
+        for attr, key in [
+            ('flare_idx', 'flare'),
+            ('max_vspeed_idx', 'max_vspeed'),
+            ('max_gspeed_idx', 'max_gspeed'),
+            ('landing_idx', 'landing'),
+            ('rollout_start_idx', 'rollout_start'),
+            ('rollout_end_idx', 'rollout_end'),
+        ]:
+            val = getattr(self, attr)
+            if val is not None and val < n:
+                important_indices[key] = val
 
         return {
             'timestamps': timestamps,
-            'altitude_agl': altitudes_agl,
-            'altitude_msl': altitudes_msl,
-            'vertical_speed': vertical_speeds,
-            'ground_speed': ground_speeds,
-            'heading': headings,
-            'important_points': important_points
+            'altitude_agl': altitude_agl,
+            'vertical_speed': vertical_speed,
+            'ground_speed': ground_speed,
+            'total_speed': total_speed,
+            'dive_angle': dive_angle,
+            'glide_ratio': glide_ratio,
+            'specific_energy': specific_energy,
+            'important_indices': important_indices,
         }
 
     def _get_chart_data_legacy(self):
-        """Legacy method using GPSPoint model - will be removed after migration"""
-        import json
+        """Legacy fallback using GPSPoint model."""
+        import math
 
-        # Get all GPS points for this flight, ordered by time
-        points = self.gps_points.all().order_by('timestamp')
-
+        points = list(self.gps_points.all().order_by('timestamp'))
         if not points:
             return None
 
-        # Convert to lists for JSON serialization
+        G = 9.81
         timestamps = []
-        altitudes_agl = []
-        altitudes_msl = []
-        vertical_speeds = []
-        ground_speeds = []
-        headings = []
+        altitude_agl = []
+        vertical_speed = []
+        ground_speed = []
+        total_speed = []
+        dive_angle = []
+        glide_ratio = []
+        specific_energy = []
 
-        # Convert to seconds from start for x-axis using index position and 5Hz sampling rate
         for i, point in enumerate(points):
-            # FlySight records at 5Hz, so each index represents 0.2 seconds
-            time_offset = i * 0.2
-            timestamps.append(time_offset)
-            altitudes_agl.append(point.altitude_agl)
-            altitudes_msl.append(point.altitude_msl)
-            vertical_speeds.append(point.velocity_down * 2.23694)  # Convert to mph, positive down
-            ground_speeds.append(point.ground_speed * 2.23694 if point.ground_speed else 0)  # Convert to mph
-            headings.append(point.heading if point.heading else 0)
+            gs = float(point.ground_speed or 0)
+            vd = float(point.velocity_down or 0)
+            alt = float(point.altitude_agl or 0)
+            ts = math.sqrt(gs * gs + vd * vd)
 
-        # Mark important indices as timestamps
-        important_points = {}
-        if self.flare_idx is not None and self.flare_idx < len(timestamps):
-            important_points['flare'] = timestamps[self.flare_idx]
-        if self.max_vspeed_idx is not None and self.max_vspeed_idx < len(timestamps):
-            important_points['max_vspeed'] = timestamps[self.max_vspeed_idx]
-        if self.max_gspeed_idx is not None and self.max_gspeed_idx < len(timestamps):
-            important_points['max_gspeed'] = timestamps[self.max_gspeed_idx]
-        if self.landing_idx is not None and self.landing_idx < len(timestamps):
-            important_points['landing'] = timestamps[self.landing_idx]
-        if self.rollout_start_idx is not None and self.rollout_start_idx < len(timestamps):
-            important_points['rollout_start'] = timestamps[self.rollout_start_idx]
+            if gs > 0.1:
+                da = math.degrees(math.atan2(abs(vd), gs))
+            elif abs(vd) > 0.1:
+                da = 90.0
+            else:
+                da = 0.0
+
+            gr = min(30.0, max(-30.0, gs / abs(vd))) if abs(vd) > 0.1 else 30.0
+            se = G * alt + 0.5 * ts * ts
+
+            timestamps.append(round(i * 0.2, 1))
+            altitude_agl.append(round(alt, 2))
+            vertical_speed.append(round(vd, 3))
+            ground_speed.append(round(gs, 3))
+            total_speed.append(round(ts, 3))
+            dive_angle.append(round(da, 2))
+            glide_ratio.append(round(gr, 2))
+            specific_energy.append(round(se, 1))
+
+        n = len(timestamps)
+        important_indices = {}
+        for attr, key in [
+            ('flare_idx', 'flare'),
+            ('max_vspeed_idx', 'max_vspeed'),
+            ('max_gspeed_idx', 'max_gspeed'),
+            ('landing_idx', 'landing'),
+            ('rollout_start_idx', 'rollout_start'),
+            ('rollout_end_idx', 'rollout_end'),
+        ]:
+            val = getattr(self, attr)
+            if val is not None and val < n:
+                important_indices[key] = val
 
         return {
             'timestamps': timestamps,
-            'altitude_agl': altitudes_agl,
-            'altitude_msl': altitudes_msl,
-            'vertical_speed': vertical_speeds,
-            'ground_speed': ground_speeds,
-            'heading': headings,
-            'important_points': important_points
+            'altitude_agl': altitude_agl,
+            'vertical_speed': vertical_speed,
+            'ground_speed': ground_speed,
+            'total_speed': total_speed,
+            'dive_angle': dive_angle,
+            'glide_ratio': glide_ratio,
+            'specific_energy': specific_energy,
+            'important_indices': important_indices,
         }
 
     def get_3d_visualization_data(self):
-        """Get GPS data formatted for 3D visualization (side view, top view, map) - focused on swoop portion"""
+        """Get full-flight GPS data for side view, top view, and map, with swoop window marked."""
         import math
 
-        # Try JSON data first (new method), fallback to GPS points (legacy)
         gps_data = self.get_gps_data()
 
         if gps_data:
-            # Use JSON data (preferred for performance)
-            if self.is_swoop and self.flare_idx is not None and self.landing_idx is not None:
-                # Get only the swoop portion (flare to landing)
-                points_data = gps_data[self.flare_idx:self.landing_idx + 1]
-                flare_offset = 0
-                landing_offset = len(points_data) - 1
-            else:
-                # Use all points for non-swoop flights
-                points_data = gps_data
-                flare_offset = self.flare_idx
-                landing_offset = self.landing_idx
+            points_data = gps_data
         else:
-            # Legacy fallback using GPS points
-            points = self.gps_points.all().order_by('timestamp')
+            points = list(self.gps_points.all().order_by('timestamp'))
             if not points:
                 return None
-
-            if self.is_swoop and self.flare_idx is not None and self.landing_idx is not None:
-                points = points[self.flare_idx:self.landing_idx + 1]
-                flare_offset = 0
-                landing_offset = len(points) - 1
-            else:
-                flare_offset = self.flare_idx
-                landing_offset = self.landing_idx
-
-            # Convert GPS points to data format
-            points_data = []
-            for point in points:
-                points_data.append({
-                    'lat': float(point.location.y),
-                    'lon': float(point.location.x),
-                    'altitude_agl': float(point.altitude_agl) if point.altitude_agl else 0,
-                    'velocity_down': float(point.vertical_speed) if point.vertical_speed else 0,
-                    'ground_speed': float(point.ground_speed) if point.ground_speed else 0
-                })
+            points_data = [{
+                'lat': float(p.location.y),
+                'lon': float(p.location.x),
+                'altitude_agl': float(p.altitude_agl) if p.altitude_agl else 0,
+            } for p in points]
 
         if not points_data:
             return None
 
-        # Calculate cumulative distances and extract coordinates
         coordinates = []
-        cumulative_distances = [0]  # Start at 0 distance
-        altitudes_agl_ft = []
-        vertical_speeds_mph = []
-        ground_speeds_mph = []
-
-        prev_point = None
+        cumulative_distances = []
+        altitude_agl = []
         total_distance = 0
+        prev_lat = prev_lon = None
 
-        for point_data in points_data:
-            lat = point_data['lat']
-            lon = point_data['lon']
-            alt_ft = point_data['altitude_agl'] * 3.28084  # Convert to feet
+        for point in points_data:
+            lat = float(point.get('lat', 0))
+            lon = float(point.get('lon', 0))
+            alt = float(point.get('altitude_agl', 0))
 
-            # Extract speed data if available
-            vspeed_mph = point_data.get('velocity_down', 0) * 2.23694  # Convert m/s to mph
-            gspeed_mph = point_data.get('ground_speed', 0) * 2.23694  # Convert m/s to mph
+            if prev_lat is not None:
+                lat1r, lon1r = math.radians(prev_lat), math.radians(prev_lon)
+                lat2r, lon2r = math.radians(lat), math.radians(lon)
+                dlat, dlon = lat2r - lat1r, lon2r - lon1r
+                a = math.sin(dlat/2)**2 + math.cos(lat1r) * math.cos(lat2r) * math.sin(dlon/2)**2
+                total_distance += 6371000 * 2 * math.asin(math.sqrt(a))
 
             coordinates.append([lat, lon])
-            altitudes_agl_ft.append(alt_ft)
-            vertical_speeds_mph.append(vspeed_mph)
-            ground_speeds_mph.append(gspeed_mph)
+            cumulative_distances.append(round(total_distance, 1))
+            altitude_agl.append(round(alt, 2))
+            prev_lat, prev_lon = lat, lon
 
-            if prev_point:
-                # Calculate distance using Haversine formula
-                lat1, lon1 = math.radians(prev_point['lat']), math.radians(prev_point['lon'])
-                lat2, lon2 = math.radians(lat), math.radians(lon)
+        if not coordinates:
+            return None
 
-                dlat = lat2 - lat1
-                dlon = lon2 - lon1
-                a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-                c = 2 * math.asin(math.sqrt(a))
-                distance_m = 6371000 * c  # Earth radius in meters
-                distance_ft = distance_m * 3.28084  # Convert to feet
+        lats = [c[0] for c in coordinates]
+        lons = [c[1] for c in coordinates]
+        center_point = [sum(lats) / len(lats), sum(lons) / len(lons)]
+        full_bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
 
-                total_distance += distance_ft
-                cumulative_distances.append(total_distance)
-
-            prev_point = point_data
-
-        # Calculate center point for top view
-        if coordinates:
-            center_lat = sum(coord[0] for coord in coordinates) / len(coordinates)
-            center_lon = sum(coord[1] for coord in coordinates) / len(coordinates)
-            center_point = [center_lat, center_lon]
-
-            # Calculate bounds
-            min_lat = min(coord[0] for coord in coordinates)
-            max_lat = max(coord[0] for coord in coordinates)
-            min_lon = min(coord[1] for coord in coordinates)
-            max_lon = max(coord[1] for coord in coordinates)
-            bounds = [[min_lat, min_lon], [max_lat, max_lon]]
-        else:
-            center_point = None
-            bounds = None
-
-        # Convert coordinates to relative XY for top view (centered at origin)
-        top_view_coords = []
-        if center_point:
-            # Simple mercator-like projection for small areas
-            for lat, lon in coordinates:
-                # Convert to meters relative to center, then to feet
-                x_m = (lon - center_point[1]) * 111320 * math.cos(math.radians(center_point[0]))
-                y_m = (lat - center_point[0]) * 110540
-                x_ft = x_m * 3.28084
-                y_ft = y_m * 3.28084
-                top_view_coords.append([x_ft, y_ft])
-
-        # Mark important points with their indices (adjusted for swoop filtering)
-        important_indices = {}
+        n = len(coordinates)
+        swoop_start_idx = None
+        swoop_end_idx = None
+        swoop_bounds = None
         if self.is_swoop and self.flare_idx is not None and self.landing_idx is not None:
-            # For swoop data, adjust indices relative to the filtered range
-            important_indices['flare'] = flare_offset
-            important_indices['landing'] = landing_offset
+            swoop_start_idx = min(self.flare_idx, n - 1)
+            swoop_end_idx = min(self.landing_idx, n - 1)
+            sc = coordinates[swoop_start_idx:swoop_end_idx + 1]
+            if sc:
+                swoop_bounds = [[min(c[0] for c in sc), min(c[1] for c in sc)],
+                                [max(c[0] for c in sc), max(c[1] for c in sc)]]
 
-            # Adjust other indices relative to the swoop start
-            if self.max_vspeed_idx is not None and self.flare_idx <= self.max_vspeed_idx <= self.landing_idx:
-                important_indices['max_vspeed'] = self.max_vspeed_idx - self.flare_idx
-            if self.max_gspeed_idx is not None and self.flare_idx <= self.max_gspeed_idx <= self.landing_idx:
-                important_indices['max_gspeed'] = self.max_gspeed_idx - self.flare_idx
-            if self.rollout_start_idx is not None and self.flare_idx <= self.rollout_start_idx <= self.landing_idx:
-                important_indices['rollout_start'] = self.rollout_start_idx - self.flare_idx
-            if self.rollout_end_idx is not None and self.flare_idx <= self.rollout_end_idx <= self.landing_idx:
-                important_indices['rollout_end'] = self.rollout_end_idx - self.flare_idx
-        else:
-            # For full flight data, use original indices
-            if self.flare_idx is not None and self.flare_idx < len(coordinates):
-                important_indices['flare'] = self.flare_idx
-            if self.max_vspeed_idx is not None and self.max_vspeed_idx < len(coordinates):
-                important_indices['max_vspeed'] = self.max_vspeed_idx
-            if self.max_gspeed_idx is not None and self.max_gspeed_idx < len(coordinates):
-                important_indices['max_gspeed'] = self.max_gspeed_idx
-            if self.landing_idx is not None and self.landing_idx < len(coordinates):
-                important_indices['landing'] = self.landing_idx
-            if self.rollout_start_idx is not None and self.rollout_start_idx < len(coordinates):
-                important_indices['rollout_start'] = self.rollout_start_idx
-            if self.rollout_end_idx is not None and self.rollout_end_idx < len(coordinates):
-                important_indices['rollout_end'] = self.rollout_end_idx
+        important_indices = {}
+        for attr, key in [
+            ('flare_idx', 'flare'),
+            ('max_vspeed_idx', 'max_vspeed'),
+            ('max_gspeed_idx', 'max_gspeed'),
+            ('landing_idx', 'landing'),
+            ('rollout_start_idx', 'rollout_start'),
+            ('rollout_end_idx', 'rollout_end'),
+        ]:
+            val = getattr(self, attr)
+            if val is not None and val < n:
+                important_indices[key] = val
 
         return {
-            'coordinates': coordinates,  # [[lat, lon], ...] for map view
-            'top_view_coords': top_view_coords,  # [[x_ft, y_ft], ...] for top view
-            'cumulative_distances': cumulative_distances,  # [0, d1, d2, ...] in feet
-            'altitudes_agl_ft': altitudes_agl_ft,  # [alt1, alt2, ...] in feet
-            'vertical_speeds_mph': vertical_speeds_mph,  # [vspeed1, vspeed2, ...] in mph
-            'ground_speeds_mph': ground_speeds_mph,  # [gspeed1, gspeed2, ...] in mph
-            'center_point': center_point,  # [lat, lon] for map centering
-            'bounds': bounds,  # [[min_lat, min_lon], [max_lat, max_lon]]
-            'important_indices': important_indices,  # {'flare': idx, ...}
-            'total_distance_ft': total_distance  # Total flight path distance in feet
+            'coordinates': coordinates,
+            'cumulative_distances': cumulative_distances,  # meters
+            'altitude_agl': altitude_agl,                 # meters
+            'center_point': center_point,
+            'full_bounds': full_bounds,
+            'swoop_bounds': swoop_bounds,
+            'swoop_start_idx': swoop_start_idx,
+            'swoop_end_idx': swoop_end_idx,
+            'important_indices': important_indices,
+            'total_distance_m': round(total_distance, 1),
         }
 
     def calculate_swoop_accuracy_metrics(self):

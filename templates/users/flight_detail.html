@@ -4,10 +4,18 @@
 {% block title %}Flight Detail - Swoopr{% endblock %}
 
 {% block extra_css %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- Leaflet CSS for map -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+.viewer-toggle-btn { font-size: 0.75rem; padding: 2px 8px; border-radius: 3px; cursor: pointer; border: 1px solid; margin: 1px; transition: opacity 0.15s; }
+.viewer-toggle-btn.inactive { opacity: 0.35; }
+.viewer-zoom-btn { font-size: 0.78rem; }
+#topViewCanvas { display: block; width: 100%; height: 300px; }
+#sideViewChart, #flightChart { display: block; }
+.viewer-panel-card { height: 100%; }
+.viewer-panel-card .card-body { padding: 8px; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -15,88 +23,42 @@
     <h1 class="h2">
         <i class="bi bi-airplane"></i>
         {% if user.is_authenticated and user == flight.pilot %}
-            <!-- Editable flight name for owner -->
             <span id="flight-name-display">{{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}</span>
             <button type="button" class="btn btn-link btn-sm ms-2" onclick="editFlightName()" title="Edit flight name">
                 <i class="bi bi-pencil"></i>
             </button>
             <div id="flight-name-edit" style="display: none;" class="d-inline-block ms-2">
                 <input type="text" id="flight-name-input" class="form-control form-control-sm d-inline-block" style="width: 300px;" value="{{ flight.flight_name|default:flight.filename|default:'Unnamed Flight' }}">
-                <button type="button" class="btn btn-success btn-sm ms-1" onclick="saveFlightName()">
-                    <i class="bi bi-check"></i>
-                </button>
-                <button type="button" class="btn btn-secondary btn-sm ms-1" onclick="cancelEditFlightName()">
-                    <i class="bi bi-x"></i>
-                </button>
+                <button type="button" class="btn btn-success btn-sm ms-1" onclick="saveFlightName()"><i class="bi bi-check"></i></button>
+                <button type="button" class="btn btn-secondary btn-sm ms-1" onclick="cancelEditFlightName()"><i class="bi bi-x"></i></button>
             </div>
         {% else %}
-            <!-- Read-only flight name for non-owners -->
             {{ flight.flight_name|default:flight.filename|default:"Unnamed Flight" }}
         {% endif %}
-
-        {% if flight.is_swoop %}
-            <span class="badge bg-success ms-2">Swoop</span>
-        {% else %}
-            <span class="badge bg-secondary ms-2">Flight</span>
-        {% endif %}
-        {% if flight.performance_grade %}
-            <span class="badge bg-primary ms-1">Grade {{ flight.performance_grade }}</span>
-        {% endif %}
-        {% if flight.data_incorrect %}
-            <span class="badge bg-warning ms-1">
-                <i class="bi bi-flag"></i> Flagged
-            </span>
-        {% endif %}
-        {% if flight.is_public %}
-            <span class="badge bg-success ms-1">
-                <i class="bi bi-eye"></i> Public
-            </span>
-        {% else %}
-            <span class="badge bg-secondary ms-1">
-                <i class="bi bi-eye-slash"></i> Private
-            </span>
-        {% endif %}
+        {% if flight.is_swoop %}<span class="badge bg-success ms-2">Swoop</span>{% else %}<span class="badge bg-secondary ms-2">Flight</span>{% endif %}
+        {% if flight.performance_grade %}<span class="badge bg-primary ms-1">Grade {{ flight.performance_grade }}</span>{% endif %}
+        {% if flight.data_incorrect %}<span class="badge bg-warning ms-1"><i class="bi bi-flag"></i> Flagged</span>{% endif %}
+        {% if flight.is_public %}<span class="badge bg-success ms-1"><i class="bi bi-eye"></i> Public</span>{% else %}<span class="badge bg-secondary ms-1"><i class="bi bi-eye-slash"></i> Private</span>{% endif %}
     </h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         {% if user.is_authenticated and user == flight.pilot %}
-            <!-- Owner-only controls -->
             <div class="btn-group me-2">
-                <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-cloud-upload"></i> Upload
-                </a>
+                <a href="{% url 'upload_flight' %}" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload"></i> Upload</a>
                 <button type="button" class="btn btn-sm btn-outline-warning" onclick="toggleDataIncorrect()">
-                    <i class="bi bi-flag"></i>
-                    {% if flight.data_incorrect %}
-                        Remove Flag
-                    {% else %}
-                        Flag as Incorrect
-                    {% endif %}
+                    <i class="bi bi-flag"></i> {% if flight.data_incorrect %}Remove Flag{% else %}Flag as Incorrect{% endif %}
                 </button>
                 <button type="button" class="btn btn-sm btn-outline-info" onclick="toggleFlightPrivacy()">
-                    {% if flight.is_public %}
-                        <i class="bi bi-eye-slash"></i> Make Private
-                    {% else %}
-                        <i class="bi bi-eye"></i> Make Public
-                    {% endif %}
+                    {% if flight.is_public %}<i class="bi bi-eye-slash"></i> Make Private{% else %}<i class="bi bi-eye"></i> Make Public{% endif %}
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete()">
-                    <i class="bi bi-trash"></i> Delete
-                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete()"><i class="bi bi-trash"></i> Delete</button>
             </div>
-            <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Flights
-            </a>
+            <a href="{% url 'flights' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back to Flights</a>
         {% else %}
-            <!-- Public viewer controls -->
             <div class="btn-group me-2">
                 {% if flight.pilot.profile.public_profile %}
-                    <a href="{% url 'public_profile' flight.pilot.username %}" class="btn btn-sm btn-primary">
-                        <i class="bi bi-person"></i> View {{ flight.pilot.profile.display_name }}'s Profile
-                    </a>
+                    <a href="{% url 'public_profile' flight.pilot.username %}" class="btn btn-sm btn-primary"><i class="bi bi-person"></i> View {{ flight.pilot.profile.display_name }}'s Profile</a>
                 {% endif %}
-                <a href="{% url 'public_swoops' %}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Back to Public Swoops
-                </a>
+                <a href="{% url 'public_swoops' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i> Back to Public Swoops</a>
             </div>
         {% endif %}
     </div>
@@ -111,131 +73,60 @@
                     <div class="col-md-3">
                         <h6 class="text-muted">Date & Time</h6>
                         <p>
-                            {% if flight.swoop_start_time %}
-                                {{ flight.swoop_start_time|date:"M d, Y" }}<br>
-                                <small>{{ flight.swoop_start_time|time:"H:i" }}</small>
-                            {% else %}
-                                {{ flight.created_at|date:"M d, Y" }}<br>
-                                <small>{{ flight.created_at|time:"H:i" }}</small>
-                            {% endif %}
+                            {% if flight.swoop_start_time %}{{ flight.swoop_start_time|date:"M d, Y" }}<br><small>{{ flight.swoop_start_time|time:"H:i" }}</small>
+                            {% else %}{{ flight.created_at|date:"M d, Y" }}<br><small>{{ flight.created_at|time:"H:i" }}</small>{% endif %}
                         </p>
                     </div>
                     <div class="col-md-3">
                         <h6 class="text-muted">Canopy</h6>
                         <p>
-                            {% if flight.canopy %}
-                                {{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
-                                <small>{{ flight.canopy.size|area_display:user_units }}</small>
-                                {% if flight.wing_loading %}
-                                    <small>({{ flight.wing_loading|wing_loading_display:user_units }})</small>
-                                {% endif %}
-                            {% else %}
-                                <span class="text-muted">Unknown</span>
-                            {% endif %}
+                            {% if flight.canopy %}{{ flight.canopy.manufacturer }} {{ flight.canopy.model }}<br>
+                            <small>{{ flight.canopy.size|area_display:user_units }}</small>
+                            {% if flight.wing_loading %}<small>({{ flight.wing_loading|wing_loading_display:user_units }})</small>{% endif %}
+                            {% else %}<span class="text-muted">Unknown</span>{% endif %}
                         </p>
                     </div>
                     <div class="col-md-3">
                         <h6 class="text-muted">Analysis Status</h6>
                         <p>
-                            {% if flight.analysis_successful %}
-                                <span class="text-success"><i class="bi bi-check-circle"></i> Successful</span><br>
-                                <small>{{ flight.analyzed_at|date:"M d, H:i" }}</small>
-                            {% else %}
-                                <span class="text-danger"><i class="bi bi-x-circle"></i> Failed</span><br>
-                                {% if flight.analysis_error %}
-                                    <small class="text-danger">{{ flight.analysis_error }}</small>
-                                {% endif %}
-                            {% endif %}
+                            {% if flight.analysis_successful %}<span class="text-success"><i class="bi bi-check-circle"></i> Successful</span><br><small>{{ flight.analyzed_at|date:"M d, H:i" }}</small>
+                            {% else %}<span class="text-danger"><i class="bi bi-x-circle"></i> Failed</span><br>{% if flight.analysis_error %}<small class="text-danger">{{ flight.analysis_error }}</small>{% endif %}{% endif %}
                         </p>
                     </div>
                     <div class="col-md-3">
                         <h6 class="text-muted">Competition Gate</h6>
                         <p>
                             {% if is_owner %}
-                                <!-- Editable gate for owner -->
-                                <span id="gate-display">
-                                    {% if flight.competition_gate %}
-                                        {{ flight.competition_gate.name }}
-                                    {% else %}
-                                        <span class="text-muted">None</span>
-                                    {% endif %}
-                                </span>
-                                <button type="button" class="btn btn-link btn-sm p-0 ms-1" onclick="editGate()" title="Edit competition gate">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
+                                <span id="gate-display">{% if flight.competition_gate %}{{ flight.competition_gate.name }}{% else %}<span class="text-muted">None</span>{% endif %}</span>
+                                <button type="button" class="btn btn-link btn-sm p-0 ms-1" onclick="editGate()" title="Edit competition gate"><i class="bi bi-pencil"></i></button>
                                 <div id="gate-edit" style="display: none;" class="mt-2">
                                     <select id="gate-select" class="form-select form-select-sm">
                                         <option value="">No gate</option>
-                                        {% for gate in available_gates %}
-                                            <option value="{{ gate.id }}" {% if flight.competition_gate and flight.competition_gate.id == gate.id %}selected{% endif %}>
-                                                {{ gate.name }} ({{ gate.get_gate_type_display }})
-                                            </option>
-                                        {% endfor %}
+                                        {% for gate in available_gates %}<option value="{{ gate.id }}" {% if flight.competition_gate and flight.competition_gate.id == gate.id %}selected{% endif %}>{{ gate.name }} ({{ gate.get_gate_type_display }})</option>{% endfor %}
                                     </select>
                                     <div class="mt-1">
-                                        <button type="button" class="btn btn-success btn-sm" onclick="saveGate()">
-                                            <i class="bi bi-check"></i> Save
-                                        </button>
-                                        <button type="button" class="btn btn-secondary btn-sm" onclick="cancelEditGate()">
-                                            <i class="bi bi-x"></i> Cancel
-                                        </button>
+                                        <button type="button" class="btn btn-success btn-sm" onclick="saveGate()"><i class="bi bi-check"></i> Save</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="cancelEditGate()"><i class="bi bi-x"></i> Cancel</button>
                                     </div>
                                 </div>
                             {% else %}
-                                <!-- Read-only gate for non-owners -->
-                                {% if flight.competition_gate %}
-                                    {{ flight.competition_gate.name }}
-                                {% else %}
-                                    <span class="text-muted">None</span>
-                                {% endif %}
+                                {% if flight.competition_gate %}{{ flight.competition_gate.name }}{% else %}<span class="text-muted">None</span>{% endif %}
                             {% endif %}
                         </p>
                     </div>
                 </div>
                 {% if is_owner and flight.competition_gate %}
-                <!-- Gate metrics row -->
                 <div class="row mt-3 pt-3 border-top">
                     <div class="col-md-12">
-                        <h6 class="text-muted mb-3">
-                            Gate Metrics
-                            {% if flight.gate_speed_mps %}
-                                <span class="badge bg-success">Calculated</span>
-                            {% else %}
-                                <span class="badge bg-warning">Not Calculated</span>
-                            {% endif %}
-                        </h6>
+                        <h6 class="text-muted mb-3">Gate Metrics {% if flight.gate_speed_mps %}<span class="badge bg-success">Calculated</span>{% else %}<span class="badge bg-warning">Not Calculated</span>{% endif %}</h6>
                     </div>
                     {% if flight.gate_speed_mps %}
-                        <div class="col-md-3">
-                            <strong>Gate Speed:</strong><br>
-                            {{ flight.gate_speed_mps|floatformat:2 }} m/s
-                            <small class="text-muted">({{ flight.gate_speed_mps|multiply:2.23694|floatformat:1 }} mph)</small>
-                        </div>
-                        <div class="col-md-3">
-                            <strong>Gate Altitude:</strong><br>
-                            {{ flight.gate_altitude_agl|floatformat:2 }} m AGL
-                            <small class="text-muted">({{ flight.gate_altitude_agl|multiply:3.28084|floatformat:1 }} ft)</small>
-                        </div>
-                        <div class="col-md-3">
-                            <strong>Passed Between Gates:</strong><br>
-                            {% if flight.passed_between_gates %}
-                                <span class="text-success"><i class="bi bi-check-circle"></i> Yes</span>
-                            {% else %}
-                                <span class="text-warning"><i class="bi bi-exclamation-circle"></i> No</span>
-                            {% endif %}
-                        </div>
-                        <div class="col-md-3">
-                            <button type="button" class="btn btn-sm btn-primary" onclick="recalculateGateMetrics()">
-                                <i class="bi bi-arrow-clockwise"></i> Recalculate
-                            </button>
-                        </div>
+                        <div class="col-md-3"><strong>Gate Speed:</strong><br>{{ flight.gate_speed_mps|floatformat:2 }} m/s <small class="text-muted">({{ flight.gate_speed_mps|multiply:2.23694|floatformat:1 }} mph)</small></div>
+                        <div class="col-md-3"><strong>Gate Altitude:</strong><br>{{ flight.gate_altitude_agl|floatformat:2 }} m AGL <small class="text-muted">({{ flight.gate_altitude_agl|multiply:3.28084|floatformat:1 }} ft)</small></div>
+                        <div class="col-md-3"><strong>Passed Between Gates:</strong><br>{% if flight.passed_between_gates %}<span class="text-success"><i class="bi bi-check-circle"></i> Yes</span>{% else %}<span class="text-warning"><i class="bi bi-exclamation-circle"></i> No</span>{% endif %}</div>
+                        <div class="col-md-3"><button type="button" class="btn btn-sm btn-primary" onclick="recalculateGateMetrics()"><i class="bi bi-arrow-clockwise"></i> Recalculate</button></div>
                     {% else %}
-                        <div class="col-md-12">
-                            <p class="text-muted mb-2">Gate metrics have not been calculated yet.</p>
-                            <button type="button" class="btn btn-sm btn-primary" onclick="calculateGateMetrics()">
-                                <i class="bi bi-calculator"></i> Calculate Gate Metrics
-                            </button>
-                        </div>
+                        <div class="col-md-12"><p class="text-muted mb-2">Gate metrics have not been calculated yet.</p><button type="button" class="btn btn-sm btn-primary" onclick="calculateGateMetrics()"><i class="bi bi-calculator"></i> Calculate Gate Metrics</button></div>
                     {% endif %}
                 </div>
                 {% endif %}
@@ -245,71 +136,86 @@
 </div>
 
 {% if flight.data_incorrect and flight.notes %}
-<!-- Data Incorrect Notes -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="alert alert-warning" role="alert">
             <div class="d-flex">
-                <div class="flex-shrink-0">
-                    <i class="bi bi-flag-fill fs-4"></i>
-                </div>
-                <div class="flex-grow-1 ms-3">
-                    <h5 class="alert-heading">Flight Flagged as Incorrect</h5>
-                    <p class="mb-0">{{ flight.notes|linebreaks }}</p>
-                </div>
+                <div class="flex-shrink-0"><i class="bi bi-flag-fill fs-4"></i></div>
+                <div class="flex-grow-1 ms-3"><h5 class="alert-heading">Flight Flagged as Incorrect</h5><p class="mb-0">{{ flight.notes|linebreaks }}</p></div>
             </div>
         </div>
     </div>
 </div>
 {% endif %}
 
-{% if chart_data and flight.analysis_successful %}
-<!-- Time Series Visualizer -->
-<div class="row mb-4">
+{% if chart_data and viz_3d_data and flight.analysis_successful %}
+<!-- ============================================================ -->
+<!-- FLYSIGHT-STYLE VIEWER                                        -->
+<!-- ============================================================ -->
+
+<!-- ROW 1: Time-Series Chart -->
+<div class="row mb-2">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-graph-up"></i> Flight Profile
-                </h5>
-                <small class="text-muted">Time series data showing altitude, vertical speed, and ground speed</small>
+            <div class="card-header py-2">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex flex-wrap gap-1 align-items-center">
+                        <span class="text-muted me-1" style="font-size:0.78rem;">Show:</span>
+                        <button class="viewer-toggle-btn" id="tog-elevation" style="background:#1f77b4;color:#fff;border-color:#1f77b4" onclick="toggleSeries('elevation')">Elevation</button>
+                        <button class="viewer-toggle-btn" id="tog-vspeed" style="background:#ff7f0e;color:#fff;border-color:#ff7f0e" onclick="toggleSeries('vspeed')">V-Speed</button>
+                        <button class="viewer-toggle-btn" id="tog-hspeed" style="background:#2ca02c;color:#fff;border-color:#2ca02c" onclick="toggleSeries('hspeed')">H-Speed</button>
+                        <button class="viewer-toggle-btn inactive" id="tog-totalSpeed" style="background:#9467bd;color:#fff;border-color:#9467bd" onclick="toggleSeries('totalSpeed')">Total Speed</button>
+                        <button class="viewer-toggle-btn inactive" id="tog-diveAngle" style="background:#d62728;color:#fff;border-color:#d62728" onclick="toggleSeries('diveAngle')">Dive Angle</button>
+                        <button class="viewer-toggle-btn inactive" id="tog-glideRatio" style="background:#e377c2;color:#fff;border-color:#e377c2" onclick="toggleSeries('glideRatio')">Glide Ratio</button>
+                        <button class="viewer-toggle-btn inactive" id="tog-energy" style="background:#8c7d3a;color:#fff;border-color:#8c7d3a" onclick="toggleSeries('energy')">Energy</button>
+                    </div>
+                    {% if flight.is_swoop %}
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-primary viewer-zoom-btn" id="btn-zoom-swoop" onclick="zoomToSwoop()"><i class="bi bi-zoom-in"></i> Swoop</button>
+                        <button class="btn btn-sm btn-outline-secondary viewer-zoom-btn" id="btn-zoom-full" onclick="zoomToFull()"><i class="bi bi-zoom-out"></i> Full Flight</button>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
-            <div class="card-body">
-                <div style="height: 400px; position: relative;">
+            <div class="card-body p-2">
+                <div style="height:320px;position:relative;">
                     <canvas id="flightChart"></canvas>
                 </div>
-                <div class="mt-3">
-                    <div class="row text-center">
-                        <div class="col-md-2">
-                            <div class="border-end">
-                                <span style="background-color: #1f77b4; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">Altitude AGL</span>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="border-end">
-                                <span style="background-color: #ff7f0e; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">Vertical Speed</span>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="border-end">
-                                <span style="background-color: #2ca02c; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">Ground Speed</span>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="border-end">
-                                <span style="color: #d62728; font-size: 0.8rem;">● Flare</span>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="border-end">
-                                <span style="color: #9467bd; font-size: 0.8rem;">● Max VSpeed</span>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <span style="color: #8c564b; font-size: 0.8rem;">● Max GSpeed</span>
-                        </div>
-                    </div>
+                <!-- Cursor readout -->
+                <div id="cursorReadout" class="mt-1 text-muted" style="font-size:0.75rem;min-height:1.1em;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ROW 2: Top View | Side View | Map -->
+<div class="row mb-4 g-2">
+    <!-- Top View (Canvas) -->
+    <div class="col-md-4">
+        <div class="card viewer-panel-card">
+            <div class="card-header py-1"><small class="text-muted"><i class="bi bi-arrow-up-circle"></i> Top View (North Up)</small></div>
+            <div class="card-body p-1">
+                <canvas id="topViewCanvas" style="width:100%;height:300px;display:block;"></canvas>
+            </div>
+        </div>
+    </div>
+    <!-- Side View (Chart.js) -->
+    <div class="col-md-4">
+        <div class="card viewer-panel-card">
+            <div class="card-header py-1"><small class="text-muted"><i class="bi bi-bar-chart"></i> Side View (Elevation Profile)</small></div>
+            <div class="card-body p-1">
+                <div style="height:300px;position:relative;">
+                    <canvas id="sideViewChart"></canvas>
                 </div>
+            </div>
+        </div>
+    </div>
+    <!-- Map View (Leaflet) -->
+    <div class="col-md-4">
+        <div class="card viewer-panel-card">
+            <div class="card-header py-1"><small class="text-muted"><i class="bi bi-geo"></i> Map View</small></div>
+            <div class="card-body p-1">
+                <div id="mapView" style="height:300px;width:100%;"></div>
             </div>
         </div>
     </div>
@@ -317,117 +223,51 @@
 {% endif %}
 
 {% if flight.is_swoop and flight.analysis_successful %}
-<!-- Swoop Summary Data -->
+<!-- Swoop Analysis Summary -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-bar-chart-line"></i> Swoop Analysis Summary
-                </h5>
-            </div>
+            <div class="card-header"><h5 class="mb-0"><i class="bi bi-bar-chart-line"></i> Swoop Analysis Summary</h5></div>
             <div class="card-body">
                 <div class="row">
-                    <!-- Turn Analysis -->
                     <div class="col-md-6 mb-4">
                         <h6 class="text-primary">Turn Analysis</h6>
                         <div class="row">
-                            <div class="col-6">
-                                <strong>Rotation:</strong><br>
-                                {% if flight.turn_rotation %}
-                                    {{ flight.turn_rotation|floatformat:0 }}° {{ flight.turn_direction|title }}
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
-                            </div>
-                            <div class="col-6">
-                                <strong>Flare Altitude:</strong><br>
-                                {% flight_altitude flight 'flare_altitude_agl' user_units %}
-                            </div>
+                            <div class="col-6"><strong>Rotation:</strong><br>{% if flight.turn_rotation %}{{ flight.turn_rotation|floatformat:0 }}° {{ flight.turn_direction|title }}{% else %}<span class="text-muted">--</span>{% endif %}</div>
+                            <div class="col-6"><strong>Flare Altitude:</strong><br>{% flight_altitude flight 'flare_altitude_agl' user_units %}</div>
                         </div>
                     </div>
-
-                    <!-- Speed Analysis -->
                     <div class="col-md-6 mb-4">
                         <h6 class="text-success">Speed Analysis</h6>
                         <div class="row">
-                            <div class="col-6">
-                                <strong>Max Vertical Speed:</strong><br>
-                                {% flight_max_vertical_speed flight user_units %}
-                                {% if flight.max_vspeed_altitude_agl %}
-                                    <br><small class="text-muted">@ {% flight_altitude flight 'max_vspeed_altitude_agl' user_units %}</small>
-                                {% endif %}
-                            </div>
-                            <div class="col-6">
-                                <strong>Max Ground Speed:</strong><br>
-                                {% flight_max_ground_speed flight user_units %}
-                                {% if flight.max_gspeed_altitude_agl %}
-                                    <br><small class="text-muted">@ {% flight_altitude flight 'max_gspeed_altitude_agl' user_units %}</small>
-                                {% endif %}
-                            </div>
+                            <div class="col-6"><strong>Max Vertical Speed:</strong><br>{% flight_max_vertical_speed flight user_units %}{% if flight.max_vspeed_altitude_agl %}<br><small class="text-muted">@ {% flight_altitude flight 'max_vspeed_altitude_agl' user_units %}</small>{% endif %}</div>
+                            <div class="col-6"><strong>Max Ground Speed:</strong><br>{% flight_max_ground_speed flight user_units %}{% if flight.max_gspeed_altitude_agl %}<br><small class="text-muted">@ {% flight_altitude flight 'max_gspeed_altitude_agl' user_units %}</small>{% endif %}</div>
                         </div>
                     </div>
-
-                    <!-- Rollout Analysis -->
                     <div class="col-md-6 mb-4">
                         <h6 class="text-warning">Rollout Analysis</h6>
                         <div class="row">
-                            <div class="col-6">
-                                <strong>Rollout Time:</strong><br>
-                                {% if flight.rollout_time %}
-                                    {{ flight.rollout_time|floatformat:1 }}s
-                                {% else %}
-                                    <span class="text-muted">--</span>
-                                {% endif %}
-                            </div>
-                            <div class="col-6">
-                                <strong>Swoop Distance:</strong><br>
-                                {% flight_swoop_distance flight user_units %}
-                            </div>
+                            <div class="col-6"><strong>Rollout Time:</strong><br>{% if flight.rollout_time %}{{ flight.rollout_time|floatformat:1 }}s{% else %}<span class="text-muted">--</span>{% endif %}</div>
+                            <div class="col-6"><strong>Swoop Distance:</strong><br>{% flight_swoop_distance flight user_units %}</div>
                         </div>
                         <div class="row mt-2">
-                            <div class="col-6">
-                                <strong>Rollout Start:</strong><br>
-                                {% flight_altitude flight 'rollout_start_altitude_agl' user_units %}
-                            </div>
-                            <div class="col-6">
-                                <strong>Rollout End:</strong><br>
-                                {% flight_altitude flight 'rollout_end_altitude_agl' user_units %}
-                            </div>
+                            <div class="col-6"><strong>Rollout Start:</strong><br>{% flight_altitude flight 'rollout_start_altitude_agl' user_units %}</div>
+                            <div class="col-6"><strong>Rollout End:</strong><br>{% flight_altitude flight 'rollout_end_altitude_agl' user_units %}</div>
                         </div>
                     </div>
-
-                    <!-- Additional Metrics -->
                     <div class="col-md-6 mb-4">
                         <h6 class="text-info">Additional Metrics</h6>
                         <div class="row">
-                            <div class="col-6">
-                                <strong>Avg Swoop Altitude:</strong><br>
-                                {% flight_altitude flight 'swoop_avg_altitude_agl' user_units %}
-                            </div>
-                            <div class="col-6">
-                                <strong>Entry Gate Speed:</strong><br>
-                                {% flight_entry_gate_speed flight user_units %}
-                            </div>
+                            <div class="col-6"><strong>Avg Swoop Altitude:</strong><br>{% flight_altitude flight 'swoop_avg_altitude_agl' user_units %}</div>
+                            <div class="col-6"><strong>Entry Gate Speed:</strong><br>{% flight_entry_gate_speed flight user_units %}</div>
                         </div>
                     </div>
-
-                    <!-- GPS Accuracy -->
                     <div class="col-md-6 mb-4">
                         <h6 class="text-secondary">GPS Accuracy</h6>
                         <div class="row">
-                            <div class="col-4">
-                                <strong>Horizontal:</strong><br>
-                                {{ flight.swoop_avg_horizontal_accuracy|distance_display:user_units }}
-                            </div>
-                            <div class="col-4">
-                                <strong>Vertical:</strong><br>
-                                {{ flight.swoop_avg_vertical_accuracy|distance_display:user_units }}
-                            </div>
-                            <div class="col-4">
-                                <strong>Speed:</strong><br>
-                                {{ flight.swoop_avg_speed_accuracy|speed_display:user_units }}
-                            </div>
+                            <div class="col-4"><strong>Horizontal:</strong><br>{{ flight.swoop_avg_horizontal_accuracy|distance_display:user_units }}</div>
+                            <div class="col-4"><strong>Vertical:</strong><br>{{ flight.swoop_avg_vertical_accuracy|distance_display:user_units }}</div>
+                            <div class="col-4"><strong>Speed:</strong><br>{{ flight.swoop_avg_speed_accuracy|speed_display:user_units }}</div>
                         </div>
                     </div>
                 </div>
@@ -435,116 +275,6 @@
         </div>
     </div>
 </div>
-{% endif %}
-
-{% if viz_3d_data and flight.analysis_successful %}
-<!-- 3D Visualizations -->
-<div class="row mb-4">
-    <!-- Side View Chart -->
-    <div class="col-md-6 mb-3">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="bi bi-bar-chart"></i> Side View (Elevation Profile)
-                </h6>
-                <small class="text-muted">Distance vs altitude profile</small>
-            </div>
-            <div class="card-body">
-                <div style="height: 300px; position: relative;">
-                    <canvas id="sideViewChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Top View Chart -->
-    <div class="col-md-6 mb-3">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="bi bi-diagram-2"></i> Top View (Plan View)
-                </h6>
-                <small class="text-muted">Bird's eye view of flight path</small>
-            </div>
-            <div class="card-body">
-                <div style="height: 300px; position: relative;">
-                    <canvas id="topViewChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Map View -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="bi bi-geo"></i> Map View
-                </h6>
-                <small class="text-muted">Flight path on OpenStreetMap</small>
-            </div>
-            <div class="card-body">
-                <div id="mapView" style="height: 400px; width: 100%;"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Overhead View with Gate Overlays -->
-{% if overhead_data %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <div>
-                    <h6 class="mb-0">
-                        <i class="bi bi-crosshair"></i> Overhead View
-                        {% if flight.competition_gate %}
-                            <span class="badge bg-info ms-2">{{ flight.competition_gate.name }}</span>
-                        {% endif %}
-                    </h6>
-                    <small class="text-muted">Bird's eye view with gate course overlay (if available)</small>
-                </div>
-                {% if is_owner and available_gates %}
-                <div>
-                    <select id="gateSelector" class="form-select form-select-sm" style="width: 250px;" onchange="selectGate()">
-                        <option value="">-- Select Gate Course --</option>
-                        {% for gate in available_gates %}
-                            <option value="{{ gate.id }}" {% if flight.competition_gate.id == gate.id %}selected{% endif %}>
-                                {{ gate.name }} ({{ gate.get_gate_type_display }})
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                {% endif %}
-            </div>
-            <div class="card-body">
-                <div style="height: 500px; position: relative;">
-                    <canvas id="overheadChart"></canvas>
-                </div>
-                <div class="mt-3">
-                    <div class="row text-center">
-                        <div class="col-md-3">
-                            <span style="background-color: #d62728; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">— Flight Path</span>
-                        </div>
-                        <div class="col-md-3">
-                            <span style="background-color: #2ecc71; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">● Entry Inside</span>
-                        </div>
-                        <div class="col-md-3">
-                            <span style="background-color: #e74c3c; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">● Entry Outside</span>
-                        </div>
-                        <div class="col-md-3">
-                            <span style="background-color: #f39c12; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8rem;">● Exit/Speed Gate</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
 {% endif %}
 
 <!-- Gate File Upload Section -->
@@ -552,22 +282,15 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="bi bi-upload"></i> Gate Course Management
-                </h6>
-            </div>
+            <div class="card-header"><h6 class="mb-0"><i class="bi bi-upload"></i> Gate Course Management</h6></div>
             <div class="card-body">
                 <p class="text-muted">Upload a new gate course file (CSV or GSW format) or select from existing courses.</p>
-                <button class="btn btn-sm btn-primary" onclick="openGateUploadModal()">
-                    <i class="bi bi-plus-circle"></i> Upload Gate Course
-                </button>
+                <button class="btn btn-sm btn-primary" onclick="openGateUploadModal()"><i class="bi bi-plus-circle"></i> Upload Gate Course</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Gate Upload Modal -->
 <div class="modal fade" id="gateUploadModal" tabindex="-1" role="dialog" aria-labelledby="gateUploadModalLabel" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
@@ -578,10 +301,7 @@
             <form id="gateUploadForm" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="modal-body">
-                    <div class="form-group mb-3">
-                        <label for="gateName" class="form-label">Gate Course Name</label>
-                        <input type="text" class="form-control" id="gateName" name="gate_name" placeholder="e.g., AZ Speed Gates" required>
-                    </div>
+                    <div class="form-group mb-3"><label for="gateName" class="form-label">Gate Course Name</label><input type="text" class="form-control" id="gateName" name="gate_name" placeholder="e.g., AZ Speed Gates" required></div>
                     <div class="form-group mb-3">
                         <label for="gateType" class="form-label">Gate Type</label>
                         <select class="form-select" id="gateType" name="gate_type" required>
@@ -590,23 +310,12 @@
                             <option value="standard">Accuracy Course (4 gates)</option>
                             <option value="distance">Distance Course (2 gates)</option>
                         </select>
-                        <small class="text-muted d-block mt-2">
-                            <strong>Speed:</strong> 5 gates on 70° arc<br>
-                            <strong>Accuracy:</strong> 4 gates + accuracy box<br>
-                            <strong>Distance:</strong> Entry & 50m exit gate
-                        </small>
                     </div>
-                    <div class="form-group mb-3">
-                        <label for="gateFile" class="form-label">Gate File (.CSV or .GSW)</label>
-                        <input type="file" class="form-control" id="gateFile" name="gate_file" accept=".csv,.gsw,.CSV,.GSW" required>
-                        <small class="text-muted">Maximum 5MB</small>
-                    </div>
+                    <div class="form-group mb-3"><label for="gateFile" class="form-label">Gate File (.CSV or .GSW)</label><input type="file" class="form-control" id="gateFile" name="gate_file" accept=".csv,.gsw,.CSV,.GSW" required><small class="text-muted">Maximum 5MB</small></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="uploadGateFile()">
-                        <i class="bi bi-upload"></i> Upload & Parse
-                    </button>
+                    <button type="button" class="btn btn-primary" onclick="uploadGateFile()"><i class="bi bi-upload"></i> Upload & Parse</button>
                 </div>
             </form>
         </div>
@@ -614,35 +323,21 @@
 </div>
 {% endif %}
 
-<!-- Performance Grade Explanation -->
 {% if flight.performance_grade %}
 <div class="row mb-4">
     <div class="col-12">
         <div class="card border-primary">
-            <div class="card-header bg-primary text-white">
-                <h6 class="mb-0">
-                    <i class="bi bi-award"></i> Performance Grade: {{ flight.performance_grade }}
-                </h6>
-            </div>
+            <div class="card-header bg-primary text-white"><h6 class="mb-0"><i class="bi bi-award"></i> Performance Grade: {{ flight.performance_grade }}</h6></div>
             <div class="card-body">
                 <p class="mb-2">
-                    {% if flight.performance_grade == 'A' %}
-                        <strong>Excellent:</strong> Within 1% of your personal best performance. Outstanding swoop!
-                    {% elif flight.performance_grade == 'B' %}
-                        <strong>Very Good:</strong> Within 10% of your personal best. Strong swoop execution.
-                    {% elif flight.performance_grade == 'C' %}
-                        <strong>Good:</strong> Within 30% of your personal best. Solid swoop performance.
-                    {% elif flight.performance_grade == 'D' %}
-                        <strong>Developing:</strong> Within 50% of your personal best. Room for improvement.
-                    {% elif flight.performance_grade == 'F' %}
-                        <strong>Needs Work:</strong> More than 50% off your personal best. Focus on consistency.
-                    {% else %}
-                        <strong>No Grade:</strong> Need more flights for comparison data.
-                    {% endif %}
+                    {% if flight.performance_grade == 'A' %}<strong>Excellent:</strong> Within 1% of your personal best performance. Outstanding swoop!
+                    {% elif flight.performance_grade == 'B' %}<strong>Very Good:</strong> Within 10% of your personal best. Strong swoop execution.
+                    {% elif flight.performance_grade == 'C' %}<strong>Good:</strong> Within 30% of your personal best. Solid swoop performance.
+                    {% elif flight.performance_grade == 'D' %}<strong>Developing:</strong> Within 50% of your personal best. Room for improvement.
+                    {% elif flight.performance_grade == 'F' %}<strong>Needs Work:</strong> More than 50% off your personal best. Focus on consistency.
+                    {% else %}<strong>No Grade:</strong> Need more flights for comparison data.{% endif %}
                 </p>
-                <small class="text-muted">
-                    Grading based on your personal best vertical speed and swoop distance achievements.
-                </small>
+                <small class="text-muted">Grading based on your personal best vertical speed and swoop distance achievements.</small>
             </div>
         </div>
     </div>
@@ -654,13 +349,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="notesModalLabel">
-                    {% if flight.data_incorrect %}
-                        Update Notes for Flagged Flight
-                    {% else %}
-                        Flag Flight as Incorrect
-                    {% endif %}
-                </h5>
+                <h5 class="modal-title" id="notesModalLabel">{% if flight.data_incorrect %}Update Notes for Flagged Flight{% else %}Flag Flight as Incorrect{% endif %}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -668,22 +357,14 @@
                     {% csrf_token %}
                     <div class="mb-3">
                         <label for="flagNotes" class="form-label">What's wrong with this flight data?</label>
-                        <textarea
-                            class="form-control"
-                            id="flagNotes"
-                            name="notes"
-                            rows="4"
-                            placeholder="Please describe what issues you found with this flight data..."
-                        >{{ flight.notes }}</textarea>
+                        <textarea class="form-control" id="flagNotes" name="notes" rows="4" placeholder="Please describe what issues you found with this flight data...">{{ flight.notes }}</textarea>
                         <div class="form-text">This will help improve data quality and analysis accuracy.</div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" onclick="submitFlagForm()">
-                    <i class="bi bi-flag"></i> Flag as Incorrect
-                </button>
+                <button type="button" class="btn btn-warning" onclick="submitFlagForm()"><i class="bi bi-flag"></i> Flag as Incorrect</button>
             </div>
         </div>
     </div>
@@ -692,1014 +373,597 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if chart_data and flight.analysis_successful %}
+{% if chart_data and viz_3d_data and flight.analysis_successful %}
 <script>
-const chartData = {{ chart_data|safe }};
+// ============================================================
+// DATA
+// ============================================================
+const CD = {{ chart_data|safe }};   // chart data (SI units: m, m/s)
+const VD = {{ viz_3d_data|safe }};  // viz data (SI units: m)
+const UNITS = '{{ user_units }}';   // 'metric' or 'imperial'
+const N = CD.timestamps.length;
 
-// Create the chart
-const ctx = document.getElementById('flightChart').getContext('2d');
-const chart = new Chart(ctx, {
+// Unit helpers
+function toAlt(m)   { return UNITS === 'metric' ? m          : m * 3.28084; }
+function toSpeed(s) { return UNITS === 'metric' ? s * 3.6    : s * 2.23694; }
+function toDist(m)  { return UNITS === 'metric' ? m          : m * 3.28084; }
+const altUnit   = UNITS === 'metric' ? 'm'    : 'ft';
+const speedUnit = UNITS === 'metric' ? 'km/h' : 'mph';
+const distUnit  = UNITS === 'metric' ? 'm'    : 'ft';
+
+const EV = CD.important_indices; // {flare, max_vspeed, max_gspeed, landing, rollout_start, rollout_end}
+
+// Default zoom window: swoop ± 15s of context, else full flight
+const CONTEXT_STEPS = 75; // 75 * 0.2s = 15s
+let viewStart = 0, viewEnd = N - 1;
+let zoomedToSwoop = false;
+if (EV.flare !== undefined && EV.landing !== undefined) {
+    viewStart = Math.max(0, EV.flare - CONTEXT_STEPS);
+    viewEnd   = Math.min(N - 1, EV.landing + CONTEXT_STEPS);
+    zoomedToSwoop = true;
+}
+
+let cursorIdx = -1;
+
+// ============================================================
+// SERIES CONFIG
+// ============================================================
+const SERIES = {
+    elevation:  { label: 'Elevation',    color: '#1f77b4', axis: 'yAlt',    data: () => CD.altitude_agl.map(toAlt),                         unit: altUnit,   decimals: 1 },
+    vspeed:     { label: 'V-Speed',      color: '#ff7f0e', axis: 'ySpeed',  data: () => CD.vertical_speed.map(v => toSpeed(Math.abs(v))),   unit: speedUnit, decimals: 1 },
+    hspeed:     { label: 'H-Speed',      color: '#2ca02c', axis: 'ySpeed',  data: () => CD.ground_speed.map(toSpeed),                       unit: speedUnit, decimals: 1 },
+    totalSpeed: { label: 'Total Speed',  color: '#9467bd', axis: 'ySpeed',  data: () => CD.total_speed.map(toSpeed),                        unit: speedUnit, decimals: 1 },
+    diveAngle:  { label: 'Dive Angle',   color: '#d62728', axis: 'yAngle',  data: () => CD.dive_angle,                                      unit: '°',       decimals: 1 },
+    glideRatio: { label: 'Glide Ratio',  color: '#e377c2', axis: 'yAngle',  data: () => CD.glide_ratio,                                     unit: ':1',      decimals: 2 },
+    energy:     { label: 'Spec. Energy', color: '#8c7d3a', axis: 'yEnergy', data: () => CD.specific_energy,                                 unit: 'J/kg',    decimals: 0 },
+};
+const SERIES_VISIBLE = { elevation: true, vspeed: true, hspeed: true, totalSpeed: false, diveAngle: false, glideRatio: false, energy: false };
+
+// ============================================================
+// EVENT LINES PLUGIN
+// ============================================================
+const EVENT_STYLES = {
+    flare:         { color: '#d62728', label: 'Flare' },
+    max_vspeed:    { color: '#9467bd', label: 'Max VS' },
+    max_gspeed:    { color: '#2ca02c', label: 'Max HS' },
+    rollout_start: { color: '#ff7f0e', label: 'Rollout' },
+    landing:       { color: '#8c564b', label: 'Land' },
+};
+const eventLinesPlugin = {
+    id: 'eventLines',
+    afterDraw(chart) {
+        const ctx = chart.ctx;
+        const xScale = chart.scales.x;
+        const ca = chart.chartArea;
+        ctx.save();
+        for (const [key, cfg] of Object.entries(EVENT_STYLES)) {
+            const idx = EV[key];
+            if (idx === undefined) continue;
+            const t = CD.timestamps[idx];
+            if (t < xScale.min || t > xScale.max) continue;
+            const x = xScale.getPixelForValue(t);
+            ctx.beginPath(); ctx.strokeStyle = cfg.color; ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 3]); ctx.moveTo(x, ca.top); ctx.lineTo(x, ca.bottom); ctx.stroke();
+            ctx.fillStyle = cfg.color; ctx.font = '10px sans-serif'; ctx.setLineDash([]);
+            ctx.fillText(cfg.label, x + 3, ca.top + 12);
+        }
+        // Draw cursor line
+        if (cursorIdx >= 0) {
+            const ct = CD.timestamps[cursorIdx];
+            if (ct >= xScale.min && ct <= xScale.max) {
+                const cx = xScale.getPixelForValue(ct);
+                ctx.beginPath(); ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1;
+                ctx.setLineDash([2, 2]); ctx.moveTo(cx, ca.top); ctx.lineTo(cx, ca.bottom); ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+};
+
+// ============================================================
+// MAIN CHART
+// ============================================================
+function buildDatasets() {
+    return Object.entries(SERIES).map(([key, s]) => ({
+        label: s.label,
+        data: s.data().map((v, i) => ({ x: CD.timestamps[i], y: v })),
+        borderColor: s.color,
+        backgroundColor: s.color + '18',
+        tension: 0.1,
+        pointRadius: 0,
+        borderWidth: 1.5,
+        yAxisID: s.axis,
+        hidden: !SERIES_VISIBLE[key],
+        parsing: false,
+        _seriesKey: key,
+    }));
+}
+
+const flightChart = new Chart(document.getElementById('flightChart').getContext('2d'), {
+    type: 'line',
+    data: { datasets: buildDatasets() },
+    plugins: [eventLinesPlugin],
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    title: (ctx) => `T+${ctx[0].parsed.x.toFixed(1)}s`,
+                    label: (ctx) => {
+                        const key = ctx.dataset._seriesKey;
+                        const s = SERIES[key];
+                        return `${s.label}: ${ctx.parsed.y.toFixed(s.decimals)} ${s.unit}`;
+                    },
+                },
+            },
+        },
+        onHover: (event, elements) => {
+            if (elements.length > 0) updateCursor(elements[0].index);
+            else clearCursor();
+        },
+        scales: {
+            x: {
+                type: 'linear',
+                min: CD.timestamps[viewStart],
+                max: CD.timestamps[viewEnd],
+                title: { display: true, text: 'Time (s)' },
+                ticks: { maxTicksLimit: 20, callback: v => Number.isInteger(v) ? v : '' },
+            },
+            yAlt:    { type: 'linear', display: 'auto', position: 'left',  title: { display: true, text: `Altitude (${altUnit})` }, grid: { color: 'rgba(0,0,0,0.05)' } },
+            ySpeed:  { type: 'linear', display: 'auto', position: 'right', title: { display: true, text: `Speed (${speedUnit})` },   grid: { drawOnChartArea: false } },
+            yAngle:  { type: 'linear', display: 'auto', position: 'right', title: { display: true, text: 'Angle (°) / Ratio' },      grid: { drawOnChartArea: false } },
+            yEnergy: { type: 'linear', display: 'auto', position: 'left',  title: { display: true, text: 'Energy (J/kg)' },          grid: { drawOnChartArea: false } },
+        },
+    },
+});
+
+function toggleSeries(key) {
+    SERIES_VISIBLE[key] = !SERIES_VISIBLE[key];
+    const dsIdx = Object.keys(SERIES).indexOf(key);
+    flightChart.data.datasets[dsIdx].hidden = !SERIES_VISIBLE[key];
+    flightChart.update('none');
+    document.getElementById('tog-' + key).classList.toggle('inactive', !SERIES_VISIBLE[key]);
+}
+
+function applyZoom(startIdx, endIdx) {
+    viewStart = startIdx; viewEnd = endIdx;
+    flightChart.options.scales.x.min = CD.timestamps[startIdx];
+    flightChart.options.scales.x.max = CD.timestamps[endIdx];
+    flightChart.update('none');
+    // Sync map bounds
+    if (zoomedToSwoop && VD.swoop_bounds) {
+        leafletMap.fitBounds(VD.swoop_bounds, { padding: [15, 15] });
+    } else {
+        leafletMap.fitBounds(VD.full_bounds, { padding: [15, 15] });
+    }
+}
+
+function zoomToSwoop() {
+    if (EV.flare === undefined || EV.landing === undefined) return;
+    zoomedToSwoop = true;
+    document.getElementById('btn-zoom-swoop').classList.remove('btn-outline-primary');
+    document.getElementById('btn-zoom-swoop').classList.add('btn-primary');
+    document.getElementById('btn-zoom-full').classList.remove('btn-primary');
+    document.getElementById('btn-zoom-full').classList.add('btn-outline-secondary');
+    applyZoom(Math.max(0, EV.flare - CONTEXT_STEPS), Math.min(N - 1, EV.landing + CONTEXT_STEPS));
+}
+
+function zoomToFull() {
+    zoomedToSwoop = false;
+    document.getElementById('btn-zoom-full').classList.remove('btn-outline-secondary');
+    document.getElementById('btn-zoom-full').classList.add('btn-primary');
+    document.getElementById('btn-zoom-swoop').classList.remove('btn-primary');
+    document.getElementById('btn-zoom-swoop').classList.add('btn-outline-primary');
+    applyZoom(0, N - 1);
+}
+
+// ============================================================
+// TOP VIEW CANVAS
+// ============================================================
+const topCanvas = document.getElementById('topViewCanvas');
+const topCtx = topCanvas.getContext('2d');
+
+// Pre-compute projection
+const centerLat = (VD.full_bounds[0][0] + VD.full_bounds[1][0]) / 2;
+const centerLon = (VD.full_bounds[0][1] + VD.full_bounds[1][1]) / 2;
+const lonFactor = Math.cos(centerLat * Math.PI / 180);
+
+function latLonToMeters(lat, lon) {
+    return { x: (lon - centerLon) * lonFactor * 111320, y: -(lat - centerLat) * 110540 };
+}
+
+// Find XY extents of all points
+let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+for (const [lat, lon] of VD.coordinates) {
+    const { x, y } = latLonToMeters(lat, lon);
+    if (x < xMin) xMin = x; if (x > xMax) xMax = x;
+    if (y < yMin) yMin = y; if (y > yMax) yMax = y;
+}
+const xRange = xMax - xMin || 1;
+const yRange = yMax - yMin || 1;
+
+function project(lat, lon) {
+    const PAD = 20;
+    const W = topCanvas.offsetWidth || 300;
+    const H = topCanvas.offsetHeight || 300;
+    const scale = Math.min((W - 2 * PAD) / xRange, (H - 2 * PAD) / yRange);
+    const drawW = xRange * scale, drawH = yRange * scale;
+    const ox = (W - drawW) / 2, oy = (H - drawH) / 2;
+    const { x, y } = latLonToMeters(lat, lon);
+    return { px: ox + (x - xMin) * scale, py: oy + (y - yMin) * scale };
+}
+
+function drawTopView() {
+    const W = topCanvas.offsetWidth || 300;
+    const H = topCanvas.offsetHeight || 300;
+    topCanvas.width = W; topCanvas.height = H;
+    topCtx.clearRect(0, 0, W, H);
+    topCtx.fillStyle = '#f8f9fa'; topCtx.fillRect(0, 0, W, H);
+
+    const coords = VD.coordinates;
+    const swS = VD.swoop_start_idx, swE = VD.swoop_end_idx;
+
+    // Full flight path (gray)
+    if (coords.length > 1) {
+        topCtx.beginPath();
+        topCtx.strokeStyle = '#ccc'; topCtx.lineWidth = 1.5;
+        const p0 = project(coords[0][0], coords[0][1]);
+        topCtx.moveTo(p0.px, p0.py);
+        for (let i = 1; i < coords.length; i++) {
+            const p = project(coords[i][0], coords[i][1]);
+            topCtx.lineTo(p.px, p.py);
+        }
+        topCtx.stroke();
+    }
+
+    // Swoop portion (blue)
+    if (swS !== null && swE !== null && swE > swS) {
+        topCtx.beginPath();
+        topCtx.strokeStyle = '#1f77b4'; topCtx.lineWidth = 2.5;
+        const ps = project(coords[swS][0], coords[swS][1]);
+        topCtx.moveTo(ps.px, ps.py);
+        for (let i = swS + 1; i <= swE; i++) {
+            const p = project(coords[i][0], coords[i][1]);
+            topCtx.lineTo(p.px, p.py);
+        }
+        topCtx.stroke();
+    }
+
+    // North arrow
+    topCtx.save();
+    topCtx.fillStyle = '#333'; topCtx.font = 'bold 10px sans-serif';
+    topCtx.fillText('N', W - 22, 18);
+    topCtx.beginPath();
+    topCtx.strokeStyle = '#333'; topCtx.lineWidth = 1.5;
+    topCtx.moveTo(W - 17, 22); topCtx.lineTo(W - 17, 38); topCtx.stroke();
+    topCtx.beginPath();
+    topCtx.fillStyle = '#333';
+    topCtx.moveTo(W - 17, 22); topCtx.lineTo(W - 20, 28); topCtx.lineTo(W - 14, 28); topCtx.closePath(); topCtx.fill();
+    topCtx.restore();
+
+    // Event markers
+    const evMarkers = [
+        { key: 'flare',         color: '#d62728', label: 'F', r: 5 },
+        { key: 'max_vspeed',    color: '#9467bd', label: 'VS', r: 4 },
+        { key: 'max_gspeed',    color: '#2ca02c', label: 'HS', r: 4 },
+        { key: 'rollout_start', color: '#ff7f0e', label: 'R', r: 4 },
+        { key: 'landing',       color: '#8c564b', label: 'L', r: 5 },
+    ];
+    for (const { key, color, r } of evMarkers) {
+        const idx = EV[key];
+        if (idx === undefined || idx >= coords.length) continue;
+        const { px, py } = project(coords[idx][0], coords[idx][1]);
+        topCtx.beginPath(); topCtx.arc(px, py, r, 0, 2 * Math.PI);
+        topCtx.fillStyle = color; topCtx.fill();
+    }
+
+    // Cursor dot
+    if (cursorIdx >= 0 && cursorIdx < coords.length) {
+        const { px, py } = project(coords[cursorIdx][0], coords[cursorIdx][1]);
+        topCtx.beginPath(); topCtx.arc(px, py, 6, 0, 2 * Math.PI);
+        topCtx.fillStyle = 'rgba(255,107,107,0.85)'; topCtx.fill();
+        topCtx.strokeStyle = '#fff'; topCtx.lineWidth = 1.5; topCtx.stroke();
+    }
+}
+
+// Resize observer to redraw on panel resize
+new ResizeObserver(() => drawTopView()).observe(topCanvas.parentElement);
+
+// ============================================================
+// SIDE VIEW CHART
+// ============================================================
+const altData  = VD.altitude_agl.map(toAlt);
+const distData = VD.cumulative_distances.map(toDist);
+
+const swoopSegDist = [];
+const swoopSegAlt  = [];
+if (VD.swoop_start_idx !== null) {
+    for (let i = VD.swoop_start_idx; i <= VD.swoop_end_idx; i++) {
+        swoopSegDist.push(distData[i]);
+        swoopSegAlt.push(altData[i]);
+    }
+}
+
+const sideViewChart = new Chart(document.getElementById('sideViewChart').getContext('2d'), {
     type: 'line',
     data: {
-        labels: chartData.timestamps,
         datasets: [
-            {
-                label: 'Altitude AGL (ft)',
-                data: chartData.altitude_agl.map(alt => alt * 3.28084), // Convert to feet
-                borderColor: '#1f77b4',
-                backgroundColor: 'rgba(31, 119, 180, 0.1)',
-                tension: 0.1,
-                pointRadius: 0,
-                yAxisID: 'y'
+            {   // Full flight (gray)
+                label: 'Full Flight',
+                data: distData.map((d, i) => ({ x: d, y: altData[i] })),
+                borderColor: '#ccc', backgroundColor: 'transparent',
+                borderWidth: 1.5, pointRadius: 0, tension: 0.1, parsing: false,
             },
-            {
-                label: 'Vertical Speed (mph)',
-                data: chartData.vertical_speed,
-                borderColor: '#ff7f0e',
-                backgroundColor: 'rgba(255, 127, 14, 0.1)',
-                tension: 0.1,
-                pointRadius: 0,
-                yAxisID: 'y1'
+            {   // Swoop segment (blue)
+                label: 'Swoop',
+                data: swoopSegDist.map((d, i) => ({ x: d, y: swoopSegAlt[i] })),
+                borderColor: '#1f77b4', backgroundColor: 'rgba(31,119,180,0.12)',
+                borderWidth: 2.5, pointRadius: 0, tension: 0.1, parsing: false, fill: true,
             },
-            {
-                label: 'Ground Speed (mph)',
-                data: chartData.ground_speed,
-                borderColor: '#2ca02c',
-                backgroundColor: 'rgba(44, 160, 44, 0.1)',
-                tension: 0.1,
-                pointRadius: 0,
-                yAxisID: 'y1'
-            }
-        ]
+            {   // Cursor marker
+                label: 'Cursor',
+                data: [],
+                borderColor: '#ff6b6b', backgroundColor: '#ff6b6b',
+                pointRadius: 7, pointHoverRadius: 7,
+                showLine: false, parsing: false,
+            },
+        ],
     },
     options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-            mode: 'index',
-            intersect: false,
-        },
-        plugins: {
-            legend: {
-                display: false
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: {
+            callbacks: {
+                title: ctx => `Dist: ${ctx[0].parsed.x.toFixed(0)} ${distUnit}`,
+                label: ctx => `Alt: ${ctx.parsed.y.toFixed(1)} ${altUnit}`,
             },
-            tooltip: {
-                callbacks: {
-                    title: function(context) {
-                        return 'Time: ' + context[0].label + 's';
-                    },
-                    label: function(context) {
-                        return context.dataset.label + ': ' + context.parsed.y.toFixed(1);
-                    }
-                }
-            }
+        }},
+        onHover: (event, elements) => {
+            if (elements.length > 0) {
+                // Map side view point index back to full-flight index
+                const ds = elements[0].datasetIndex;
+                const di = elements[0].index;
+                if (ds === 0) updateCursor(di);
+                else if (ds === 1 && VD.swoop_start_idx !== null) updateCursor(VD.swoop_start_idx + di);
+            } else clearCursor();
         },
         scales: {
-            x: {
-                display: true,
-                title: {
-                    display: true,
-                    text: 'Time (seconds)'
-                },
-                ticks: {
-                    stepSize: 1,
-                    callback: function(value) {
-                        return Math.round(value);
-                    }
-                }
-            },
-            y: {
-                type: 'linear',
-                display: true,
-                position: 'left',
-                title: {
-                    display: true,
-                    text: 'Altitude (ft)'
-                },
-                grid: {
-                    drawOnChartArea: false,
-                },
-            },
-            y1: {
-                type: 'linear',
-                display: true,
-                position: 'right',
-                title: {
-                    display: true,
-                    text: 'Speed (mph)'
-                },
-                grid: {
-                    drawOnChartArea: false,
-                },
-            },
-        }
-    }
-});
-
-// Add vertical lines for important events by overlaying datasets
-if (chartData.important_points.flare) {
-    const flareData = chartData.timestamps.map((time, index) => {
-        return time === chartData.important_points.flare ? chartData.altitude_agl[index] * 3.28084 : null;
-    });
-    chart.data.datasets.push({
-        label: 'Flare',
-        data: flareData,
-        borderColor: '#d62728',
-        backgroundColor: '#d62728',
-        pointRadius: 6,
-        pointHoverRadius: 8,
-        showLine: false,
-        yAxisID: 'y'
-    });
-}
-
-if (chartData.important_points.max_vspeed) {
-    const maxVSpeedData = chartData.timestamps.map((time, index) => {
-        return time === chartData.important_points.max_vspeed ? chartData.altitude_agl[index] * 3.28084 : null;
-    });
-    chart.data.datasets.push({
-        label: 'Max VSpeed',
-        data: maxVSpeedData,
-        borderColor: '#9467bd',
-        backgroundColor: '#9467bd',
-        pointRadius: 6,
-        pointHoverRadius: 8,
-        showLine: false,
-        yAxisID: 'y'
-    });
-}
-
-if (chartData.important_points.max_gspeed) {
-    const maxGSpeedData = chartData.timestamps.map((time, index) => {
-        return time === chartData.important_points.max_gspeed ? chartData.altitude_agl[index] * 3.28084 : null;
-    });
-    chart.data.datasets.push({
-        label: 'Max GSpeed',
-        data: maxGSpeedData,
-        borderColor: '#8c564b',
-        backgroundColor: '#8c564b',
-        pointRadius: 6,
-        pointHoverRadius: 8,
-        showLine: false,
-        yAxisID: 'y'
-    });
-}
-
-// Focus chart on swoop area with context if we have flare and landing points
-if (chartData.important_points.flare && chartData.important_points.landing) {
-    // Show context before flare and after landing to see full swoop pattern
-    const swoopStart = Math.max(0, chartData.important_points.flare - 15);
-    const maxTimestamp = chartData.timestamps[chartData.timestamps.length - 1];
-    const swoopEnd = Math.min(maxTimestamp, chartData.important_points.landing + 10);
-    chart.options.scales.x.min = swoopStart;
-    chart.options.scales.x.max = swoopEnd;
-    chart.update();
-}
-</script>
-{% endif %}
-
-{% if viz_3d_data and flight.analysis_successful %}
-<script>
-const viz3DData = {{ viz_3d_data|safe }};
-
-// 1. Side View Chart (Distance vs Altitude)
-const sideViewCtx = document.getElementById('sideViewChart').getContext('2d');
-const sideViewChart = new Chart(sideViewCtx, {
-    type: 'line',
-    data: {
-        labels: viz3DData.cumulative_distances.map(d => Math.round(d)),
-        datasets: [{
-            label: 'Altitude AGL (ft)',
-            data: viz3DData.altitudes_agl_ft,
-            borderColor: '#2ca02c',
-            backgroundColor: 'rgba(44, 160, 44, 0.1)',
-            tension: 0.1,
-            pointRadius: 1,
-            fill: true
-        }]
+            x: { type: 'linear', title: { display: true, text: `Distance (${distUnit})` }, ticks: { maxTicksLimit: 8 } },
+            y: { type: 'linear', title: { display: true, text: `Altitude (${altUnit})` } },
+        },
     },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                display: false
-            },
-            tooltip: {
-                callbacks: {
-                    title: function(context) {
-                        const index = context[0].dataIndex;
-                        const distance = Math.round(viz3DData.cumulative_distances[index]);
-                        const timeOffset = Math.round(index * 0.2 * 10) / 10; // 5Hz sampling
-                        return `Time: ${timeOffset}s | Distance: ${distance} ft`;
-                    },
-                    label: function(context) {
-                        const index = context.dataIndex;
-                        const altitude = Math.round(viz3DData.altitudes_agl_ft[index]);
-                        const vSpeed = Math.round(viz3DData.vertical_speeds_mph[index] * 10) / 10;
-                        const hSpeed = Math.round(viz3DData.ground_speeds_mph[index] * 10) / 10;
-                        return [
-                            `Altitude: ${altitude} ft AGL`,
-                            `Vertical Speed: ${vSpeed} mph`,
-                            `Ground Speed: ${hSpeed} mph`
-                        ];
-                    }
-                }
-            }
-        },
-        scales: {
-            x: {
-                display: true,
-                title: {
-                    display: true,
-                    text: 'Distance (feet)'
-                }
-            },
-            y: {
-                display: true,
-                title: {
-                    display: true,
-                    text: 'Altitude AGL (feet)'
-                }
-            }
-        }
-    }
 });
 
-// Add important points to side view
-if (viz3DData.important_indices.flare !== undefined) {
-    const flareDistance = viz3DData.cumulative_distances[viz3DData.important_indices.flare];
-    const flareAlt = viz3DData.altitudes_agl_ft[viz3DData.important_indices.flare];
-    sideViewChart.data.datasets.push({
-        label: 'Flare',
-        data: [{x: flareDistance, y: flareAlt}],
-        borderColor: '#d62728',
-        backgroundColor: '#d62728',
-        pointRadius: 6,
-        showLine: false
-    });
+function updateSideCursor(idx) {
+    sideViewChart.data.datasets[2].data = idx >= 0
+        ? [{ x: distData[idx], y: altData[idx] }]
+        : [];
+    sideViewChart.update('none');
 }
 
-if (viz3DData.important_indices.landing !== undefined) {
-    const landingDistance = viz3DData.cumulative_distances[viz3DData.important_indices.landing];
-    const landingAlt = viz3DData.altitudes_agl_ft[viz3DData.important_indices.landing];
-    sideViewChart.data.datasets.push({
-        label: 'Landing',
-        data: [{x: landingDistance, y: landingAlt}],
-        borderColor: '#8c564b',
-        backgroundColor: '#8c564b',
-        pointRadius: 6,
-        showLine: false
-    });
-}
+// ============================================================
+// LEAFLET MAP
+// ============================================================
+const leafletMap = L.map('mapView');
 
-sideViewChart.update();
-
-// 2. Top View Chart (XY Plan View)
-const topViewCtx = document.getElementById('topViewChart').getContext('2d');
-const topViewChart = new Chart(topViewCtx, {
-    type: 'scatter',
-    data: {
-        datasets: [{
-            label: 'Flight Path',
-            data: viz3DData.top_view_coords.map(coord => ({x: coord[0], y: coord[1]})),
-            borderColor: '#1f77b4',
-            backgroundColor: 'rgba(31, 119, 180, 0.6)',
-            pointRadius: 2,
-            showLine: true,
-            tension: 0.1
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                display: false
-            },
-            tooltip: {
-                callbacks: {
-                    title: function(context) {
-                        const index = context[0].dataIndex;
-                        const timeOffset = Math.round(index * 0.2 * 10) / 10; // 5Hz sampling
-                        return `Time: ${timeOffset}s | Position`;
-                    },
-                    label: function(context) {
-                        const index = context.dataIndex;
-                        const altitude = Math.round(viz3DData.altitudes_agl_ft[index]);
-                        const vSpeed = Math.round(viz3DData.vertical_speeds_mph[index] * 10) / 10;
-                        const hSpeed = Math.round(viz3DData.ground_speeds_mph[index] * 10) / 10;
-                        const x = Math.round(context.parsed.x);
-                        const y = Math.round(context.parsed.y);
-                        return [
-                            `Position: ${x} ft E, ${y} ft N`,
-                            `Altitude: ${altitude} ft AGL`,
-                            `Vertical Speed: ${vSpeed} mph`,
-                            `Ground Speed: ${hSpeed} mph`
-                        ];
-                    }
-                }
-            }
-        },
-        scales: {
-            x: {
-                display: true,
-                title: {
-                    display: true,
-                    text: 'East-West (feet)'
-                }
-            },
-            y: {
-                display: true,
-                title: {
-                    display: true,
-                    text: 'North-South (feet)'
-                }
-            }
-        }
-    }
-});
-
-// Add important points to top view
-if (viz3DData.important_indices.flare !== undefined) {
-    const flareCoord = viz3DData.top_view_coords[viz3DData.important_indices.flare];
-    topViewChart.data.datasets.push({
-        label: 'Flare',
-        data: [{x: flareCoord[0], y: flareCoord[1]}],
-        borderColor: '#d62728',
-        backgroundColor: '#d62728',
-        pointRadius: 8,
-        showLine: false
-    });
-}
-
-if (viz3DData.important_indices.landing !== undefined) {
-    const landingCoord = viz3DData.top_view_coords[viz3DData.important_indices.landing];
-    topViewChart.data.datasets.push({
-        label: 'Landing',
-        data: [{x: landingCoord[0], y: landingCoord[1]}],
-        borderColor: '#8c564b',
-        backgroundColor: '#8c564b',
-        pointRadius: 8,
-        showLine: false
-    });
-}
-
-topViewChart.update();
-
-// 3. Map View (Leaflet.js)
-const map = L.map('mapView').setView(viz3DData.center_point, 16);
-
-// Define map layers
+// Tile layers
 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19
+    attribution: '© OpenStreetMap contributors', maxZoom: 19
+});
+const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri', maxZoom: 19
+});
+osmLayer.addTo(leafletMap);
+L.control.layers({ 'Street': osmLayer, 'Satellite': satLayer }).addTo(leafletMap);
+
+// Full flight track (gray)
+L.polyline(VD.coordinates, { color: '#aaa', weight: 1.5, opacity: 0.8 }).addTo(leafletMap);
+
+// Swoop portion (blue)
+if (VD.swoop_start_idx !== null) {
+    L.polyline(VD.coordinates.slice(VD.swoop_start_idx, VD.swoop_end_idx + 1),
+        { color: '#1f77b4', weight: 3, opacity: 0.9 }).addTo(leafletMap);
+}
+
+// Event markers
+const leafletEvStyles = {
+    flare:         { color: '#d62728', title: 'Flare (Turn Init.)' },
+    max_vspeed:    { color: '#9467bd', title: 'Max Vertical Speed' },
+    max_gspeed:    { color: '#2ca02c', title: 'Max Horiz. Speed' },
+    rollout_start: { color: '#ff7f0e', title: 'Rollout Start' },
+    landing:       { color: '#8c564b', title: 'Landing' },
+};
+for (const [key, cfg] of Object.entries(leafletEvStyles)) {
+    const idx = EV[key];
+    if (idx === undefined || idx >= VD.coordinates.length) continue;
+    L.circleMarker(VD.coordinates[idx], {
+        color: cfg.color, fillColor: cfg.color, fillOpacity: 0.8, radius: 6,
+    }).addTo(leafletMap).bindPopup(`<b>${cfg.title}</b>`);
+}
+
+// Cursor marker
+const mapCursor = L.circleMarker([0, 0], {
+    color: '#ff6b6b', fillColor: '#ff6b6b', fillOpacity: 0.85, radius: 7,
 });
 
-const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '© Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-    maxZoom: 19
-});
-
-// Add default layer (OSM)
-osmLayer.addTo(map);
-
-// Create layer control
-const baseMaps = {
-    "Street Map": osmLayer,
-    "Satellite": satelliteLayer
-};
-
-L.control.layers(baseMaps).addTo(map);
-
-// Add flight path
-const flightPath = L.polyline(viz3DData.coordinates, {
-    color: '#1f77b4',
-    weight: 3,
-    opacity: 0.8
-}).addTo(map);
-
-// Fit map to flight path bounds
-if (viz3DData.bounds) {
-    map.fitBounds(viz3DData.bounds, {padding: [20, 20]});
+// Initial fit
+if (zoomedToSwoop && VD.swoop_bounds) {
+    leafletMap.fitBounds(VD.swoop_bounds, { padding: [15, 15] });
+} else {
+    leafletMap.fitBounds(VD.full_bounds, { padding: [15, 15] });
 }
 
-// Add important point markers
-if (viz3DData.important_indices.flare !== undefined) {
-    const flareCoord = viz3DData.coordinates[viz3DData.important_indices.flare];
-    L.marker(flareCoord, {
-        title: 'Flare Point'
-    }).addTo(map).bindPopup('<b>Flare Point</b><br>Turn initiation');
+// ============================================================
+// LINKED CURSOR
+// ============================================================
+function updateCursor(idx) {
+    if (idx === cursorIdx) return;
+    cursorIdx = idx;
+
+    // Readout
+    const t = CD.timestamps[idx];
+    const evLabel = Object.entries(EV).find(([k, v]) => v === idx);
+    const evTag = evLabel ? ` <span style="color:${EVENT_STYLES[evLabel[0]]?.color || '#333'}">[${EVENT_STYLES[evLabel[0]]?.label || ''}]</span>` : '';
+    let readout = `T+${t.toFixed(1)}s`;
+    if (SERIES_VISIBLE.elevation)  readout += `  Alt: ${toAlt(CD.altitude_agl[idx]).toFixed(1)} ${altUnit}`;
+    if (SERIES_VISIBLE.vspeed)     readout += `  VS: ${toSpeed(Math.abs(CD.vertical_speed[idx])).toFixed(1)} ${speedUnit}`;
+    if (SERIES_VISIBLE.hspeed)     readout += `  HS: ${toSpeed(CD.ground_speed[idx]).toFixed(1)} ${speedUnit}`;
+    if (SERIES_VISIBLE.diveAngle)  readout += `  Dive: ${CD.dive_angle[idx].toFixed(1)}°`;
+    if (SERIES_VISIBLE.glideRatio) readout += `  Glide: ${CD.glide_ratio[idx].toFixed(2)}:1`;
+    document.getElementById('cursorReadout').innerHTML = readout + evTag;
+
+    // Top view
+    drawTopView();
+
+    // Side view
+    updateSideCursor(idx);
+
+    // Map cursor
+    if (idx < VD.coordinates.length) {
+        const coord = VD.coordinates[idx];
+        mapCursor.setLatLng(coord);
+        if (!leafletMap.hasLayer(mapCursor)) mapCursor.addTo(leafletMap);
+    }
+
+    // Chart redraw for cursor line
+    flightChart.draw();
 }
 
-if (viz3DData.important_indices.max_vspeed !== undefined) {
-    const maxVSpeedCoord = viz3DData.coordinates[viz3DData.important_indices.max_vspeed];
-    L.marker(maxVSpeedCoord, {
-        title: 'Max Vertical Speed'
-    }).addTo(map).bindPopup('<b>Max Vertical Speed</b><br>{{ flight.max_vertical_speed_mph|floatformat:1 }} mph');
+function clearCursor() {
+    if (cursorIdx === -1) return;
+    cursorIdx = -1;
+    document.getElementById('cursorReadout').innerHTML = '';
+    drawTopView();
+    updateSideCursor(-1);
+    if (leafletMap.hasLayer(mapCursor)) leafletMap.removeLayer(mapCursor);
+    flightChart.draw();
 }
 
-if (viz3DData.important_indices.landing !== undefined) {
-    const landingCoord = viz3DData.coordinates[viz3DData.important_indices.landing];
-    L.marker(landingCoord, {
-        title: 'Landing Point'
-    }).addTo(map).bindPopup('<b>Landing Point</b><br>Touchdown');
-}
-
-// Add a custom control for layer information
-const info = L.control();
-info.onAdd = function (map) {
-    this._div = L.DomUtil.create('div', 'info');
-    this._div.innerHTML = '<h6>Flight Path</h6>' +
-        '<small>Total Distance: ' + Math.round(viz3DData.total_distance_ft) + ' ft</small>';
-    return this._div;
-};
-info.addTo(map);
-
-// Style the info control
-const style = document.createElement('style');
-style.textContent = `
-    .info {
-        padding: 6px 8px;
-        font: 14px/16px Arial, Helvetica, sans-serif;
-        background: white;
-        background: rgba(255,255,255,0.8);
-        box-shadow: 0 0 15px rgba(0,0,0,0.2);
-        border-radius: 5px;
-    }
-    .info h6 {
-        margin: 0 0 5px;
-        color: #777;
-    }
-`;
-document.head.appendChild(style);
-
-// Chart synchronization for hover effects
-let currentHoverIndex = -1;
-let hoverMarkers = {
-    side: null,
-    top: null,
-    map: null
-};
-
-// Function to update all charts when hovering over a data point
-function updateChartHover(activeIndex) {
-    if (activeIndex === currentHoverIndex) return;
-    currentHoverIndex = activeIndex;
-
-    // Clear existing hover markers
-    clearHoverMarkers();
-
-    if (activeIndex >= 0 && activeIndex < viz3DData.cumulative_distances.length) {
-        // Add hover marker to side view
-        const sideCoord = {
-            x: viz3DData.cumulative_distances[activeIndex],
-            y: viz3DData.altitudes_agl_ft[activeIndex]
-        };
-        sideViewChart.data.datasets.push({
-            label: 'Hover Position',
-            data: [sideCoord],
-            borderColor: '#ff6b6b',
-            backgroundColor: '#ff6b6b',
-            pointRadius: 8,
-            showLine: false,
-            order: 1000
-        });
-        sideViewChart.update('none');
-
-        // Add hover marker to top view
-        const topCoord = {
-            x: viz3DData.top_view_coords[activeIndex][0],
-            y: viz3DData.top_view_coords[activeIndex][1]
-        };
-        topViewChart.data.datasets.push({
-            label: 'Hover Position',
-            data: [topCoord],
-            borderColor: '#ff6b6b',
-            backgroundColor: '#ff6b6b',
-            pointRadius: 8,
-            showLine: false,
-            order: 1000
-        });
-        topViewChart.update('none');
-
-        // Add hover marker to map
-        const mapCoord = viz3DData.coordinates[activeIndex];
-        hoverMarkers.map = L.circleMarker(mapCoord, {
-            color: '#ff6b6b',
-            fillColor: '#ff6b6b',
-            fillOpacity: 0.8,
-            radius: 8
-        }).addTo(map);
-    }
-}
-
-function clearHoverMarkers() {
-    // Remove hover markers from charts
-    [sideViewChart, topViewChart].forEach(chart => {
-        chart.data.datasets = chart.data.datasets.filter(dataset => dataset.label !== 'Hover Position');
-        chart.update('none');
-    });
-
-    // Remove hover marker from map
-    if (hoverMarkers.map) {
-        map.removeLayer(hoverMarkers.map);
-        hoverMarkers.map = null;
-    }
-}
-
-// Add hover event listeners to main chart
-chart.options.onHover = function(event, elements) {
-    if (elements.length > 0) {
-        const index = elements[0].index;
-        updateChartHover(index);
-    } else {
-        clearHoverMarkers();
-        currentHoverIndex = -1;
-    }
-};
-
-// Add hover event listeners to side view chart
-sideViewChart.options.onHover = function(event, elements) {
-    if (elements.length > 0) {
-        const index = elements[0].index;
-        updateChartHover(index);
-    } else {
-        clearHoverMarkers();
-        currentHoverIndex = -1;
-    }
-};
-
-// Add hover event listeners to top view chart
-topViewChart.options.onHover = function(event, elements) {
-    if (elements.length > 0) {
-        const index = elements[0].index;
-        updateChartHover(index);
-    } else {
-        clearHoverMarkers();
-        currentHoverIndex = -1;
-    }
-};
-
-// Add click event to map for hover synchronization
-map.on('mousemove', function(e) {
-    const clickedPoint = e.latlng;
-    let closestIndex = 0;
-    let minDistance = Infinity;
-
-    // Find the closest point in the flight path
-    viz3DData.coordinates.forEach((coord, index) => {
-        const distance = Math.sqrt(
-            Math.pow(coord[0] - clickedPoint.lat, 2) +
-            Math.pow(coord[1] - clickedPoint.lng, 2)
-        );
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestIndex = index;
-        }
-    });
-
-    if (minDistance < 0.0001) { // Only if very close to the path
-        updateChartHover(closestIndex);
-    }
-});
-
-map.on('mouseout', function() {
-    clearHoverMarkers();
-    currentHoverIndex = -1;
-});
-
+// Initial draw
+drawTopView();
 </script>
 {% endif %}
 
 <script>
-// Initialize overhead view chart if data is available
-function initializeOverheadChart() {
-    const overheadDataStr = `{{ overhead_data|safe }}`;
-    if (!overheadDataStr) return;
-
-    try {
-        const overheadData = JSON.parse(overheadDataStr);
-        const canvas = document.getElementById('overheadChart');
-        if (!canvas) return;
-
-        const ctx = canvas.getContext('2d');
-
-        // Prepare datasets for Chart.js
-        const datasets = [];
-
-        // Add flight path as a line
-        if (overheadData.flight_path && overheadData.flight_path.x_ft && overheadData.flight_path.y_ft) {
-            datasets.push({
-                type: 'line',
-                label: 'Flight Path',
-                data: overheadData.flight_path.x_ft.map((x, i) => ({
-                    x: x,
-                    y: overheadData.flight_path.y_ft[i]
-                })),
-                borderColor: '#d62728',
-                borderDash: [5, 5],
-                borderWidth: 2,
-                pointRadius: 0,
-                fill: false,
-                tension: 0.1
-            });
-        }
-
-        // Add gates as scatter points if available
-        if (overheadData.gates) {
-            const gateTypes = {
-                'entry_inside': { color: '#2ecc71', label: 'Entry Inside' },
-                'entry_outside': { color: '#e74c3c', label: 'Entry Outside' },
-                'exit': { color: '#f39c12', label: 'Exit/Speed Gate' },
-                'accuracy': { color: '#3498db', label: 'Accuracy Gate' }
-            };
-
-            // Organize gates by type
-            const gatesByType = {};
-            for (const [gateName, gatePos] of Object.entries(overheadData.gates)) {
-                let gateType = 'exit'; // default
-                if (gateName.includes('entry_inside')) gateType = 'entry_inside';
-                else if (gateName.includes('entry_outside')) gateType = 'entry_outside';
-                else if (gateName.includes('accuracy')) gateType = 'accuracy';
-
-                if (!gatesByType[gateType]) gatesByType[gateType] = [];
-                gatesByType[gateType].push({
-                    x: gatePos.x_ft,
-                    y: gatePos.y_ft,
-                    name: gateName
-                });
-            }
-
-            // Create dataset for each gate type
-            for (const [gateType, gates] of Object.entries(gatesByType)) {
-                if (gateTypes[gateType]) {
-                    datasets.push({
-                        type: 'scatter',
-                        label: gateTypes[gateType].label,
-                        data: gates.map(g => ({ x: g.x, y: g.y })),
-                        backgroundColor: gateTypes[gateType].color,
-                        borderColor: gateTypes[gateType].color,
-                        borderWidth: 2,
-                        pointRadius: 6,
-                        pointHoverRadius: 8
-                    });
-                }
-            }
-        }
-
-        // Create the chart
-        const overheadChart = new Chart(ctx, {
-            type: 'scatter',
-            data: {
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const point = context.raw;
-                                const x = Math.round(point.x);
-                                const y = Math.round(point.y);
-                                return `(${x} ft, ${y} ft)`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        position: 'bottom',
-                        min: overheadData.bounds.x_min,
-                        max: overheadData.bounds.x_max,
-                        title: {
-                            display: true,
-                            text: 'X-axis distance from gate (feet)'
-                        }
-                    },
-                    y: {
-                        min: overheadData.bounds.y_min,
-                        max: overheadData.bounds.y_max,
-                        title: {
-                            display: true,
-                            text: 'Y-axis distance from gate (feet)'
-                        }
-                    }
-                }
-            }
-        });
-
-        // Store reference for potential updates
-        window.overheadChart = overheadChart;
-    } catch (error) {
-        console.error('Error initializing overhead chart:', error);
-    }
-}
-
-// Initialize chart when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    initializeOverheadChart();
-});
-
+// ============================================================
+// GATE / FLIGHT MANAGEMENT FUNCTIONS (unchanged)
+// ============================================================
 function selectGate() {
     const selector = document.getElementById('gateSelector');
     if (!selector) return;
-
-    const gateId = selector.value;
-    const flightId = {{ flight.id }};
-
-    // Send AJAX request to update the competition gate
     fetch('{% url "update_flight_gate" flight.id %}', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token }}'
-        },
-        body: JSON.stringify({
-            gate_id: gateId || null
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Reload page to show updated gate and chart
-            window.location.reload();
-        } else {
-            alert('Failed to update competition gate: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        alert('Error updating competition gate: ' + error);
-    });
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ gate_id: selector.value || null })
+    }).then(r => r.json()).then(d => { if (d.success) window.location.reload(); else alert('Failed: ' + (d.error || 'Unknown error')); })
+    .catch(e => alert('Error: ' + e));
 }
 
-function openGateUploadModal() {
-    const modal = new bootstrap.Modal(document.getElementById('gateUploadModal'));
-    modal.show();
-}
+function openGateUploadModal() { new bootstrap.Modal(document.getElementById('gateUploadModal')).show(); }
 
 function uploadGateFile() {
     const gateName = document.getElementById('gateName').value;
     const gateType = document.getElementById('gateType').value;
     const gateFile = document.getElementById('gateFile').files[0];
-
-    if (!gateName || !gateType || !gateFile) {
-        alert('Please fill in all fields');
-        return;
-    }
-
-    // Check file size (max 5MB)
-    if (gateFile.size > 5 * 1024 * 1024) {
-        alert('File size exceeds 5MB limit');
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('gate_name', gateName);
-    formData.append('gate_type', gateType);
-    formData.append('gate_file', gateFile);
-
-    const uploadBtn = event.target;
-    const originalContent = uploadBtn.innerHTML;
-    uploadBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Uploading...';
-    uploadBtn.disabled = true;
-
-    fetch('{% url "upload_gate_file" %}', {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': '{{ csrf_token }}'
-        },
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Gate course uploaded and parsed successfully!');
-            // Close modal and reload page to show new gate
-            document.getElementById('gateUploadModal').querySelector('.btn-close').click();
-            setTimeout(() => window.location.reload(), 500);
-        } else {
-            alert('Failed to upload gate course: ' + (data.error || 'Unknown error'));
-            uploadBtn.innerHTML = originalContent;
-            uploadBtn.disabled = false;
-        }
-    })
-    .catch(error => {
-        alert('Error uploading gate course: ' + error);
-        uploadBtn.innerHTML = originalContent;
-        uploadBtn.disabled = false;
-    });
+    if (!gateName || !gateType || !gateFile) { alert('Please fill in all fields'); return; }
+    if (gateFile.size > 5 * 1024 * 1024) { alert('File size exceeds 5MB limit'); return; }
+    const fd = new FormData();
+    fd.append('gate_name', gateName); fd.append('gate_type', gateType); fd.append('gate_file', gateFile);
+    const btn = event.target; const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Uploading...'; btn.disabled = true;
+    fetch('{% url "upload_gate_file" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: fd })
+    .then(r => r.json()).then(d => {
+        if (d.success) { alert('Uploaded successfully!'); document.getElementById('gateUploadModal').querySelector('.btn-close').click(); setTimeout(() => window.location.reload(), 500); }
+        else { alert('Failed: ' + (d.error || 'Unknown error')); btn.innerHTML = orig; btn.disabled = false; }
+    }).catch(e => { alert('Error: ' + e); btn.innerHTML = orig; btn.disabled = false; });
 }
 
 function toggleDataIncorrect() {
-    // Always show the modal for adding/editing notes
     const modal = new bootstrap.Modal(document.getElementById('notesModal'));
-
-    // Update the button text based on current flag status
     const submitBtn = document.querySelector('#notesModal .btn-warning');
-    {% if flight.data_incorrect %}
-        submitBtn.innerHTML = '<i class="bi bi-flag"></i> Remove Flag';
-    {% else %}
-        submitBtn.innerHTML = '<i class="bi bi-flag"></i> Flag as Incorrect';
-    {% endif %}
-
+    {% if flight.data_incorrect %}submitBtn.innerHTML = '<i class="bi bi-flag"></i> Remove Flag';
+    {% else %}submitBtn.innerHTML = '<i class="bi bi-flag"></i> Flag as Incorrect';{% endif %}
     modal.show();
 }
 
-function submitFlagForm() {
-    const form = document.getElementById('flagForm');
-    form.submit();
-}
+function submitFlagForm() { document.getElementById('flagForm').submit(); }
 
 function toggleFlightPrivacy() {
     const isPublic = {% if flight.is_public %}true{% else %}false{% endif %};
-    const action = isPublic ? 'make private' : 'make public';
-
-    if (confirm(`Are you sure you want to ${action} this flight?`)) {
-        const form = document.createElement('form');
-        form.method = 'post';
-        form.action = '{% url "toggle_flight_privacy" flight.id %}';
-
-        const csrfToken = document.createElement('input');
-        csrfToken.type = 'hidden';
-        csrfToken.name = 'csrfmiddlewaretoken';
-        csrfToken.value = '{{ csrf_token }}';
-        form.appendChild(csrfToken);
-
-        document.body.appendChild(form);
-        form.submit();
+    if (confirm(`Are you sure you want to ${isPublic ? 'make private' : 'make public'} this flight?`)) {
+        const f = document.createElement('form'); f.method = 'post'; f.action = '{% url "toggle_flight_privacy" flight.id %}';
+        const c = document.createElement('input'); c.type = 'hidden'; c.name = 'csrfmiddlewaretoken'; c.value = '{{ csrf_token }}';
+        f.appendChild(c); document.body.appendChild(f); f.submit();
     }
 }
 
 function confirmDelete() {
     if (confirm('Are you sure you want to delete this flight? This action cannot be undone.')) {
-        const form = document.createElement('form');
-        form.method = 'post';
-        form.action = '{% url "delete_flight" flight.id %}';
-
-        const csrfToken = document.createElement('input');
-        csrfToken.type = 'hidden';
-        csrfToken.name = 'csrfmiddlewaretoken';
-        csrfToken.value = '{{ csrf_token }}';
-        form.appendChild(csrfToken);
-
-        document.body.appendChild(form);
-        form.submit();
+        const f = document.createElement('form'); f.method = 'post'; f.action = '{% url "delete_flight" flight.id %}';
+        const c = document.createElement('input'); c.type = 'hidden'; c.name = 'csrfmiddlewaretoken'; c.value = '{{ csrf_token }}';
+        f.appendChild(c); document.body.appendChild(f); f.submit();
     }
 }
 
-// Flight name editing functions
 function editFlightName() {
     document.getElementById('flight-name-display').style.display = 'none';
     document.getElementById('flight-name-edit').style.display = 'inline-block';
     document.getElementById('flight-name-input').focus();
 }
-
 function cancelEditFlightName() {
     document.getElementById('flight-name-display').style.display = 'inline';
     document.getElementById('flight-name-edit').style.display = 'none';
-    // Reset input to original value
     document.getElementById('flight-name-input').value = document.getElementById('flight-name-display').textContent;
 }
-
 function saveFlightName() {
     const newName = document.getElementById('flight-name-input').value.trim();
-    if (newName === '') {
-        alert('Flight name cannot be empty');
-        return;
-    }
-
-    // Show loading state
-    const saveBtn = document.querySelector('#flight-name-edit .btn-success');
-    const originalSaveBtnContent = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-    saveBtn.disabled = true;
-
-    // Send AJAX request to update flight name
+    if (!newName) { alert('Flight name cannot be empty'); return; }
+    const btn = document.querySelector('#flight-name-edit .btn-success');
+    const orig = btn.innerHTML; btn.innerHTML = '<i class="bi bi-hourglass-split"></i>'; btn.disabled = true;
     fetch('{% url "update_flight_name" flight.id %}', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token }}'
-        },
-        body: JSON.stringify({
-            flight_name: newName
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Update display
-            document.getElementById('flight-name-display').textContent = newName;
-            document.getElementById('flight-name-display').style.display = 'inline';
-            document.getElementById('flight-name-edit').style.display = 'none';
-        } else {
-            alert('Failed to update flight name: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        alert('Error updating flight name: ' + error);
-    })
-    .finally(() => {
-        // Restore button state
-        saveBtn.innerHTML = originalSaveBtnContent;
-        saveBtn.disabled = false;
-    });
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ flight_name: newName })
+    }).then(r => r.json()).then(d => {
+        if (d.success) { document.getElementById('flight-name-display').textContent = newName; cancelEditFlightName(); }
+        else alert('Failed: ' + (d.error || 'Unknown error'));
+    }).catch(e => alert('Error: ' + e))
+    .finally(() => { btn.innerHTML = orig; btn.disabled = false; });
 }
 
-// Competition gate editing functions
-function editGate() {
-    document.getElementById('gate-display').style.display = 'none';
-    document.getElementById('gate-edit').style.display = 'block';
-}
-
-function cancelEditGate() {
-    document.getElementById('gate-display').style.display = 'inline';
-    document.getElementById('gate-edit').style.display = 'none';
-}
-
+function editGate() { document.getElementById('gate-display').style.display = 'none'; document.getElementById('gate-edit').style.display = 'block'; }
+function cancelEditGate() { document.getElementById('gate-display').style.display = 'inline'; document.getElementById('gate-edit').style.display = 'none'; }
 function saveGate() {
-    const gateSelect = document.getElementById('gate-select');
-    const gateId = gateSelect.value;
-
-    // Show loading state
-    const saveBtn = document.querySelector('#gate-edit .btn-success');
-    const originalSaveBtnContent = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-    saveBtn.disabled = true;
-
-    // Send AJAX request to update gate
+    const gateId = document.getElementById('gate-select').value;
+    const btn = document.querySelector('#gate-edit .btn-success');
+    const orig = btn.innerHTML; btn.innerHTML = '<i class="bi bi-hourglass-split"></i>'; btn.disabled = true;
     fetch('{% url "update_flight_gate" flight.id %}', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token }}'
-        },
-        body: JSON.stringify({
-            gate_id: gateId || null
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Reload page to show updated gate and metrics
-            window.location.reload();
-        } else {
-            alert('Failed to update competition gate: ' + (data.error || 'Unknown error'));
-            saveBtn.innerHTML = originalSaveBtnContent;
-            saveBtn.disabled = false;
-        }
-    })
-    .catch(error => {
-        alert('Error updating competition gate: ' + error);
-        saveBtn.innerHTML = originalSaveBtnContent;
-        saveBtn.disabled = false;
-    });
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ gate_id: gateId || null })
+    }).then(r => r.json()).then(d => {
+        if (d.success) window.location.reload();
+        else { alert('Failed: ' + (d.error || 'Unknown error')); btn.innerHTML = orig; btn.disabled = false; }
+    }).catch(e => { alert('Error: ' + e); btn.innerHTML = orig; btn.disabled = false; });
 }
 
 function calculateGateMetrics() {
-    const btn = event.target;
-    const originalContent = btn.innerHTML;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Calculating...';
-    btn.disabled = true;
-
+    const btn = event.target; const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Calculating...'; btn.disabled = true;
     fetch('{% url "calculate_flight_gate_metrics" flight.id %}', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token }}'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Reload page to show metrics
-            window.location.reload();
-        } else {
-            alert('Failed to calculate gate metrics: ' + (data.error || 'Unknown error'));
-            btn.innerHTML = originalContent;
-            btn.disabled = false;
-        }
-    })
-    .catch(error => {
-        alert('Error calculating gate metrics: ' + error);
-        btn.innerHTML = originalContent;
-        btn.disabled = false;
-    });
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }
+    }).then(r => r.json()).then(d => {
+        if (d.success) window.location.reload();
+        else { alert('Failed: ' + (d.error || 'Unknown error')); btn.innerHTML = orig; btn.disabled = false; }
+    }).catch(e => { alert('Error: ' + e); btn.innerHTML = orig; btn.disabled = false; });
 }
 
 function recalculateGateMetrics() {
-    if (!confirm('Recalculate gate metrics? This will overwrite existing values.')) {
-        return;
-    }
-    calculateGateMetrics();
+    if (confirm('Recalculate gate metrics? This will overwrite existing values.')) calculateGateMetrics();
 }
 </script>
 {% endblock %}

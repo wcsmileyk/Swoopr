@@ -381,18 +381,3 @@ LOGS_DIR.mkdir(exist_ok=True)
 LOGIN_URL = '/users/login/'
 LOGIN_REDIRECT_URL = '/users/dashboard/'
 LOGOUT_REDIRECT_URL = '/users/login/'
-
-# Render.com production settings
-if os.getenv('RENDER'):
-    # Production settings for Render
-    DEBUG = False
-    ALLOWED_HOSTS = ['.onrender.com']
-
-    # Disable ML in production for stability (use only traditional algorithm)
-    ML_ENABLED = False
-
-    # Force HTTPS in production
-    SECURE_SSL_REDIRECT = True
-    SECURE_HSTS_SECONDS = 31536000
-    CSRF_COOKIE_SECURE = True
-    SESSION_COOKIE_SECURE = True
