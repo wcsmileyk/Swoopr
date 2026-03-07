@@ -147,6 +147,7 @@ class Flight(models.Model):
     analysis_successful = models.BooleanField(default=False)
     analysis_error = models.TextField(blank=True)
     data_incorrect = models.BooleanField(default=False, help_text="Flag for flights with incorrect or problematic data")
+    swoop_rejected = models.BooleanField(default=False, help_text="User declared this is not a swoop landing — excluded from all analysis")
     flare_detection_method = models.CharField(
         max_length=20,
         choices=[('traditional', 'Traditional Flare'), ('turn_detection', 'Turn Detection Fallback')],
@@ -570,7 +571,7 @@ class Flight(models.Model):
     @property
     def performance_grade(self):
         """Calculate performance grade based on personal bests for this specific canopy"""
-        if not self.is_swoop or not self.pilot or not self.canopy:
+        if not self.is_swoop or self.swoop_rejected or not self.pilot or not self.canopy:
             return None
 
         # Get pilot's personal bests for the same canopy
@@ -578,6 +579,7 @@ class Flight(models.Model):
             pilot=self.pilot,
             canopy=self.canopy,
             is_swoop=True,
+            swoop_rejected=False,
             analysis_successful=True
         ).exclude(id=self.id)  # Exclude current flight
 

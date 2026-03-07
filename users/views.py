@@ -173,7 +173,7 @@ def dashboard_view(request):
     # Get user's flights and statistics
     flights = Flight.objects.filter(pilot=user).order_by('-created_at')
     total_flights = flights.count()
-    swoops = flights.filter(is_swoop=True)
+    swoops = flights.filter(is_swoop=True, swoop_rejected=False)
     total_swoops = swoops.count()
 
     # Calculate statistics
@@ -436,9 +436,9 @@ def flights_view(request):
     # Filter options
     filter_type = request.GET.get('type', 'all')
     if filter_type == 'swoops':
-        flights = flights.filter(is_swoop=True)
+        flights = flights.filter(is_swoop=True, swoop_rejected=False)
     elif filter_type == 'successful':
-        flights = flights.filter(is_swoop=True, analysis_successful=True)
+        flights = flights.filter(is_swoop=True, swoop_rejected=False, analysis_successful=True)
     elif filter_type == 'failed':
         flights = flights.filter(analysis_successful=False)
 
@@ -806,6 +806,18 @@ def select_swoop_window_view(request, flight_id):
 
 @login_required
 @require_http_methods(["POST"])
+def toggle_swoop_rejected_view(request, flight_id):
+    """Toggle the swoop_rejected flag — marks a detected swoop as a normal landing."""
+    flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
+    flight.swoop_rejected = not flight.swoop_rejected
+    flight.save(update_fields=['swoop_rejected'])
+    action = "marked as a normal landing" if flight.swoop_rejected else "restored as a swoop"
+    messages.success(request, f'Flight {action} and will {"not" if flight.swoop_rejected else "now"} appear in your swoop stats.')
+    return redirect('flight_detail', flight_id=flight.id)
+
+
+@login_required
+@require_http_methods(["POST"])
 def toggle_data_incorrect_view(request, flight_id):
     """Toggle the data_incorrect flag for a flight"""
     flight = get_object_or_404(Flight, id=flight_id, pilot=request.user)
@@ -1045,7 +1057,7 @@ def user_search_view(request):
         if users:
             for user in users:
                 user.public_flight_count = user.flights.filter(is_public=True).count()
-                user.public_swoop_count = user.flights.filter(is_public=True, is_swoop=True).count()
+                user.public_swoop_count = user.flights.filter(is_public=True, is_swoop=True, swoop_rejected=False).count()
 
     context = {
         'form': form,
@@ -1072,7 +1084,7 @@ def public_profile_view(request, username):
     ).order_by('-created_at')
 
     # Get public swoops only
-    public_swoops = public_flights.filter(is_swoop=True, analysis_successful=True)
+    public_swoops = public_flights.filter(is_swoop=True, swoop_rejected=False, analysis_successful=True)
 
     # Calculate public stats
     stats = {

@@ -106,7 +106,8 @@
             <p class="text-xs text-gray-500">{% if flight.swoop_start_time %}{{ flight.swoop_start_time|date:"M d, Y" }}{% else %}{{ flight.created_at|date:"M d, Y" }}{% endif %}</p>
           </td>
           <td class="px-5 py-3">
-            {% if flight.is_swoop %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Swoop</span>
+            {% if flight.is_swoop and not flight.swoop_rejected %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Swoop</span>
+            {% elif flight.is_swoop and flight.swoop_rejected %}<span class="text-xs bg-orange-900/60 text-orange-300 border border-orange-800 rounded-full px-2 py-0.5"><i class="bi bi-slash-circle"></i> Not a Swoop</span>
             {% else %}<span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">Flight</span>{% endif %}
             {% if not flight.analysis_successful %}<span class="text-xs bg-amber-900/60 text-amber-300 border border-amber-800 rounded-full px-2 py-0.5 ml-1">Failed</span>{% endif %}
           </td>
@@ -145,7 +146,8 @@
             <p class="text-xs text-gray-500">{% if flight.swoop_start_time %}{{ flight.swoop_start_time|date:"M d, Y" }}{% else %}{{ flight.created_at|date:"M d, Y" }}{% endif %}</p>
           </td>
           <td class="px-5 py-3">
-            {% if flight.is_swoop %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Swoop</span>
+            {% if flight.is_swoop and not flight.swoop_rejected %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">Swoop</span>
+            {% elif flight.is_swoop and flight.swoop_rejected %}<span class="text-xs bg-orange-900/60 text-orange-300 border border-orange-800 rounded-full px-2 py-0.5"><i class="bi bi-slash-circle"></i> Not a Swoop</span>
             {% else %}<span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">Flight</span>{% endif %}
             {% if not flight.analysis_successful %}<span class="text-xs bg-amber-900/60 text-amber-300 border border-amber-800 rounded-full px-2 py-0.5 ml-1">Failed</span>{% endif %}
           </td>

@@ -60,6 +60,7 @@
       {% if flight.is_swoop %}<span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5 font-normal">Swoop</span>
       {% elif flight.analysis_successful %}<span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5 font-normal">Flight</span>{% endif %}
       {% if flight.performance_grade %}<span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5 font-normal">Grade {{ flight.performance_grade }}</span>{% endif %}
+      {% if flight.swoop_rejected %}<span class="text-xs bg-orange-900/60 text-orange-300 border border-orange-800 rounded-full px-2 py-0.5 font-normal"><i class="bi bi-slash-circle"></i> Not a Swoop</span>{% endif %}
       {% if flight.data_incorrect %}<span class="text-xs bg-amber-900/60 text-amber-300 border border-amber-800 rounded-full px-2 py-0.5 font-normal"><i class="bi bi-flag"></i> Flagged</span>{% endif %}
       {% if flight.is_public %}<span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5 font-normal"><i class="bi bi-eye"></i> Public</span>
       {% else %}<span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5 font-normal"><i class="bi bi-eye-slash"></i> Private</span>{% endif %}
@@ -67,6 +68,15 @@
   </div>
   {% if user.is_authenticated and user == flight.pilot %}
   <div class="flex items-center gap-2 shrink-0 mt-1">
+    {% if flight.is_swoop %}
+    <form method="post" action="{% url 'toggle_swoop_rejected' flight.id %}" class="inline">
+      {% csrf_token %}
+      <button type="submit" class="text-xs border {% if flight.swoop_rejected %}border-emerald-700 text-emerald-400 hover:bg-emerald-900/30{% else %}border-orange-700 text-orange-400 hover:bg-orange-900/30{% endif %} px-3 py-1.5 rounded-lg transition-colors">
+        <i class="bi bi-{% if flight.swoop_rejected %}arrow-counterclockwise{% else %}slash-circle{% endif %}"></i>
+        {% if flight.swoop_rejected %}Restore as Swoop{% else %}Not a Swoop{% endif %}
+      </button>
+    </form>
+    {% endif %}
     <button type="button" class="text-xs border border-amber-700 text-amber-400 hover:bg-amber-900/30 px-3 py-1.5 rounded-lg transition-colors" onclick="toggleDataIncorrect()">
       <i class="bi bi-flag"></i> {% if flight.data_incorrect %}Remove Flag{% else %}Flag{% endif %}
     </button>
@@ -155,6 +165,16 @@
   </div>
   {% endif %}
 </div>
+
+{% if flight.swoop_rejected %}
+<div class="bg-orange-900/20 border border-orange-700/50 rounded-xl p-4 mb-5 flex gap-3">
+  <i class="bi bi-slash-circle text-orange-400 text-xl shrink-0 mt-0.5"></i>
+  <div>
+    <p class="text-sm font-semibold text-orange-300">Marked as a normal landing</p>
+    <p class="text-xs text-orange-400/80 mt-0.5">This flight is excluded from swoop stats, personal bests, and dashboard charts. Use the "Restore as Swoop" button above to undo.</p>
+  </div>
+</div>
+{% endif %}
 
 {% if flight.data_incorrect and flight.notes %}
 <div class="bg-amber-900/20 border border-amber-700/50 rounded-xl p-4 mb-5 flex gap-3">
