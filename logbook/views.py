@@ -416,6 +416,11 @@ def edit_jump(request, pk):
     jump = get_object_or_404(Jump, pk=pk, user=request.user)
 
     if request.method == 'POST':
+        if request.POST.get('_action') == 'delete':
+            jump.delete()
+            Jump.renumber_for_user(request.user)
+            return redirect('jump_list')
+
         resolved = _resolve_inline_fields(request, '', request.user)
         date_raw      = request.POST.get('date', '').strip()
         altitude_raw  = request.POST.get('altitude', '').strip()
@@ -461,6 +466,16 @@ def delete_jump(request, pk):
         Jump.renumber_for_user(request.user)
         return redirect('jump_list')
     return redirect('edit_jump', pk=pk)
+
+
+@login_required
+def bulk_delete_jumps(request):
+    if request.method == 'POST':
+        ids = request.POST.getlist('jump_ids')
+        if ids:
+            Jump.objects.filter(pk__in=ids, user=request.user).delete()
+            Jump.renumber_for_user(request.user)
+    return redirect('jump_list')
 
 
 @login_required

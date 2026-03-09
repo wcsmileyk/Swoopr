@@ -1,6 +1,9 @@
 {% if jumps %}
   {% for jump in jumps %}
   <tr data-jump class="border-b border-gray-800 hover:bg-gray-800/50 transition-colors group">
+    <td x-show="bulkMode" x-cloak class="px-4 py-3">
+      <input type="checkbox" class="jump-checkbox accent-sky-500" value="{{ jump.pk }}">
+    </td>
     <td class="px-4 py-3 text-gray-500 text-xs">
       {% if jump.jump_number %}#{{ jump.jump_number }}{% else %}<span class="text-gray-700">—</span>{% endif %}
     </td>

@@ -14,5 +14,6 @@ urlpatterns = [
     path('<int:pk>/attach-gps/', views.attach_gps, name='attach_gps'),
     path('<int:pk>/link-flight/', views.link_flight, name='link_flight'),
     path('<int:pk>/unlink-flight/', views.unlink_flight, name='unlink_flight'),
+    path('bulk-delete/', views.bulk_delete_jumps, name='bulk_delete_jumps'),
     path('earnings/', views.instructor_earnings_view, name='instructor_earnings'),
 ]

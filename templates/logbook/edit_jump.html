@@ -233,15 +233,11 @@
        class="text-gray-400 hover:text-gray-200 text-sm px-4 py-2 rounded-lg transition-colors">
       Cancel
     </a>
-    <form method="post" action="{% url 'delete_jump' jump.pk %}"
-          class="ml-auto"
-          onsubmit="return confirm('Delete this jump? This cannot be undone.')">
-      {% csrf_token %}
-      <button type="submit"
-              class="text-sm text-gray-500 hover:text-red-400 px-4 py-2 rounded-lg border border-transparent hover:border-red-800 transition-colors">
-        Delete Jump
-      </button>
-    </form>
+    <button type="submit" name="_action" value="delete"
+            class="ml-auto text-sm text-gray-500 hover:text-red-400 px-4 py-2 rounded-lg border border-transparent hover:border-red-800 transition-colors"
+            onclick="return confirm('Delete this jump? This cannot be undone.')">
+      Delete Jump
+    </button>
   </div>
 </form>
 

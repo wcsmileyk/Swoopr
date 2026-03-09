@@ -5,6 +5,7 @@
 <div x-data="{
        sort: '{{ current_sort }}',
        dir:  '{{ current_dir }}',
+       bulkMode: false,
        setSort(col) {
          if (this.sort === col) {
            this.dir = this.dir === 'desc' ? 'asc' : 'desc';
@@ -17,8 +18,29 @@
      }">
 
   <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold text-white">Jump Log</h1>
-    <span id="result-count" class="text-sm text-gray-400">{{ total_count }} jump{{ total_count|pluralize }}</span>
+    <div class="flex items-center gap-4">
+      <h1 class="text-2xl font-bold text-white">Jump Log</h1>
+      <span id="result-count" class="text-sm text-gray-400">{{ total_count }} jump{{ total_count|pluralize }}</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <!-- Bulk delete controls (visible in bulk mode) -->
+      <div x-show="bulkMode" x-cloak class="flex items-center gap-3">
+        <span id="selected-count" class="text-sm text-gray-400">0 selected</span>
+        <form id="bulk-delete-form" method="post" action="{% url 'bulk_delete_jumps' %}">
+          {% csrf_token %}
+          <div id="bulk-ids"></div>
+          <button type="submit"
+                  class="bg-red-700 hover:bg-red-600 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors">
+            Delete Selected
+          </button>
+        </form>
+      </div>
+      <button type="button" @click="bulkMode = !bulkMode; if (!bulkMode) clearBulkSelection()"
+              class="text-xs px-3 py-1.5 rounded border transition-colors"
+              :class="bulkMode ? 'text-gray-300 border-gray-600 hover:text-white' : 'text-gray-500 border-gray-700 hover:text-gray-300 hover:border-gray-600'">
+        <span x-text="bulkMode ? 'Cancel' : 'Select'"></span>
+      </button>
+    </div>
   </div>
 
   <!-- Filters -->
@@ -90,6 +112,10 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-gray-800 text-xs uppercase tracking-widest text-gray-500 select-none">
+
+          <th x-show="bulkMode" x-cloak class="px-4 py-3 w-10">
+            <input type="checkbox" id="select-all-jumps" class="accent-sky-500">
+          </th>
 
           {% with col="jump_num" label="#" %}
           <th class="px-4 py-3 text-left w-16">
@@ -185,11 +211,49 @@
 
 {% block scripts %}
 <script>
+  function updateBulkCount() {
+    const n = document.querySelectorAll('.jump-checkbox:checked').length;
+    const el = document.getElementById('selected-count');
+    if (el) el.textContent = n + ' selected';
+  }
+
+  function clearBulkSelection() {
+    document.querySelectorAll('.jump-checkbox').forEach(cb => cb.checked = false);
+    const all = document.getElementById('select-all-jumps');
+    if (all) all.checked = false;
+    updateBulkCount();
+  }
+
+  document.addEventListener('change', function(e) {
+    if (e.target.id === 'select-all-jumps') {
+      document.querySelectorAll('.jump-checkbox').forEach(cb => cb.checked = e.target.checked);
+    }
+    if (e.target.id === 'select-all-jumps' || e.target.classList.contains('jump-checkbox')) {
+      updateBulkCount();
+    }
+  });
+
+  document.getElementById('bulk-delete-form').addEventListener('submit', function(e) {
+    const checked = document.querySelectorAll('.jump-checkbox:checked');
+    if (checked.length === 0) { e.preventDefault(); return; }
+    if (!confirm('Delete ' + checked.length + ' jump' + (checked.length !== 1 ? 's' : '') + '? This cannot be undone.')) {
+      e.preventDefault(); return;
+    }
+    const container = document.getElementById('bulk-ids');
+    container.innerHTML = '';
+    checked.forEach(cb => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'jump_ids'; inp.value = cb.value;
+      container.appendChild(inp);
+    });
+  });
+
   document.body.addEventListener('htmx:afterSwap', function(e) {
     if (e.detail.target.id === 'jump-tbody') {
       const count = e.detail.target.querySelectorAll('tr[data-jump]').length;
       document.getElementById('result-count').textContent =
         count + ' jump' + (count !== 1 ? 's' : '');
+      updateBulkCount();
     }
   });
 </script>
