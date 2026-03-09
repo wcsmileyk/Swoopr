@@ -203,6 +203,8 @@
       <button class="viewer-toggle-btn inactive" id="tog-diveAngle" style="background:#d62728;color:#fff;border-color:#d62728" onclick="toggleSeries('diveAngle')">Dive Angle</button>
       <button class="viewer-toggle-btn inactive" id="tog-glideRatio" style="background:#e377c2;color:#fff;border-color:#e377c2" onclick="toggleSeries('glideRatio')">Glide Ratio</button>
       <button class="viewer-toggle-btn inactive" id="tog-energy" style="background:#8c7d3a;color:#fff;border-color:#8c7d3a" onclick="toggleSeries('energy')">Energy</button>
+      <span style="display:inline-block;width:1px;background:#374151;margin:0 4px;height:16px;vertical-align:middle"></span>
+      <button class="viewer-toggle-btn" id="tog-events" style="background:#4b5563;color:#fff;border-color:#6b7280" onclick="toggleEvents()">Markers</button>
     </div>
     {% if flight.is_swoop %}
     <div class="flex gap-1">
@@ -449,6 +451,7 @@ const EVENT_STYLES = {
     rollout_start: { color: '#ff7f0e', label: 'Rollout' },
     landing:       { color: '#8c564b', label: 'Land' },
 };
+let EVENTS_VISIBLE = true;
 const eventLinesPlugin = {
     id: 'eventLines',
     afterDraw(chart) {
@@ -456,16 +459,18 @@ const eventLinesPlugin = {
         const xScale = chart.scales.x;
         const ca = chart.chartArea;
         ctx.save();
-        for (const [key, cfg] of Object.entries(EVENT_STYLES)) {
-            const idx = EV[key];
-            if (idx === undefined) continue;
-            const t = CD.timestamps[idx];
-            if (t < xScale.min || t > xScale.max) continue;
-            const x = xScale.getPixelForValue(t);
-            ctx.beginPath(); ctx.strokeStyle = cfg.color; ctx.lineWidth = 1.5;
-            ctx.setLineDash([4, 3]); ctx.moveTo(x, ca.top); ctx.lineTo(x, ca.bottom); ctx.stroke();
-            ctx.fillStyle = cfg.color; ctx.font = '10px sans-serif'; ctx.setLineDash([]);
-            ctx.fillText(cfg.label, x + 3, ca.top + 12);
+        if (EVENTS_VISIBLE) {
+            for (const [key, cfg] of Object.entries(EVENT_STYLES)) {
+                const idx = EV[key];
+                if (idx === undefined) continue;
+                const t = CD.timestamps[idx];
+                if (t < xScale.min || t > xScale.max) continue;
+                const x = xScale.getPixelForValue(t);
+                ctx.beginPath(); ctx.strokeStyle = cfg.color; ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 3]); ctx.moveTo(x, ca.top); ctx.lineTo(x, ca.bottom); ctx.stroke();
+                ctx.fillStyle = cfg.color; ctx.font = '10px sans-serif'; ctx.setLineDash([]);
+                ctx.fillText(cfg.label, x + 3, ca.top + 12);
+            }
         }
         // Draw cursor line
         if (cursorIdx >= 0) {
@@ -564,6 +569,12 @@ function toggleSeries(key) {
     flightChart.data.datasets[dsIdx].hidden = !SERIES_VISIBLE[key];
     flightChart.update('none');
     document.getElementById('tog-' + key).classList.toggle('inactive', !SERIES_VISIBLE[key]);
+}
+
+function toggleEvents() {
+    EVENTS_VISIBLE = !EVENTS_VISIBLE;
+    flightChart.update('none');
+    document.getElementById('tog-events').classList.toggle('inactive', !EVENTS_VISIBLE);
 }
 
 function applyZoom(startIdx, endIdx, mapBounds) {

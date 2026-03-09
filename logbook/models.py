@@ -150,3 +150,16 @@ class Jump(models.Model):
     @property
     def has_swoop_analysis(self):
         return self.flight_id is not None and self.flight.analysis_successful and self.flight.is_swoop
+
+
+class InstructorRate(models.Model):
+    """Maps a jump type to a dollar amount earned per jump for an instructor."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='instructor_rates')
+    jump_type = models.ForeignKey(JumpType, on_delete=models.CASCADE, related_name='instructor_rates')
+    amount = models.DecimalField(max_digits=8, decimal_places=2, help_text='Pay per jump in USD')
+
+    class Meta:
+        unique_together = [('user', 'jump_type')]
+
+    def __str__(self):
+        return f'{self.user.username} — {self.jump_type.name}: ${self.amount}'

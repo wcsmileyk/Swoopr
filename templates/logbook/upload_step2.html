@@ -6,7 +6,7 @@
   <h1 class="text-2xl font-bold text-white">Log GPS Jumps</h1>
   <span class="text-xs bg-sky-900/60 text-sky-300 border border-sky-800 rounded-full px-3 py-0.5">Step 2 of 2</span>
 </div>
-<p class="text-sm text-gray-400 mb-8">
+<p class="text-sm text-gray-400 mb-6">
   {{ readable_count }} file{{ readable_count|pluralize }} ready to analyze.
   {% if error_count %}<span class="text-amber-400">{{ error_count }} couldn't be read.</span>{% endif %}
   Fill in the details and save — GPS analysis runs when you submit.
@@ -19,6 +19,91 @@
 <form method="post">
   {% csrf_token %}
 
+  <!-- ── Shared session header ─────────────────────────────────────────── -->
+  <div class="bg-gray-900 rounded-xl border border-sky-900/40 p-5 mb-6" x-data="{ addingDz: false, addingAc: false }">
+    <p class="text-xs font-semibold uppercase tracking-widest text-sky-400 mb-4">Applies to all jumps</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+      <!-- Shared dropzone -->
+      <div>
+        <label class="block text-xs text-gray-500 mb-1.5">
+          Dropzone <span class="text-red-400">*</span>
+        </label>
+        <div x-show="!addingDz" class="flex gap-2">
+          <div class="flex-1"
+               x-data="searchSelect({ options: dzOptions, value: '{{ home_dz_id }}', name: 'shared_dropzone', placeholder: '— select —' })"
+               class="relative" @keydown.escape="open = false">
+            <input type="hidden" :name="name" :value="selected">
+            <button type="button" @click="open = !open"
+                    class="w-full flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-left focus:outline-none focus:border-sky-500 transition-colors"
+                    :class="open ? 'border-sky-500' : ''">
+              <span :class="selected ? 'text-gray-100' : 'text-gray-500'" x-text="selectedLabel || placeholder"></span>
+              <svg class="w-4 h-4 text-gray-500 shrink-0 transition-transform" :class="open ? 'rotate-180' : ''"
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <div x-show="open" x-cloak x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                 @click.outside="open = false; search = ''"
+                 class="absolute z-30 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
+              <div class="p-2 border-b border-gray-700">
+                <input type="text" x-model="search" x-init="$watch('open', v => v && $nextTick(() => $el.focus()))"
+                       placeholder="Search…" @click.stop
+                       class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-sky-500">
+              </div>
+              <ul class="max-h-48 overflow-y-auto py-1">
+                <template x-for="opt in filtered" :key="opt.value">
+                  <li @click="select(opt)" class="px-3 py-2 text-sm cursor-pointer transition-colors"
+                      :class="String(opt.value) === selected ? 'bg-sky-600/20 text-sky-300' : 'text-gray-200 hover:bg-gray-700'">
+                    <span x-text="opt.label"></span>
+                  </li>
+                </template>
+                <li x-show="filtered.length === 0" class="px-3 py-2 text-sm text-gray-500 text-center">No results</li>
+              </ul>
+            </div>
+          </div>
+          <button type="button" @click="addingDz = true"
+                  class="shrink-0 text-xs text-sky-500 hover:text-sky-300 border border-gray-700 hover:border-sky-700 rounded-lg px-2.5 transition-colors">
+            + New
+          </button>
+        </div>
+        <div x-show="addingDz" x-cloak class="flex gap-2">
+          <input type="text" name="shared_new_dropzone" placeholder="Dropzone name"
+                 class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          <button type="button" @click="addingDz = false"
+                  class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>
+        </div>
+      </div>
+
+      <!-- Shared aircraft -->
+      <div>
+        <label class="block text-xs text-gray-500 mb-1.5">Aircraft</label>
+        <div x-show="!addingAc" class="flex gap-2">
+          <select name="shared_aircraft"
+                  class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+            <option value="">—</option>
+            {% for ac in aircraft_list %}
+              <option value="{{ ac.id }}">{{ ac.model }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" @click="addingAc = true"
+                  class="shrink-0 text-xs text-sky-500 hover:text-sky-300 border border-gray-700 hover:border-sky-700 rounded-lg px-2.5 transition-colors">
+            + New
+          </button>
+        </div>
+        <div x-show="addingAc" x-cloak class="flex gap-2">
+          <input type="text" name="shared_new_aircraft" placeholder="e.g. Twin Otter"
+                 class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          <button type="button" @click="addingAc = false"
+                  class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Per-file cards ─────────────────────────────────────────────────── -->
   <div class="space-y-6">
     {% for entry in pending %}
     <div class="bg-gray-900 rounded-xl border {% if not entry.save_error %}border-gray-800{% else %}border-amber-800/50{% endif %} overflow-hidden">
@@ -55,67 +140,13 @@
                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
           </div>
 
-          <!-- Dropzone — searchable + inline add -->
-          <div class="lg:col-span-2" x-data="{ adding: false }">
-            <label class="block text-xs text-gray-500 mb-1.5">
-              Dropzone <span class="text-red-400">*</span>
-            </label>
-            <!-- Select mode -->
-            <div x-show="!adding" class="flex gap-2">
-              <div class="flex-1" x-data="searchSelect({ options: dzOptions, value: '{{ home_dz_id }}', name: '{{ forloop.counter0 }}_dropzone', placeholder: '— select —' })"
-                   class="relative" @keydown.escape="open = false">
-                <input type="hidden" :name="name" :value="selected">
-                <button type="button" @click="open = !open"
-                        class="w-full flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-left focus:outline-none focus:border-sky-500 transition-colors"
-                        :class="open ? 'border-sky-500' : ''">
-                  <span :class="selected ? 'text-gray-100' : 'text-gray-500'" x-text="selectedLabel || placeholder"></span>
-                  <svg class="w-4 h-4 text-gray-500 shrink-0 transition-transform" :class="open ? 'rotate-180' : ''"
-                       fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                  </svg>
-                </button>
-                <div x-show="open" x-cloak x-transition:enter="transition ease-out duration-100"
-                     x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-                     @click.outside="open = false; search = ''"
-                     class="absolute z-30 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
-                  <div class="p-2 border-b border-gray-700">
-                    <input type="text" x-model="search" x-init="$watch('open', v => v && $nextTick(() => $el.focus()))"
-                           placeholder="Search…" @click.stop
-                           class="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-sky-500">
-                  </div>
-                  <ul class="max-h-48 overflow-y-auto py-1">
-                    <template x-for="opt in filtered" :key="opt.value">
-                      <li @click="select(opt)" class="px-3 py-2 text-sm cursor-pointer transition-colors"
-                          :class="String(opt.value) === selected ? 'bg-sky-600/20 text-sky-300' : 'text-gray-200 hover:bg-gray-700'">
-                        <span x-text="opt.label"></span>
-                      </li>
-                    </template>
-                    <li x-show="filtered.length === 0" class="px-3 py-2 text-sm text-gray-500 text-center">No results</li>
-                  </ul>
-                </div>
-              </div>
-              <button type="button" @click="adding = true"
-                      class="shrink-0 text-xs text-sky-500 hover:text-sky-300 border border-gray-700 hover:border-sky-700 rounded-lg px-2.5 transition-colors">
-                + New
-              </button>
-            </div>
-            <!-- Add mode -->
-            <div x-show="adding" x-cloak class="flex gap-2">
-              <input type="text" name="{{ forloop.counter0 }}_new_dropzone"
-                     placeholder="Dropzone name"
-                     class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
-              <button type="button" @click="adding = false"
-                      class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>
-            </div>
-          </div>
-
-          <!-- Aircraft — inline add -->
+          <!-- Aircraft override -->
           <div x-data="{ adding: false }">
-            <label class="block text-xs text-gray-500 mb-1.5">Aircraft</label>
+            <label class="block text-xs text-gray-500 mb-1.5">Aircraft override</label>
             <div x-show="!adding" class="flex gap-2">
               <select name="{{ forloop.counter0 }}_aircraft"
                       class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
-                <option value="">—</option>
+                <option value="">Use shared aircraft</option>
                 {% for ac in aircraft_list %}
                   <option value="{{ ac.id }}">{{ ac.model }}</option>
                 {% endfor %}
@@ -127,7 +158,7 @@
             </div>
             <div x-show="adding" x-cloak class="flex gap-2">
               <input type="text" name="{{ forloop.counter0 }}_new_aircraft"
-                     placeholder="e.g. Twin Otter"
+                     placeholder="e.g. Caravan"
                      class="flex-1 bg-gray-800 border border-sky-600 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
               <button type="button" @click="adding = false"
                       class="shrink-0 text-xs text-gray-500 hover:text-gray-300 border border-gray-700 rounded-lg px-2.5 transition-colors">✕</button>

@@ -18,7 +18,7 @@ from users.forms import FlightUploadForm
 from users.models import Canopy as UserCanopy
 
 from .forms import JumpEditForm, SessionHeaderForm
-from .models import Aircraft, Dropzone, Jump, JumpType
+from .models import Aircraft, Dropzone, InstructorRate, Jump, JumpType
 
 
 # ---------------------------------------------------------------------------
@@ -570,6 +570,7 @@ def upload_wizard_step1(request):
                     gps_dt = _extract_gps_datetime(entry['temp_path'])
                     if gps_dt:
                         entry['date'] = gps_dt.date().isoformat()
+                        entry['sort_dt'] = gps_dt.isoformat()
 
                 except Exception as e:
                     if entry['temp_path'] and os.path.exists(entry['temp_path']):
@@ -578,6 +579,9 @@ def upload_wizard_step1(request):
                     entry['save_error'] = str(e)
 
                 pending.append(entry)
+
+            # Sort oldest → newest so jump numbers are assigned in chronological order
+            pending.sort(key=lambda e: e.get('sort_dt') or e.get('date') or '')
 
             request.session['pending_jump_flights'] = pending
             return redirect('logbook_upload_log')
@@ -600,16 +604,35 @@ def upload_wizard_step2(request):
     if request.method == 'POST':
         del request.session['pending_jump_flights']
 
+        # Resolve shared dropzone and aircraft (apply to all cards)
+        shared_new_dz = request.POST.get('shared_new_dropzone', '').strip()
+        if shared_new_dz:
+            dz, _ = Dropzone.objects.get_or_create(name=shared_new_dz)
+            shared_dz_id = str(dz.id)
+        else:
+            shared_dz_id = request.POST.get('shared_dropzone', '').strip() or None
+
+        shared_new_ac = request.POST.get('shared_new_aircraft', '').strip()
+        if shared_new_ac:
+            ac, _ = Aircraft.objects.get_or_create(model=shared_new_ac)
+            shared_ac_id = str(ac.id)
+        else:
+            shared_ac_id = request.POST.get('shared_aircraft', '').strip() or None
+
+        if not shared_dz_id:
+            # No dropzone set — clean up all temp files and bounce back
+            for entry in pending:
+                if entry.get('temp_path') and os.path.exists(entry['temp_path']):
+                    os.unlink(entry['temp_path'])
+            return redirect('logbook_upload')
+
         jumps_to_create = []
 
         with transaction.atomic():
             for i, entry in enumerate(pending):
                 resolved = _resolve_inline_fields(request, f'{i}_', request.user)
-                if not resolved['dropzone_id']:
-                    # Clean up temp file if skipped
-                    if entry.get('temp_path') and os.path.exists(entry['temp_path']):
-                        os.unlink(entry['temp_path'])
-                    continue
+                # Per-card aircraft overrides shared; DZ always comes from shared header
+                aircraft_id = resolved['aircraft_id'] or shared_ac_id
 
                 altitude_raw  = request.POST.get(f'{i}_altitude', '').strip()
                 turn_raw      = request.POST.get(f'{i}_turn_rotation', '').strip()
@@ -653,8 +676,8 @@ def upload_wizard_step2(request):
                 jumps_to_create.append(Jump(
                     user=request.user,
                     date=jump_date_raw,
-                    dropzone_id=resolved['dropzone_id'],
-                    aircraft_id=resolved['aircraft_id'],
+                    dropzone_id=shared_dz_id,
+                    aircraft_id=aircraft_id,
                     canopy_id=resolved['canopy_id'],
                     jump_type_id=resolved['jump_type_id'],
                     altitude=int(altitude_raw) if altitude_raw else None,
@@ -1066,4 +1089,95 @@ def import_csv_confirm(request):
         'created': created,
         'skipped': skipped,
         'errors': errors[:20],  # cap at 20 displayed errors
+    })
+
+
+# ---------------------------------------------------------------------------
+# Instructor earnings
+# ---------------------------------------------------------------------------
+
+@login_required
+def instructor_earnings_view(request):
+    from decimal import Decimal
+    from datetime import timedelta
+
+    if request.method == 'POST' and request.POST.get('action') == 'save_rates':
+        for jt in JumpType.objects.all():
+            raw = request.POST.get(f'rate_{jt.id}', '').strip()
+            if raw:
+                try:
+                    InstructorRate.objects.update_or_create(
+                        user=request.user,
+                        jump_type=jt,
+                        defaults={'amount': Decimal(raw)},
+                    )
+                except Exception:
+                    pass
+            else:
+                InstructorRate.objects.filter(user=request.user, jump_type=jt).delete()
+        return redirect('instructor_earnings')
+
+    # Build rate lookup: {jump_type_id: amount}
+    rates = {r.jump_type_id: r.amount for r in InstructorRate.objects.filter(user=request.user)}
+    paid_type_ids = list(rates.keys())
+
+    # Date filter from GET params
+    today = date.today()
+    date_from_raw = request.GET.get('from', '')
+    date_to_raw   = request.GET.get('to', '')
+    try:
+        date_from = date.fromisoformat(date_from_raw) if date_from_raw else None
+    except ValueError:
+        date_from = None
+    try:
+        date_to = date.fromisoformat(date_to_raw) if date_to_raw else None
+    except ValueError:
+        date_to = None
+
+    base_qs = (
+        request.user.jumps
+        .filter(jump_type_id__in=paid_type_ids)
+        .select_related('dropzone', 'jump_type')
+        .order_by('-date', '-jump_number')
+    )
+
+    # Filtered table rows
+    table_qs = base_qs
+    if date_from:
+        table_qs = table_qs.filter(date__gte=date_from)
+    if date_to:
+        table_qs = table_qs.filter(date__lte=date_to)
+
+    table_rows = [{'jump': j, 'amount': rates.get(j.jump_type_id, Decimal('0'))} for j in table_qs]
+    table_total = sum(r['amount'] for r in table_rows)
+
+    # Last-7-days summary
+    seven_days_ago = today - timedelta(days=7)
+    last_7_qs = base_qs.filter(date__gte=seven_days_ago)
+    last_7_total = sum(rates.get(j.jump_type_id, Decimal('0')) for j in last_7_qs)
+    last_7_count = last_7_qs.count()
+
+    # Last jump day summary
+    last_jump = request.user.jumps.order_by('-date', '-jump_number').first()
+    last_jump_day_total = Decimal('0')
+    last_jump_day_count = 0
+    if last_jump:
+        last_day_qs = base_qs.filter(date=last_jump.date)
+        last_jump_day_total = sum(rates.get(j.jump_type_id, Decimal('0')) for j in last_day_qs)
+        last_jump_day_count = last_day_qs.count()
+
+    return render(request, 'logbook/instructor_earnings.html', {
+        'jump_types_with_rates': [
+            (jt, rates.get(jt.id))
+            for jt in JumpType.objects.all().order_by('name')
+        ],
+        'table_rows': table_rows,
+        'table_total': table_total,
+        'last_7_total': last_7_total,
+        'last_7_count': last_7_count,
+        'last_jump_date': last_jump.date if last_jump else None,
+        'last_jump_day_total': last_jump_day_total,
+        'last_jump_day_count': last_jump_day_count,
+        'date_from': date_from_raw,
+        'date_to': date_to_raw,
     })
