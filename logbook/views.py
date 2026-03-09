@@ -1166,6 +1166,20 @@ def instructor_earnings_view(request):
     table_rows = [{'jump': j, 'amount': rates.get(j.jump_type_id, Decimal('0'))} for j in table_qs]
     table_total = sum(r['amount'] for r in table_rows)
 
+    # Average pay by day of week (from filtered rows)
+    from collections import defaultdict
+    daily_totals = defaultdict(Decimal)  # date → total earnings that day
+    for row in table_rows:
+        daily_totals[row['jump'].date] += row['amount']
+    dow_buckets = defaultdict(list)  # 0=Mon … 6=Sun → [daily_total, ...]
+    for d, total in daily_totals.items():
+        dow_buckets[d.weekday()].append(total)
+    _DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    dow_averages = [
+        round(float(sum(dow_buckets[i]) / len(dow_buckets[i])), 2) if dow_buckets[i] else 0.0
+        for i in range(7)
+    ]
+
     # Last-7-days summary
     seven_days_ago = today - timedelta(days=7)
     last_7_qs = base_qs.filter(date__gte=seven_days_ago)
@@ -1186,8 +1200,11 @@ def instructor_earnings_view(request):
             (jt, rates.get(jt.id))
             for jt in JumpType.objects.all().order_by('name')
         ],
+        'has_rates': bool(rates),
         'table_rows': table_rows,
         'table_total': table_total,
+        'dow_averages_json': json.dumps(dow_averages),
+        'dow_has_data': any(dow_averages),
         'last_7_total': last_7_total,
         'last_7_count': last_7_count,
         'last_jump_date': last_jump.date if last_jump else None,
