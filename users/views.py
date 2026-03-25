@@ -101,8 +101,8 @@ def logout_view(request):
 def dashboard_view(request):
     """User dashboard showing flight statistics and recent activity"""
     from logbook.models import Jump
-    from django.db.models import Count
-    from django.db.models.functions import TruncMonth
+    from django.db.models import Count, Avg, Max, Min
+    from django.db.models.functions import TruncMonth, ExtractYear
     from datetime import date, timedelta
     user = request.user
 
@@ -150,15 +150,27 @@ def dashboard_view(request):
             monthly_data_map[label] = entry['count']
     monthly_counts = [monthly_data_map[l] for l in monthly_labels]
 
-    # Jump type breakdown
-    type_rows = (
+    # Jump type breakdown — consolidate categories with fewer than 5 jumps into Misc
+    MISC_THRESHOLD = 5
+    type_rows_raw = (
         logbook_qs
         .values('jump_type__name')
         .annotate(count=Count('id'))
         .order_by('-count')
     )
-    type_labels = [t['jump_type__name'] or 'Unspecified' for t in type_rows]
-    type_counts_data = [t['count'] for t in type_rows]
+    type_labels = []
+    type_counts_data = []
+    misc_count = 0
+    for t in type_rows_raw:
+        name = t['jump_type__name'] or 'Unspecified'
+        if t['count'] < MISC_THRESHOLD:
+            misc_count += t['count']
+        else:
+            type_labels.append(name)
+            type_counts_data.append(t['count'])
+    if misc_count > 0:
+        type_labels.append('Misc')
+        type_counts_data.append(misc_count)
 
     # Top dropzones
     dz_rows = (
@@ -169,6 +181,65 @@ def dashboard_view(request):
     )
     dz_labels = [d['dropzone__name'] for d in dz_rows]
     dz_counts_data = [d['count'] for d in dz_rows]
+
+    # --- Extended monthly stats ---
+    yearly_stats = list(
+        logbook_qs
+        .annotate(year=ExtractYear('date'))
+        .values('year')
+        .annotate(count=Count('id'))
+        .order_by('year')
+    )
+
+    best_month_entry = (
+        logbook_qs
+        .annotate(month=TruncMonth('date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+        .first()
+    )
+    best_month_label = best_month_entry['month'].strftime('%b %Y') if best_month_entry else None
+    best_month_count = best_month_entry['count'] if best_month_entry else None
+
+    last_30_count = logbook_qs.filter(date__gte=today - timedelta(days=30)).count()
+    this_year_total = next((r['count'] for r in yearly_stats if r['year'] == today.year), 0)
+
+    total_months_with_data = (
+        logbook_qs
+        .annotate(month=TruncMonth('date'))
+        .values('month')
+        .distinct()
+        .count()
+    )
+    avg_monthly = round(logbook_total / total_months_with_data, 1) if total_months_with_data > 0 else None
+
+    # --- Canopy breakdown ---
+    canopy_breakdown = []
+    for canopy_obj in user.canopies.filter(is_active=True).order_by('-is_primary', 'manufacturer', 'model'):
+        canopy_jumps = logbook_qs.filter(canopy=canopy_obj)
+        total_canopy_jumps = canopy_jumps.count()
+        if total_canopy_jumps == 0:
+            continue
+        swoop_count = canopy_jumps.filter(swoop=True).count()
+        gps_agg = Flight.objects.filter(
+            pilot=user,
+            is_swoop=True,
+            swoop_rejected=False,
+            analysis_successful=True,
+            jump__canopy=canopy_obj,
+        ).aggregate(
+            avg_rot=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
+            max_speed=Max('max_vertical_speed_mph'),
+        )
+        canopy_breakdown.append({
+            'canopy': canopy_obj,
+            'jumps': total_canopy_jumps,
+            'swoops': swoop_count,
+            'avg_rotation': round(gps_agg['avg_rot']) if gps_agg['avg_rot'] else None,
+            'max_speed': round(gps_agg['max_speed'], 1) if gps_agg['max_speed'] else None,
+            'wing_loading': canopy_obj.wing_loading,
+        })
 
     # Get user's flights and statistics
     flights = Flight.objects.filter(pilot=user).order_by('-created_at')
@@ -320,6 +391,15 @@ def dashboard_view(request):
         'chart_data': chart_data,
         'has_chart_data': logbook_total > 0,
         'has_gps_progression': len(gps_prog_qs) >= 2,
+        # Monthly stats
+        'yearly_stats': yearly_stats,
+        'best_month_label': best_month_label,
+        'best_month_count': best_month_count,
+        'last_30_count': last_30_count,
+        'this_year_total': this_year_total,
+        'avg_monthly': avg_monthly,
+        # Canopy breakdown
+        'canopy_breakdown': canopy_breakdown,
     }
 
     return render(request, 'users/dashboard.html', context)

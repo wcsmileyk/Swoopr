@@ -77,15 +77,51 @@
     </div>
   </div>
 
-  <!-- Jump type breakdown (doughnut) -->
+  <!-- Jump type breakdown (horizontal bar) -->
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
     <h2 class="text-sm font-semibold text-white mb-4">Jump Types</h2>
-    <div class="h-48 flex items-center justify-center">
+    <div class="h-48">
       <canvas id="chartTypes"></canvas>
     </div>
   </div>
 
 </div>
+{% endif %}
+
+<!-- Monthly stats -->
+{% if logbook_total > 0 %}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
+    <p class="text-2xl font-bold text-white">{{ this_year_total }}</p>
+    <p class="text-xs text-gray-500 mt-1">This Year</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
+    <p class="text-2xl font-bold text-sky-400">{% if best_month_count %}{{ best_month_count }}{% else %}—{% endif %}</p>
+    <p class="text-xs text-gray-500 mt-1">Best Month{% if best_month_label %} <span class="text-gray-600">({{ best_month_label }})</span>{% endif %}</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
+    <p class="text-2xl font-bold text-emerald-400">{{ last_30_count }}</p>
+    <p class="text-xs text-gray-500 mt-1">Last 30 Days</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
+    <p class="text-2xl font-bold text-amber-400">{% if avg_monthly %}{{ avg_monthly }}{% else %}—{% endif %}</p>
+    <p class="text-xs text-gray-500 mt-1">Avg / Month</p>
+  </div>
+</div>
+
+{% if yearly_stats %}
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
+  <h2 class="text-sm font-semibold text-white mb-4">Jumps by Year</h2>
+  <div class="flex gap-6 flex-wrap">
+    {% for entry in yearly_stats %}
+    <div class="text-center">
+      <p class="text-xl font-bold text-white">{{ entry.count }}</p>
+      <p class="text-xs text-gray-500 mt-0.5">{{ entry.year }}</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endif %}
 
 <!-- GPS progression chart -->
@@ -285,6 +321,47 @@
 
   </div>
 </div>
+<!-- Canopy breakdown -->
+{% if canopy_breakdown %}
+<div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden mt-6">
+  <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-white">Canopy Breakdown</h2>
+    <a href="{% url 'add_canopy' %}" class="text-xs text-sky-500 hover:text-sky-300 transition-colors">+ Add</a>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+          <th class="px-5 py-3 text-left">Canopy</th>
+          <th class="px-5 py-3 text-right">Size</th>
+          <th class="px-5 py-3 text-right">W/L</th>
+          <th class="px-5 py-3 text-right">Jumps</th>
+          <th class="px-5 py-3 text-right">Swoops</th>
+          <th class="px-5 py-3 text-right">Avg Turn</th>
+          <th class="px-5 py-3 text-right">Max Speed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in canopy_breakdown %}
+        <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
+          <td class="px-5 py-3 text-gray-200">
+            {{ row.canopy.manufacturer }} {{ row.canopy.model }}
+            {% if row.canopy.is_primary %}<span class="text-amber-400 text-xs ml-1">★</span>{% endif %}
+          </td>
+          <td class="px-5 py-3 text-right text-gray-400">{{ row.canopy.size }}</td>
+          <td class="px-5 py-3 text-right text-gray-400">{% if row.wing_loading %}{{ row.wing_loading }}{% else %}—{% endif %}</td>
+          <td class="px-5 py-3 text-right font-medium text-white">{{ row.jumps }}</td>
+          <td class="px-5 py-3 text-right text-sky-400">{% if row.swoops %}{{ row.swoops }}{% else %}<span class="text-gray-600">—</span>{% endif %}</td>
+          <td class="px-5 py-3 text-right text-gray-300">{% if row.avg_rotation %}{{ row.avg_rotation }}°{% else %}<span class="text-gray-600">—</span>{% endif %}</td>
+          <td class="px-5 py-3 text-right text-gray-300">{% if row.max_speed %}{{ row.max_speed }} mph{% else %}<span class="text-gray-600">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -334,33 +411,35 @@
     }
   });
 
-  // ── Jump type doughnut ────────────────────────────────────────
+  // ── Jump type horizontal bar ──────────────────────────────────
   if (d.types.labels.length) {
     const TYPE_COLORS = [
-      '#0ea5e9','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16'
+      '#0ea5e9','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#f97316','#84cc16','#6b7280'
     ];
     new Chart(document.getElementById('chartTypes'), {
-      type: 'doughnut',
+      type: 'bar',
       data: {
         labels: d.types.labels,
         datasets: [{
+          label: 'Jumps',
           data: d.types.data,
-          backgroundColor: TYPE_COLORS.slice(0, d.types.labels.length),
+          backgroundColor: d.types.labels.map((_, i) => TYPE_COLORS[i % TYPE_COLORS.length]),
           borderWidth: 0,
-          hoverOffset: 6,
+          borderRadius: 4,
         }]
       },
       options: {
+        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: 'bottom',
-            labels: { color: TICK, font: { size: 11 }, padding: 10, boxWidth: 12, usePointStyle: true },
-          },
+          legend: { display: false },
           tooltip: { ...baseTooltip },
         },
-        cutout: '60%',
+        scales: {
+          x: { grid: { color: GRID }, ticks: { color: TICK, font: { size: 11 } }, beginAtZero: true },
+          y: { grid: { display: false }, ticks: { color: '#d1d5db', font: { size: 11 } } },
+        },
       }
     });
   }
