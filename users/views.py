@@ -99,9 +99,9 @@ def logout_view(request):
 
 @login_required
 def dashboard_view(request):
-    """User dashboard showing flight statistics and recent activity"""
+    """Logbook dashboard — activity, stats, jump types, recent jumps."""
     from logbook.models import Jump
-    from django.db.models import Count, Avg, Max, Min
+    from django.db.models import Count
     from django.db.models.functions import TruncMonth, ExtractYear
     from datetime import date, timedelta
     user = request.user
@@ -109,18 +109,16 @@ def dashboard_view(request):
     # Logbook stats
     logbook_qs = Jump.objects.filter(user=user)
     logbook_total = logbook_qs.count()
-    logbook_swoops = logbook_qs.filter(swoop=True).count()
-    last_jump = logbook_qs.select_related('dropzone', 'jump_type').order_by('-date', '-created_at').first()
-    recent_logbook_jumps = (
+    last_jump = logbook_qs.order_by('-date', '-created_at').first()
+    recent_jumps = (
         logbook_qs
         .select_related('dropzone', 'jump_type', 'canopy')
-        .order_by('-date', '-created_at')[:5]
+        .order_by('-date', '-created_at')[:100]
     )
 
-    # --- Chart data ---
-
-    # Monthly activity: last 12 calendar months
     today = date.today()
+
+    # Monthly activity — last 12 calendar months
     monthly_labels = []
     monthly_data_map = {}
     for i in range(11, -1, -1):
@@ -131,278 +129,154 @@ def dashboard_view(request):
         label = date(y, m, 1).strftime('%b %Y')
         monthly_labels.append(label)
         monthly_data_map[label] = 0
-
     cutoff_m, cutoff_y = today.month - 11, today.year
     while cutoff_m <= 0:
         cutoff_m += 12
         cutoff_y -= 1
-    monthly_db = (
+    for entry in (
         logbook_qs
         .filter(date__gte=date(cutoff_y, cutoff_m, 1))
         .annotate(month=TruncMonth('date'))
-        .values('month')
-        .annotate(count=Count('id'))
-        .order_by('month')
-    )
-    for entry in monthly_db:
-        label = entry['month'].strftime('%b %Y')
-        if label in monthly_data_map:
-            monthly_data_map[label] = entry['count']
+        .values('month').annotate(count=Count('id')).order_by('month')
+    ):
+        lbl = entry['month'].strftime('%b %Y')
+        if lbl in monthly_data_map:
+            monthly_data_map[lbl] = entry['count']
     monthly_counts = [monthly_data_map[l] for l in monthly_labels]
 
-    # Jump type breakdown — consolidate categories with fewer than 5 jumps into Misc
-    MISC_THRESHOLD = 5
-    type_rows_raw = (
-        logbook_qs
-        .values('jump_type__name')
-        .annotate(count=Count('id'))
-        .order_by('-count')
-    )
-    type_labels = []
-    type_counts_data = []
-    misc_count = 0
-    for t in type_rows_raw:
-        name = t['jump_type__name'] or 'Unspecified'
-        if t['count'] < MISC_THRESHOLD:
-            misc_count += t['count']
-        else:
-            type_labels.append(name)
-            type_counts_data.append(t['count'])
-    if misc_count > 0:
-        type_labels.append('Misc')
-        type_counts_data.append(misc_count)
+    # Jump types — 5 time ranges for client-side switching
+    def _type_data(qs, since=None):
+        if since:
+            qs = qs.filter(date__gte=since)
+        rows = qs.values('jump_type__name').annotate(count=Count('id')).order_by('-count')
+        labels, data, other = [], [], 0
+        for r in rows:
+            name = r['jump_type__name'] or 'Unspecified'
+            if r['count'] < 3:
+                other += r['count']
+            else:
+                labels.append(name)
+                data.append(r['count'])
+        if other:
+            labels.append('Other')
+            data.append(other)
+        return {'labels': labels, 'data': data}
 
-    # Top dropzones
-    dz_rows = (
-        logbook_qs
-        .values('dropzone__name')
-        .annotate(count=Count('id'))
-        .order_by('-count')[:7]
-    )
-    dz_labels = [d['dropzone__name'] for d in dz_rows]
-    dz_counts_data = [d['count'] for d in dz_rows]
+    types_json = json.dumps({
+        'all':  _type_data(logbook_qs),
+        '12mo': _type_data(logbook_qs, today - timedelta(days=365)),
+        '6mo':  _type_data(logbook_qs, today - timedelta(days=182)),
+        '90d':  _type_data(logbook_qs, today - timedelta(days=90)),
+        '30d':  _type_data(logbook_qs, today - timedelta(days=30)),
+    })
 
-    # --- Extended monthly stats ---
+    # Summary stats
     yearly_stats = list(
         logbook_qs
         .annotate(year=ExtractYear('date'))
-        .values('year')
-        .annotate(count=Count('id'))
-        .order_by('year')
+        .values('year').annotate(count=Count('id')).order_by('year')
     )
-
-    best_month_entry = (
+    best_entry = (
         logbook_qs
         .annotate(month=TruncMonth('date'))
-        .values('month')
-        .annotate(count=Count('id'))
-        .order_by('-count')
-        .first()
+        .values('month').annotate(count=Count('id')).order_by('-count').first()
     )
-    best_month_label = best_month_entry['month'].strftime('%b %Y') if best_month_entry else None
-    best_month_count = best_month_entry['count'] if best_month_entry else None
-
+    best_month_label = best_entry['month'].strftime('%b %Y') if best_entry else None
+    best_month_count = best_entry['count'] if best_entry else None
     last_30_count = logbook_qs.filter(date__gte=today - timedelta(days=30)).count()
     this_year_total = next((r['count'] for r in yearly_stats if r['year'] == today.year), 0)
-
-    total_months_with_data = (
-        logbook_qs
-        .annotate(month=TruncMonth('date'))
-        .values('month')
-        .distinct()
-        .count()
+    months_with_data = (
+        logbook_qs.annotate(month=TruncMonth('date')).values('month').distinct().count()
     )
-    avg_monthly = round(logbook_total / total_months_with_data, 1) if total_months_with_data > 0 else None
+    avg_monthly = round(logbook_total / months_with_data, 1) if months_with_data > 0 else None
 
-    # --- Canopy breakdown ---
-    canopy_breakdown = []
-    for canopy_obj in user.canopies.filter(is_active=True).order_by('-is_primary', 'manufacturer', 'model'):
-        canopy_jumps = logbook_qs.filter(canopy=canopy_obj)
-        total_canopy_jumps = canopy_jumps.count()
-        if total_canopy_jumps == 0:
-            continue
-        swoop_count = canopy_jumps.filter(swoop=True).count()
-        gps_agg = Flight.objects.filter(
-            pilot=user,
-            is_swoop=True,
-            swoop_rejected=False,
-            analysis_successful=True,
-            jump__canopy=canopy_obj,
-        ).aggregate(
-            avg_rot=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
-            max_speed=Max('max_vertical_speed_mph'),
-        )
-        canopy_breakdown.append({
-            'canopy': canopy_obj,
-            'jumps': total_canopy_jumps,
-            'swoops': swoop_count,
-            'avg_rotation': round(gps_agg['avg_rot']) if gps_agg['avg_rot'] else None,
-            'max_speed': round(gps_agg['max_speed'], 1) if gps_agg['max_speed'] else None,
-            'wing_loading': canopy_obj.wing_loading,
-        })
-
-    # Get user's flights and statistics
-    flights = Flight.objects.filter(pilot=user).order_by('-created_at')
-    total_flights = flights.count()
-    swoops = flights.filter(is_swoop=True, swoop_rejected=False)
-    total_swoops = swoops.count()
-
-    # Calculate statistics
-    stats = {
-        'total_flights': total_flights,
-        'total_swoops': total_swoops,
-        'success_rate': (swoops.filter(analysis_successful=True).count() / total_swoops * 100) if total_swoops > 0 else 0,
-    }
-
-    # Add swoop performance stats using efficient database aggregation
-    if total_swoops > 0:
-        successful_swoops = swoops.filter(analysis_successful=True)
-        if successful_swoops.exists():
-            # Use database aggregation instead of Python loops
-            from django.db.models import Avg, Max, Min, Count
-
-            # Get rotation stats using database aggregation
-            rotation_stats = successful_swoops.filter(turn_rotation__isnull=False).aggregate(
-                avg_rotation=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
-                max_rotation=Max(models.Func(models.F('turn_rotation'), function='ABS')),
-                min_rotation=Min(models.Func(models.F('turn_rotation'), function='ABS')),
-                rotation_count=Count('turn_rotation')
-            )
-
-            # Get speed stats using database aggregation
-            speed_stats = successful_swoops.filter(max_vertical_speed_mph__isnull=False).aggregate(
-                avg_speed=Avg('max_vertical_speed_mph'),
-                max_speed=Max('max_vertical_speed_mph'),
-                min_speed=Min('max_vertical_speed_mph')
-            )
-
-            # Get ground speed stats
-            ground_speed_stats = successful_swoops.filter(max_ground_speed_mph__isnull=False).aggregate(
-                max_ground_speed=Max('max_ground_speed_mph')
-            )
-
-            # Update stats with aggregated values
-            if rotation_stats['rotation_count'] > 0:
-                stats.update({
-                    'avg_rotation': rotation_stats['avg_rotation'],
-                    'max_rotation': rotation_stats['max_rotation'],
-                    'min_rotation': rotation_stats['min_rotation'],
-                })
-
-            if speed_stats['max_speed']:
-                stats.update({
-                    'avg_speed': speed_stats['avg_speed'],
-                    'max_speed': speed_stats['max_speed'],
-                    'min_speed': speed_stats['min_speed'],
-                })
-
-            if ground_speed_stats['max_ground_speed']:
-                stats['max_ground_speed'] = ground_speed_stats['max_ground_speed']
-
-            # Get swoop distance stats using the stored field (only for swoops with avg altitude ≤ 5m AGL)
-            distance_stats = successful_swoops.filter(
-                swoop_distance_ft__isnull=False,
-                swoop_avg_altitude_agl__lte=5.0
-            ).aggregate(
-                max_distance=Max('swoop_distance_ft')
-            )
-
-            if distance_stats['max_distance']:
-                stats['max_swoop_distance'] = distance_stats['max_distance']
-
-            # Find flights that achieved personal bests (efficient queries)
-            personal_bests = {}
-
-            # Max rotation flight
-            if rotation_stats['rotation_count'] > 0:
-                max_rotation_flight = successful_swoops.filter(turn_rotation__isnull=False).annotate(
-                    abs_rotation=models.Func(models.F('turn_rotation'), function='ABS')
-                ).order_by('-abs_rotation').first()
-                if max_rotation_flight:
-                    personal_bests['max_rotation_flight_id'] = max_rotation_flight.id
-
-            # Max vertical speed flight
-            if speed_stats['max_speed']:
-                max_speed_flight = successful_swoops.filter(
-                    max_vertical_speed_mph=speed_stats['max_speed']
-                ).first()
-                if max_speed_flight:
-                    personal_bests['max_speed_flight_id'] = max_speed_flight.id
-
-            # Max ground speed flight
-            if ground_speed_stats['max_ground_speed']:
-                max_ground_speed_flight = successful_swoops.filter(
-                    max_ground_speed_mph=ground_speed_stats['max_ground_speed']
-                ).first()
-                if max_ground_speed_flight:
-                    personal_bests['max_ground_speed_flight_id'] = max_ground_speed_flight.id
-
-            # Max swoop distance flight (only for swoops with avg altitude ≤ 5m AGL)
-            if distance_stats['max_distance']:
-                max_distance_flight = successful_swoops.filter(
-                    swoop_distance_ft=distance_stats['max_distance'],
-                    swoop_avg_altitude_agl__lte=5.0
-                ).first()
-                if max_distance_flight:
-                    personal_bests['max_distance_flight_id'] = max_distance_flight.id
-
-            stats['personal_bests'] = personal_bests
-
-    # GPS swoop progression (last 40 analyzed swoops with rotation, ordered oldest→newest)
-    gps_prog_qs = list(
-        swoops
-        .filter(analysis_successful=True, turn_rotation__isnull=False)
-        .order_by('swoop_start_time', 'created_at')
-        .values('id', 'swoop_start_time', 'created_at', 'turn_rotation', 'max_vertical_speed_mph')
-    )[-40:]
-    gps_prog_labels = [
-        (s['swoop_start_time'] or s['created_at']).strftime('%b %d, %Y')
-        for s in gps_prog_qs
-    ]
-    gps_prog_rotation = [round(abs(s['turn_rotation']), 1) for s in gps_prog_qs]
-    gps_prog_speed = [
-        round(s['max_vertical_speed_mph'], 1) if s['max_vertical_speed_mph'] else None
-        for s in gps_prog_qs
-    ]
-
-    chart_data = {
-        'monthly':  {'labels': monthly_labels,     'data': monthly_counts},
-        'types':    {'labels': type_labels,         'data': type_counts_data},
-        'dzs':      {'labels': dz_labels,           'data': dz_counts_data},
-        'gps':      {'labels': gps_prog_labels,     'rotation': gps_prog_rotation, 'speed': gps_prog_speed},
-    }
-
-    # Recent flights
-    recent_flights = flights[:5]
-
-    # User's canopies
-    canopies = user.canopies.filter(is_active=True).order_by('-is_primary', 'manufacturer', 'model')
-
-    context = {
-        'user': user,
-        'stats': stats,
-        'recent_flights': recent_flights,
-        'canopies': canopies,
-        'has_profile': hasattr(user, 'profile'),
+    return render(request, 'users/dashboard.html', {
         'logbook_total': logbook_total,
-        'logbook_swoops': logbook_swoops,
         'last_jump': last_jump,
-        'recent_logbook_jumps': recent_logbook_jumps,
-        'chart_data': chart_data,
-        'has_chart_data': logbook_total > 0,
-        'has_gps_progression': len(gps_prog_qs) >= 2,
-        # Monthly stats
+        'recent_jumps': recent_jumps,
+        'monthly_labels': json.dumps(monthly_labels),
+        'monthly_counts': json.dumps(monthly_counts),
+        'types_json': types_json,
         'yearly_stats': yearly_stats,
         'best_month_label': best_month_label,
         'best_month_count': best_month_count,
         'last_30_count': last_30_count,
         'this_year_total': this_year_total,
         'avg_monthly': avg_monthly,
-        # Canopy breakdown
-        'canopy_breakdown': canopy_breakdown,
-    }
+        'has_chart_data': logbook_total > 0,
+    })
 
-    return render(request, 'users/dashboard.html', context)
+
+@login_required
+def swooper_dashboard_view(request):
+    """Swooper app landing page — GPS swoop stats, canopy breakdown, recent swoops."""
+    from django.db.models import Avg, Max
+    from logbook.models import Jump
+
+    user = request.user
+    flights_qs = Flight.objects.filter(pilot=user)
+    swoops = flights_qs.filter(is_swoop=True, swoop_rejected=False, analysis_successful=True)
+    total_swoops_gps = swoops.count()
+
+    stats = {}
+    if total_swoops_gps > 0:
+        rot = swoops.filter(turn_rotation__isnull=False).aggregate(
+            avg=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
+            best=Max(models.Func(models.F('turn_rotation'), function='ABS')),
+        )
+        spd = swoops.filter(max_vertical_speed_mph__isnull=False).aggregate(
+            avg=Avg('max_vertical_speed_mph'),
+            best=Max('max_vertical_speed_mph'),
+        )
+        gnd = swoops.filter(max_ground_speed_mph__isnull=False).aggregate(
+            best=Max('max_ground_speed_mph'),
+        )
+        dist = swoops.filter(
+            swoop_distance_ft__isnull=False,
+            swoop_avg_altitude_agl__lte=5.0,
+        ).aggregate(best=Max('swoop_distance_ft'))
+        stats = {
+            'avg_rotation': rot['avg'],
+            'best_rotation': rot['best'],
+            'avg_speed': spd['avg'],
+            'best_speed': spd['best'],
+            'best_ground_speed': gnd['best'],
+            'best_distance': dist['best'],
+        }
+
+    # Canopy breakdown — only canopies with swoop jumps
+    canopy_breakdown = []
+    for canopy in user.canopies.filter(is_active=True).order_by('-is_primary', 'model'):
+        swoop_count = Jump.objects.filter(user=user, canopy=canopy, swoop=True).count()
+        if swoop_count == 0:
+            continue
+        gps_agg = swoops.filter(jump__canopy=canopy).aggregate(
+            avg_rot=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
+            best_spd=Max('max_vertical_speed_mph'),
+        )
+        canopy_breakdown.append({
+            'canopy': canopy,
+            'swoops': swoop_count,
+            'avg_rotation': round(gps_agg['avg_rot']) if gps_agg['avg_rot'] else None,
+            'best_speed': round(gps_agg['best_spd'], 1) if gps_agg['best_spd'] else None,
+            'wing_loading': canopy.wing_loading,
+        })
+
+    # Recent swoop jumps
+    recent_swoops = (
+        Jump.objects
+        .filter(user=user, swoop=True)
+        .select_related('dropzone', 'canopy', 'flight')
+        .order_by('-date', '-created_at')[:20]
+    )
+
+    return render(request, 'users/swooper_dashboard.html', {
+        'total_swoops_gps': total_swoops_gps,
+        'total_flights': flights_qs.count(),
+        'stats': stats,
+        'canopy_breakdown': canopy_breakdown,
+        'recent_swoops': recent_swoops,
+    })
 
 
 @login_required

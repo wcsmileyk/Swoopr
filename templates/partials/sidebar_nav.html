@@ -1,0 +1,55 @@
+{% with url=request.resolver_match.url_name %}
+<nav class="flex-1 px-3 py-4 space-y-0.5">
+
+  <p class="text-[10px] uppercase tracking-widest text-gray-600 px-3 pt-1 pb-1.5">Logbook</p>
+
+  <a href="{% url 'dashboard' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dashboard' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-grid-1x2 text-base w-4 text-center shrink-0"></i>
+    Dashboard
+  </a>
+
+  <a href="{% url 'jump_list' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if active_section == 'logbook' and url != 'dashboard' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-list-ul text-base w-4 text-center shrink-0"></i>
+    Jump Log
+  </a>
+
+  {% if show_student or show_swooper or show_instructor %}
+  <div class="pt-3 pb-1">
+    <div class="border-t border-gray-800"></div>
+  </div>
+  <p class="text-[10px] uppercase tracking-widest text-gray-600 px-3 pb-1.5">Apps</p>
+  {% endif %}
+
+  {% if show_student %}
+  <a href="{% url 'student_hub' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if active_section == 'student' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-mortarboard text-base w-4 text-center shrink-0"></i>
+    Student
+  </a>
+  {% endif %}
+
+  {% if show_swooper %}
+  <a href="{% url 'swooper_dashboard' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if active_section == 'swooper' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-wind text-base w-4 text-center shrink-0"></i>
+    Swooper
+  </a>
+  {% endif %}
+
+  {% if show_instructor %}
+  <a href="{% url 'instructor_hub' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if active_section == 'instructor' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-person-badge text-base w-4 text-center shrink-0"></i>
+    Instructor
+  </a>
+  {% endif %}
+
+</nav>
+{% endwith %}

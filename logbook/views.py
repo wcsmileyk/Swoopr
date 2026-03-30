@@ -18,7 +18,7 @@ from users.forms import FlightUploadForm
 from users.models import Canopy as UserCanopy
 
 from .forms import JumpEditForm, SessionHeaderForm
-from .models import Aircraft, Dropzone, InstructorRate, Jump, JumpType
+from .models import Aircraft, Dropzone, InstructorRate, Jump, JumpType, PendingInstructorRequest, StudentSignoff, STUDENT_CATEGORY_CHOICES, JUMP_METHOD_CHOICES
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +281,8 @@ _SORT_MAP = {
 def jump_list(request):
     jumps = (
         Jump.objects.filter(user=request.user)
-        .select_related('dropzone', 'aircraft', 'canopy', 'jump_type')
+        .select_related('dropzone', 'aircraft', 'canopy', 'jump_type', 'student_signoff')
+        .prefetch_related('pending_instructor_requests')
     )
 
     # Filters
@@ -363,6 +364,9 @@ def log_jumps(request):
                 formation_raw = request.POST.get(f'row_{i}_formation_size', '').strip()
                 notes         = request.POST.get(f'row_{i}_notes', '').strip()
 
+                student_category = request.POST.get(f'row_{i}_student_category', '').strip() or None
+                student_jump_method = request.POST.get(f'row_{i}_student_jump_method', '').strip() or None
+
                 jumps_to_create.append(Jump(
                     user=request.user,
                     date=jump_date_raw,
@@ -375,6 +379,8 @@ def log_jumps(request):
                     turn_rotation=int(turn_raw) if turn_raw else None,
                     formation_size=int(formation_raw) if formation_raw else None,
                     notes=notes,
+                    student_category=student_category,
+                    student_jump_method=student_jump_method,
                 ))
 
             if jumps_to_create:
@@ -384,6 +390,8 @@ def log_jumps(request):
 
             error = 'No valid jump rows found — make sure each row has a jump type.'
 
+        profile = request.user.profile
+        is_student = getattr(profile, 'license_level', None) in ('', None, 'S')
         return render(request, 'logbook/log_jumps.html', {
             'canopies': request.user.canopies.filter(is_active=True).order_by('-is_primary', 'model'),
             'jump_types': JumpType.objects.all().order_by('name'),
@@ -392,10 +400,15 @@ def log_jumps(request):
             'primary_canopy_id': primary_canopy_id,
             'home_dz_id': home_dz_id,
             'error': error,
+            'is_student': is_student,
+            'default_student_method': getattr(profile, 'student_program', '') if is_student else '',
+            'student_categories': STUDENT_CATEGORY_CHOICES,
+            'jump_methods': JUMP_METHOD_CHOICES,
         })
 
     today = date.today().isoformat()
-
+    profile = request.user.profile
+    is_student = getattr(profile, 'license_level', None) in ('', None, 'S')
     return render(request, 'logbook/log_jumps.html', {
         'canopies': request.user.canopies.filter(is_active=True).order_by('-is_primary', 'model'),
         'jump_types': JumpType.objects.all().order_by('name'),
@@ -404,6 +417,10 @@ def log_jumps(request):
         'primary_canopy_id': primary_canopy_id,
         'home_dz_id': home_dz_id,
         'today': today,
+        'is_student': is_student,
+        'default_student_method': getattr(profile, 'student_program', '') if is_student else '',
+        'student_categories': STUDENT_CATEGORY_CHOICES,
+        'jump_methods': JUMP_METHOD_CHOICES,
     })
 
 
@@ -1113,9 +1130,251 @@ def import_csv_confirm(request):
 
 @login_required
 def instructor_earnings_view(request):
+    from django.urls import reverse
+    return redirect(reverse('instructor_hub') + '?tab=earnings')
+
+
+
+# ---------------------------------------------------------------------------
+# Student ISP sign-off views
+# ---------------------------------------------------------------------------
+
+from django.contrib.auth import get_user_model
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+
+from .isp_criteria import (
+    can_use_coach_method,
+    get_category_progress,
+    get_criteria_for_jump,
+    get_signing_rating,
+)
+_UserModel = get_user_model()
+
+
+@login_required
+def instructor_search(request):
+    """
+    AJAX endpoint: returns matching instructors for a given jump method.
+    Query params: q (name or license), method (AFF/Tandem/IAD_SL/Coach)
+    """
+    q = request.GET.get('q', '').strip()
+    method = request.GET.get('method', '')
+    if not q or len(q) < 2:
+        return JsonResponse({'results': []})
+
+    # Determine which profile flag is required
+    method_flag_map = {
+        'AFF': 'affi',
+        'Tandem': 'ti',
+        'IAD_SL': 'iad_sl',
+        'Coach': None,  # any instructor rating works
+    }
+    flag = method_flag_map.get(method)
+
+    qs = _UserModel.objects.select_related('profile').filter(
+        Q(first_name__icontains=q) |
+        Q(last_name__icontains=q) |
+        Q(profile__license_number__icontains=q)
+    )
+
+    # Filter to users who have a qualifying rating
+    if flag:
+        qs = qs.filter(**{f'profile__{flag}': True})
+    else:
+        qs = qs.filter(
+            Q(profile__coach=True) | Q(profile__affi=True) |
+            Q(profile__ti=True) | Q(profile__iad_sl=True)
+        )
+
+    results = []
+    for user in qs[:10]:
+        p = user.profile
+        ratings = []
+        if p.affi:    ratings.append('AFF-I')
+        if p.ti:      ratings.append('TI')
+        if p.iad_sl:  ratings.append('IAD-I')
+        if p.coach:   ratings.append('Coach')
+        results.append({
+            'id': user.id,
+            'name': p.display_name,
+            'license': p.license_number,
+            'ratings': ', '.join(ratings),
+        })
+
+    return JsonResponse({'results': results})
+
+
+@login_required
+def request_signoff(request, pk):
+    """
+    Student selects which criteria they think they passed and submits
+    the jump to one or more instructors for sign-off.
+    """
+    jump = get_object_or_404(Jump, pk=pk, user=request.user)
+
+    if not jump.is_student_jump:
+        return redirect('jump_list')
+
+    # If already signed, show it instead
+    if hasattr(jump, 'student_signoff'):
+        return redirect('view_signoff', pk=pk)
+
+    criteria = get_criteria_for_jump(jump.student_category, jump.student_jump_method)
+    existing_requests = jump.pending_instructor_requests.select_related('instructor__profile').all()
+
+    if request.method == 'POST':
+        # Build student_criteria dict from POST checkboxes
+        student_criteria = {
+            'ground':   request.POST.getlist('ground'),
+            'freefall': request.POST.getlist('freefall'),
+            'canopy':   request.POST.getlist('canopy'),
+            'method':   request.POST.getlist('method'),
+        }
+        instructor_ids = request.POST.getlist('instructor_ids')
+
+        if not instructor_ids:
+            return render(request, 'logbook/student_signoff_request.html', {
+                'jump': jump,
+                'criteria': criteria,
+                'existing_requests': existing_requests,
+                'error': 'Please select at least one instructor.',
+                'method_label': dict(JUMP_METHOD_CHOICES).get(jump.student_jump_method, ''),
+                'category_label': dict(STUDENT_CATEGORY_CHOICES).get(jump.student_category, ''),
+            })
+
+        created = 0
+        for iid in instructor_ids:
+            try:
+                instructor = _UserModel.objects.get(pk=iid)
+                # Verify they can sign this method
+                if get_signing_rating(instructor.profile, jump.student_jump_method) is None:
+                    continue
+                PendingInstructorRequest.objects.get_or_create(
+                    jump=jump,
+                    instructor=instructor,
+                    defaults={'student_criteria': student_criteria},
+                )
+                created += 1
+            except _UserModel.DoesNotExist:
+                continue
+
+        if created:
+            return redirect('jump_list')
+
+        return render(request, 'logbook/student_signoff_request.html', {
+            'jump': jump,
+            'criteria': criteria,
+            'existing_requests': existing_requests,
+            'error': 'None of the selected instructors are qualified to sign this jump type.',
+            'method_label': dict(JUMP_METHOD_CHOICES).get(jump.student_jump_method, ''),
+            'category_label': dict(STUDENT_CATEGORY_CHOICES).get(jump.student_category, ''),
+        })
+
+    return render(request, 'logbook/student_signoff_request.html', {
+        'jump': jump,
+        'criteria': criteria,
+        'existing_requests': existing_requests,
+        'method_label': dict(JUMP_METHOD_CHOICES).get(jump.student_jump_method, ''),
+        'category_label': dict(STUDENT_CATEGORY_CHOICES).get(jump.student_category, ''),
+    })
+
+
+@login_required
+def instructor_queue(request):
+    return redirect('instructor_hub')
+
+
+@login_required
+def signoff_form(request, pk):
+    """
+    Instructor reviews criteria for a pending request and signs off.
+    pk = PendingInstructorRequest pk.
+    """
+    pending_req = get_object_or_404(PendingInstructorRequest, pk=pk, instructor=request.user)
+    jump = pending_req.jump
+
+    # Verify this jump isn't already signed
+    if hasattr(jump, 'student_signoff'):
+        return redirect('instructor_hub')
+
+    rating = get_signing_rating(request.user.profile, jump.student_jump_method)
+    if not rating:
+        return redirect('instructor_hub')
+
+    criteria = get_criteria_for_jump(jump.student_category, jump.student_jump_method)
+    student_criteria = pending_req.student_criteria
+
+    if request.method == 'POST':
+        instructor_criteria = {
+            'ground':   request.POST.getlist('ground'),
+            'freefall': request.POST.getlist('freefall'),
+            'canopy':   request.POST.getlist('canopy'),
+            'method':   request.POST.getlist('method'),
+        }
+
+        # Check if instructor modified the student's pre-fill
+        modified = instructor_criteria != student_criteria
+
+        profile = request.user.profile
+        signoff = StudentSignoff.objects.create(
+            jump=jump,
+            signed_by=request.user,
+            instructor_name=profile.display_name,
+            instructor_license=profile.license_number,
+            instructor_rating=rating,
+            criteria_passed=instructor_criteria,
+            criteria_modified=modified,
+        )
+
+        # Remove all pending requests for this jump (first to sign wins)
+        jump.pending_instructor_requests.all().delete()
+
+        return redirect('instructor_hub')
+
+    return render(request, 'logbook/signoff_form.html', {
+        'pending_req': pending_req,
+        'jump': jump,
+        'criteria': criteria,
+        'student_criteria': student_criteria,
+        'rating': rating,
+        'method_label': dict(JUMP_METHOD_CHOICES).get(jump.student_jump_method, ''),
+        'category_label': dict(STUDENT_CATEGORY_CHOICES).get(jump.student_category, ''),
+    })
+
+
+@login_required
+def view_signoff(request, pk):
+    """Student views their signed-off jump. Clears the modification notification."""
+    jump = get_object_or_404(Jump, pk=pk, user=request.user)
+    signoff = get_object_or_404(StudentSignoff, jump=jump)
+
+    # Clear notification once viewed
+    if not signoff.student_notified:
+        StudentSignoff.objects.filter(pk=signoff.pk).update(student_notified=True)
+
+    criteria = get_criteria_for_jump(jump.student_category, jump.student_jump_method)
+
+    return render(request, 'logbook/view_signoff.html', {
+        'jump': jump,
+        'signoff': signoff,
+        'criteria': criteria,
+        'method_label': dict(JUMP_METHOD_CHOICES).get(jump.student_jump_method, ''),
+        'category_label': dict(STUDENT_CATEGORY_CHOICES).get(jump.student_category, ''),
+    })
+
+
+@login_required
+def instructor_hub(request):
+    """Combined instructor view: sign-off queue, history, and earnings."""
     from decimal import Decimal
     from datetime import timedelta
+    from collections import defaultdict
+    from django.urls import reverse
 
+    active_tab = request.GET.get('tab', 'queue')
+
+    # ── Earnings POST: save rates ────────────────────────────────────────
     if request.method == 'POST' and request.POST.get('action') == 'save_rates':
         for jt in JumpType.objects.all():
             raw = request.POST.get(f'rate_{jt.id}', '').strip()
@@ -1130,16 +1389,31 @@ def instructor_earnings_view(request):
                     pass
             else:
                 InstructorRate.objects.filter(user=request.user, jump_type=jt).delete()
-        return redirect('instructor_earnings')
+        return redirect(reverse('instructor_hub') + '?tab=earnings')
 
-    # Build rate lookup: {jump_type_id: amount}
+    # ── Queue tab ────────────────────────────────────────────────────────
+    pending = (
+        PendingInstructorRequest.objects
+        .filter(instructor=request.user)
+        .select_related('jump__user__profile', 'jump__dropzone')
+        .order_by('-created_at')
+    )
+
+    # ── History tab ──────────────────────────────────────────────────────
+    history = (
+        StudentSignoff.objects
+        .filter(signed_by=request.user)
+        .select_related('jump__user__profile', 'jump__dropzone')
+        .order_by('-signed_at')
+    )
+
+    # ── Earnings tab ─────────────────────────────────────────────────────
     rates = {r.jump_type_id: r.amount for r in InstructorRate.objects.filter(user=request.user)}
     paid_type_ids = list(rates.keys())
 
-    # Date filter from GET params
     today = date.today()
     date_from_raw = request.GET.get('from', '')
-    date_to_raw   = request.GET.get('to', '')
+    date_to_raw = request.GET.get('to', '')
     try:
         date_from = date.fromisoformat(date_from_raw) if date_from_raw else None
     except ValueError:
@@ -1154,9 +1428,8 @@ def instructor_earnings_view(request):
         .filter(jump_type_id__in=paid_type_ids)
         .select_related('dropzone', 'jump_type')
         .order_by('-date', '-jump_number')
-    )
+    ) if paid_type_ids else Jump.objects.none()
 
-    # Filtered table rows
     table_qs = base_qs
     if date_from:
         table_qs = table_qs.filter(date__gte=date_from)
@@ -1166,27 +1439,22 @@ def instructor_earnings_view(request):
     table_rows = [{'jump': j, 'amount': rates.get(j.jump_type_id, Decimal('0'))} for j in table_qs]
     table_total = sum(r['amount'] for r in table_rows)
 
-    # Average pay by day of week (from filtered rows)
-    from collections import defaultdict
-    daily_totals = defaultdict(Decimal)  # date → total earnings that day
+    daily_totals = defaultdict(Decimal)
     for row in table_rows:
         daily_totals[row['jump'].date] += row['amount']
-    dow_buckets = defaultdict(list)  # 0=Mon … 6=Sun → [daily_total, ...]
+    dow_buckets = defaultdict(list)
     for d, total in daily_totals.items():
         dow_buckets[d.weekday()].append(total)
-    _DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     dow_averages = [
         round(float(sum(dow_buckets[i]) / len(dow_buckets[i])), 2) if dow_buckets[i] else 0.0
         for i in range(7)
     ]
 
-    # Last-7-days summary
     seven_days_ago = today - timedelta(days=7)
     last_7_qs = base_qs.filter(date__gte=seven_days_ago)
     last_7_total = sum(rates.get(j.jump_type_id, Decimal('0')) for j in last_7_qs)
     last_7_count = last_7_qs.count()
 
-    # Last jump day summary
     last_jump = request.user.jumps.order_by('-date', '-jump_number').first()
     last_jump_day_total = Decimal('0')
     last_jump_day_count = 0
@@ -1195,10 +1463,15 @@ def instructor_earnings_view(request):
         last_jump_day_total = sum(rates.get(j.jump_type_id, Decimal('0')) for j in last_day_qs)
         last_jump_day_count = last_day_qs.count()
 
-    return render(request, 'logbook/instructor_earnings.html', {
+    return render(request, 'logbook/instructor_hub.html', {
+        'active_tab': active_tab,
+        # queue
+        'pending': pending,
+        # history
+        'history': history,
+        # earnings
         'jump_types_with_rates': [
-            (jt, rates.get(jt.id))
-            for jt in JumpType.objects.all().order_by('name')
+            (jt, rates.get(jt.id)) for jt in JumpType.objects.all().order_by('name')
         ],
         'has_rates': bool(rates),
         'table_rows': table_rows,
@@ -1212,4 +1485,66 @@ def instructor_earnings_view(request):
         'last_jump_day_count': last_jump_day_count,
         'date_from': date_from_raw,
         'date_to': date_to_raw,
+    })
+
+
+@login_required
+def student_hub(request):
+    """Student app — ISP progress with sign-off info + jump history."""
+    active_tab = request.GET.get('tab', 'progress')
+    progress = get_category_progress(request.user)
+    coach_unlocked = can_use_coach_method(request.user)
+    category_labels = dict(STUDENT_CATEGORY_CHOICES)
+
+    # Most recent sign-off per category
+    signoff_info = {}
+    for so in (
+        StudentSignoff.objects
+        .filter(jump__user=request.user, jump__student_category__isnull=False)
+        .select_related('jump')
+        .order_by('signed_at')
+    ):
+        signoff_info[so.jump.student_category] = {
+            'signed_at': so.signed_at,
+            'instructor_name': so.instructor_name,
+        }
+
+    # Jump history with sign-off status
+    student_jumps = (
+        Jump.objects
+        .filter(user=request.user, student_category__isnull=False)
+        .select_related('dropzone', 'jump_type', 'student_signoff')
+        .prefetch_related('pending_instructor_requests')
+        .order_by('-date', '-created_at')
+    )
+    jump_history = []
+    for jump in student_jumps:
+        try:
+            so = jump.student_signoff
+            status = 'signed'
+        except Exception:
+            so = None
+            status = 'pending' if list(jump.pending_instructor_requests.all()) else 'unsigned'
+        jump_history.append({'jump': jump, 'status': status, 'signoff': so})
+
+    return render(request, 'logbook/student_hub.html', {
+        'active_tab': active_tab,
+        'progress': progress,
+        'coach_unlocked': coach_unlocked,
+        'category_labels': category_labels,
+        'signoff_info': signoff_info,
+        'jump_history': jump_history,
+    })
+
+
+@login_required
+def student_progress(request):
+    """Shows the student's ISP category completion progress."""
+    progress = get_category_progress(request.user)
+    coach_unlocked = can_use_coach_method(request.user)
+    category_labels = dict(STUDENT_CATEGORY_CHOICES)
+    return render(request, 'logbook/student_progress.html', {
+        'progress': progress,
+        'coach_unlocked': coach_unlocked,
+        'category_labels': category_labels,
     })

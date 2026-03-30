@@ -15,16 +15,29 @@ class UserProfile(models.Model):
     license_level = models.CharField(
         max_length=2,
         choices=[
+            ('S', 'Student'),
             ('A', 'A License'),
             ('B', 'B License'),
             ('C', 'C License'),
-            ('D', 'D License')
+            ('D', 'D License'),
         ],
         blank=True
+    )
+    student_program = models.CharField(
+        max_length=10,
+        choices=[
+            ('AFF', 'AFF'),
+            ('Tandem', 'Tandem'),
+            ('IAD_SL', 'IAD / Static Line'),
+            ('Coach', 'Coach'),
+        ],
+        blank=True,
+        help_text='Student jump program (visible when license level is Student)'
     )
     coach = models.BooleanField(default=False)
     affi = models.BooleanField(default=False)
     ti = models.BooleanField(default=False)
+    iad_sl = models.BooleanField(default=False, help_text='IAD / Static Line Instructor rating')
     videographer = models.BooleanField(default=False)
     pro_rating = models.BooleanField(default=False, help_text='USPA Pro rating')
 

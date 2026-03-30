@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Sign-off Queue — Flare{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white">Sign-off Queue</h1>
+  <p class="text-sm text-gray-400 mt-1">Student jumps waiting for your signature.</p>
+</div>
+
+{% if not pending %}
+<div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-10 text-center text-gray-500 text-sm">
+  No pending sign-off requests.
+</div>
+{% else %}
+<div class="space-y-3">
+  {% for req in pending %}
+  {% with jump=req.jump student=req.jump.user.profile %}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="text-white font-medium">{{ student.display_name }}</span>
+        <span class="text-xs bg-sky-900/50 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">
+          Cat {{ jump.student_category|upper }}
+        </span>
+        <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">
+          {{ jump.get_student_jump_method_display }}
+        </span>
+      </div>
+      <div class="text-xs text-gray-500 mt-1.5 flex gap-4 flex-wrap">
+        <span>Jump #{{ jump.jump_number }}</span>
+        <span>{{ jump.date }}</span>
+        <span>{{ jump.dropzone.name }}</span>
+        <span>Submitted {{ req.created_at|date:"M j, Y" }}</span>
+      </div>
+      {% if req.student_criteria %}
+      <div class="mt-2 text-xs text-gray-500">
+        Student pre-filled
+        {% with total=req.student_criteria.ground|length|add:req.student_criteria.freefall|length|add:req.student_criteria.canopy|length|add:req.student_criteria.method|length %}
+        {{ total }} criteria
+        {% endwith %}
+      </div>
+      {% endif %}
+    </div>
+    <a href="{% url 'signoff_form' req.pk %}"
+       class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors text-center">
+      Review &amp; Sign
+    </a>
+  </div>
+  {% endwith %}
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

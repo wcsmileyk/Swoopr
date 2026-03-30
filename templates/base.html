@@ -6,7 +6,6 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}Flare{% endblock %}</title>
 
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -14,20 +13,14 @@
     }
   </script>
 
-  <!-- HTMX -->
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
-  <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
-
-  <!-- Bootstrap Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
 
   <style>
     [x-cloak] { display: none !important; }
 
-    /* Standalone form control styles (for Django-rendered form widgets) */
     .form-control, .form-select, input[type="text"], input[type="email"], input[type="password"],
     input[type="number"], input[type="date"], input[type="tel"], textarea, select {
       background-color: #1f2937;
@@ -44,125 +37,162 @@
       border-color: #38bdf8;
       box-shadow: none;
     }
-    .form-check-input {
-      width: 1rem; height: 1rem;
-      accent-color: #0ea5e9;
-      flex-shrink: 0;
-    }
-    .form-text { font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; }
+    .form-check-input { width: 1rem; height: 1rem; accent-color: #0ea5e9; flex-shrink: 0; }
+    .form-text  { font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; }
     .form-label { font-size: 0.75rem; color: #9ca3af; display: block; margin-bottom: 0.375rem; }
-    .text-danger { color: #f87171; }
-    .text-muted { color: #6b7280; }
+    .text-danger  { color: #f87171; }
+    .text-muted   { color: #6b7280; }
     .text-success { color: #34d399; }
     .text-warning { color: #fbbf24; }
     .text-primary { color: #38bdf8; }
-    .text-info { color: #67e8f9; }
+    .text-info    { color: #67e8f9; }
     hr { border-color: #1f2937; margin: 1rem 0; }
   </style>
 
   {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-[#0a0c0f] text-gray-100 min-h-screen">
+<body class="bg-[#0a0c0f] text-gray-100 min-h-screen" x-data="{ sidebarOpen: false }">
 
-  <!-- Navigation -->
-  <nav class="bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-6 flex items-center gap-6 h-14">
+  <!-- ── Top nav (fixed, full width) ──────────────────────────────────── -->
+  <nav class="fixed top-0 left-0 right-0 h-14 bg-gray-900 border-b border-gray-800 z-50">
+    <div class="flex items-center gap-3 h-full px-4 lg:px-5">
+
+      {% if user.is_authenticated %}
+      <button @click="sidebarOpen = !sidebarOpen"
+              class="lg:hidden text-gray-400 hover:text-white p-1 -ml-1 transition-colors">
+        <i class="bi bi-list text-xl leading-none"></i>
+      </button>
+      {% endif %}
+
       <a href="{% url 'dashboard' %}" class="font-bold text-sky-400 text-lg tracking-tight shrink-0">Flare</a>
 
       {% if user.is_authenticated %}
-        <a href="{% url 'dashboard' %}"
-           class="text-sm {% if request.resolver_match.url_name == 'dashboard' %}text-white font-medium{% else %}text-gray-400 hover:text-gray-200{% endif %} transition-colors">
-          Dashboard
-        </a>
-        <a href="{% url 'flights' %}"
-           class="text-sm {% if request.resolver_match.url_name == 'flights' %}text-white font-medium{% else %}text-gray-400 hover:text-gray-200{% endif %} transition-colors">
-          GPS Flights
-        </a>
-        <a href="{% url 'jump_list' %}"
-           class="text-sm {% if request.resolver_match.url_name == 'jump_list' or request.resolver_match.url_name == 'log_jumps' %}text-white font-medium{% else %}text-gray-400 hover:text-gray-200{% endif %} transition-colors">
-          Jump Log
-        </a>
 
-        <!-- Community dropdown -->
+      <div class="ml-auto flex items-center gap-2 sm:gap-3">
+
+        <!-- Log Jump -->
         <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
           <button @click="open = !open"
-                  class="text-sm text-gray-400 hover:text-gray-200 transition-colors flex items-center gap-1">
-            Community
-            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5">
+            <span class="hidden sm:inline">+ Log Jump</span>
+            <span class="sm:hidden"><i class="bi bi-plus-lg"></i></span>
+            <svg class="w-3 h-3 hidden sm:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
           </button>
           <div x-show="open" x-cloak @click.outside="open = false"
-               class="absolute top-full left-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-50">
-            <a href="{% url 'user_search' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Find Pilots</a>
-            <a href="{% url 'public_swoops' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Public Swoops</a>
+               class="absolute top-full right-0 mt-2 w-52 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-50">
+            <a href="{% url 'logbook_upload' %}" class="block px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+              <span class="block font-medium text-gray-200">Upload GPS File</span>
+              <span class="block text-xs text-gray-500 mt-0.5">FlySight CSV — auto-analyzed</span>
+            </a>
             <div class="border-t border-gray-700 my-1"></div>
+            <a href="{% url 'log_jumps' %}" class="block px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+              <span class="block font-medium text-gray-200">Log Manually</span>
+              <span class="block text-xs text-gray-500 mt-0.5">No GPS file</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Notification bell -->
+        <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
+          <button @click="open = !open"
+                  class="relative text-gray-400 hover:text-white transition-colors p-1"
+                  aria-label="Notifications">
+            <i class="bi bi-bell text-lg leading-none"></i>
+            {% if notif_count %}
+            <span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-sky-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center leading-none">
+              {{ notif_count }}
+            </span>
+            {% endif %}
+          </button>
+          <div x-show="open" x-cloak @click.outside="open = false"
+               class="absolute top-full right-0 mt-2 w-72 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-50">
+            {% if notif_items %}
+              {% for item in notif_items %}
+              <a href="{{ item.url }}" @click="open = false"
+                 class="flex items-start gap-3 px-4 py-3 hover:bg-gray-700 transition-colors">
+                <i class="bi bi-bell-fill text-sky-400 mt-0.5 shrink-0 text-sm"></i>
+                <span class="text-sm text-gray-200">{{ item.text }}</span>
+              </a>
+              {% endfor %}
+            {% else %}
+              <p class="px-4 py-4 text-sm text-gray-500 text-center">No notifications</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- User dropdown -->
+        <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
+          <button @click="open = !open"
+                  class="text-sm text-gray-300 hover:text-white transition-colors flex items-center gap-2">
+            <span class="w-7 h-7 rounded-full bg-sky-700 flex items-center justify-center text-xs font-bold text-white uppercase shrink-0">
+              {{ user.get_full_name|default:user.username|slice:":1" }}
+            </span>
+            <span class="hidden md:inline">{{ user.get_full_name|default:user.username }}</span>
+            <svg class="w-3 h-3 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div x-show="open" x-cloak @click.outside="open = false"
+               class="absolute top-full right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-50">
+            <a href="{% url 'profile' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Profile</a>
+            <a href="{% url 'add_canopy' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Add Canopy</a>
             <a href="{% url 'privacy_settings' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Privacy Settings</a>
+            <div class="border-t border-gray-700 my-1"></div>
+            <form method="post" action="{% url 'logout' %}">
+              {% csrf_token %}
+              <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                Logout
+              </button>
+            </form>
           </div>
         </div>
 
-        <!-- Right side: user menu + Log Jump CTA -->
-        <div class="ml-auto flex items-center gap-4">
-          <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
-            <button @click="open = !open"
-                    class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-4 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5">
-              + Log Jump
-              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-            </button>
-            <div x-show="open" x-cloak @click.outside="open = false"
-                 class="absolute top-full right-0 mt-2 w-52 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-50">
-              <a href="{% url 'logbook_upload' %}" class="block px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                <span class="block font-medium text-gray-200">Upload GPS File</span>
-                <span class="block text-xs text-gray-500 mt-0.5">FlySight CSV → auto-analyzed</span>
-              </a>
-              <div class="border-t border-gray-700 my-1"></div>
-              <a href="{% url 'log_jumps' %}" class="block px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                <span class="block font-medium text-gray-200">Log Manually</span>
-                <span class="block text-xs text-gray-500 mt-0.5">No GPS file</span>
-              </a>
-            </div>
-          </div>
-
-          <!-- User dropdown -->
-          <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
-            <button @click="open = !open"
-                    class="text-sm text-gray-300 hover:text-white transition-colors flex items-center gap-2">
-              <span class="w-7 h-7 rounded-full bg-sky-700 flex items-center justify-center text-xs font-bold text-white uppercase">
-                {{ user.get_full_name|default:user.username|slice:":1" }}
-              </span>
-              {{ user.get_full_name|default:user.username }}
-              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-            </button>
-            <div x-show="open" x-cloak @click.outside="open = false"
-                 class="absolute top-full right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-50">
-              <a href="{% url 'profile' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Profile</a>
-              <a href="{% url 'add_canopy' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Add Canopy</a>
-              <a href="{% url 'privacy_settings' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Privacy Settings</a>
-              <a href="{% url 'instructor_earnings' %}" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Instructor Earnings</a>
-              <div class="border-t border-gray-700 my-1"></div>
-              <form method="post" action="{% url 'logout' %}">
-                {% csrf_token %}
-                <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
-                  Logout
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
+      </div>
 
       {% else %}
-        <!-- Unauthenticated nav -->
+
+      <div class="ml-auto flex items-center gap-4">
         <a href="{% url 'user_search' %}" class="text-sm text-gray-400 hover:text-gray-200 transition-colors">Find Pilots</a>
         <a href="{% url 'public_swoops' %}" class="text-sm text-gray-400 hover:text-gray-200 transition-colors">Public Swoops</a>
-        <div class="ml-auto flex items-center gap-4">
-          <a href="{% url 'login' %}" class="text-sm text-gray-400 hover:text-gray-200 transition-colors">Login</a>
-          <a href="{% url 'signup' %}" class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">Sign Up</a>
-        </div>
+        <a href="{% url 'login' %}" class="text-sm text-gray-400 hover:text-gray-200 transition-colors">Login</a>
+        <a href="{% url 'signup' %}" class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-4 py-1.5 rounded-lg font-medium transition-colors">Sign Up</a>
+      </div>
+
       {% endif %}
     </div>
   </nav>
 
-  <!-- Flash messages -->
+  {% if user.is_authenticated %}
+
+  <!-- ── Desktop sidebar ───────────────────────────────────────────────── -->
+  <aside class="fixed top-14 left-0 bottom-0 w-56 bg-gray-900 border-r border-gray-800 z-40 hidden lg:flex flex-col overflow-y-auto">
+    {% include 'partials/sidebar_nav.html' %}
+  </aside>
+
+  <!-- ── Mobile sidebar overlay ───────────────────────────────────────── -->
+  <div x-show="sidebarOpen" x-cloak
+       class="fixed inset-0 z-50 lg:hidden"
+       @keydown.escape.window="sidebarOpen = false">
+    <div class="absolute inset-0 bg-black/60" @click="sidebarOpen = false"></div>
+    <aside class="absolute top-0 left-0 bottom-0 w-64 bg-gray-900 border-r border-gray-800 flex flex-col overflow-y-auto"
+           @click.stop>
+      <div class="flex items-center justify-between px-4 h-14 border-b border-gray-800 shrink-0">
+        <span class="font-bold text-sky-400 text-lg tracking-tight">Flare</span>
+        <button @click="sidebarOpen = false" class="text-gray-500 hover:text-gray-300 transition-colors p-1">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      {% include 'partials/sidebar_nav.html' %}
+    </aside>
+  </div>
+
+  {% endif %}
+
+  <!-- ── Flash messages ───────────────────────────────────────────────── -->
   {% if messages %}
-  <div class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm" id="flash-messages">
+  <div class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm">
     {% for message in messages %}
     <div class="flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg border
       {% if message.tags == 'success' %}bg-emerald-900/80 border-emerald-700 text-emerald-100
@@ -178,19 +208,19 @@
   </div>
   {% endif %}
 
-  <!-- Main content -->
-  <main class="max-w-7xl mx-auto px-6 py-8">
-    {% block content %}{% endblock %}
+  <!-- ── Main content ──────────────────────────────────────────────────── -->
+  <main class="pt-14 {% if user.is_authenticated %}lg:pl-56{% endif %} min-h-screen">
+    <div class="px-4 sm:px-6 lg:px-8 py-7 max-w-7xl mx-auto">
+      {% block content %}{% endblock %}
+    </div>
   </main>
 
   <script>
-    // Send CSRF token with every HTMX request
     document.addEventListener('htmx:configRequest', function(e) {
       e.detail.headers['X-CSRFToken'] =
         document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     });
 
-    // Reusable searchable dropdown Alpine component (from Loggr)
     function searchSelect({ options, value, name, placeholder }) {
       return {
         options: options || [],
@@ -199,27 +229,17 @@
         placeholder: placeholder || '— select —',
         search: '',
         open: false,
-
         get selectedLabel() {
           const opt = this.options.find(o => String(o.value) === this.selected);
           return opt ? opt.label : '';
         },
-
         get filtered() {
           if (!this.search) return this.options;
           const s = this.search.toLowerCase();
           return this.options.filter(o => o.label.toLowerCase().includes(s));
         },
-
-        select(opt) {
-          this.selected = String(opt.value);
-          this.search = '';
-          this.open = false;
-        },
-
-        onKeydown(e) {
-          if (e.key === 'Escape') { this.open = false; this.search = ''; }
-        },
+        select(opt) { this.selected = String(opt.value); this.search = ''; this.open = false; },
+        onKeydown(e) { if (e.key === 'Escape') { this.open = false; this.search = ''; } },
       };
     }
   </script>

@@ -40,6 +40,30 @@
       {% endif %}
     </td>
     <td class="px-4 py-3 text-right">
+      {% if jump.is_student_jump %}
+        {% with status=jump.signoff_status %}
+        {% if status == 'signed' %}
+          <a href="{% url 'view_signoff' jump.pk %}"
+             class="inline-flex items-center gap-1 text-xs text-green-400 hover:text-green-300 transition-colors mr-2"
+             title="View signoff">
+            {% if jump.student_signoff.criteria_modified and not jump.student_signoff.student_notified %}
+            <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+            {% endif %}
+            Cat {{ jump.student_category|upper }} ✓
+          </a>
+        {% elif status == 'pending' %}
+          <span class="inline-flex items-center gap-1 text-xs text-yellow-500 mr-2" title="Awaiting instructor sign-off">
+            Cat {{ jump.student_category|upper }} &middot; pending
+          </span>
+        {% else %}
+          <a href="{% url 'request_signoff' jump.pk %}"
+             class="inline-flex items-center gap-1 text-xs text-sky-500 hover:text-sky-300 transition-colors mr-2"
+             title="Request sign-off">
+            Cat {{ jump.student_category|upper }} &middot; sign?
+          </a>
+        {% endif %}
+        {% endwith %}
+      {% endif %}
       <a href="{% url 'edit_jump' jump.pk %}"
          class="text-gray-600 hover:text-sky-400 transition-colors opacity-0 group-hover:opacity-100"
          title="Edit jump">

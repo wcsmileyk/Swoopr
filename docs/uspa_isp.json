@@ -1,0 +1,274 @@
+{
+  "fjc": {
+    "ground": [
+      "Find and operate main-deployment, cutaway and reserve-activation handles (or single-operating-system handle)",
+      "Explain the use of the altimeter and the importance of altitude awareness",
+      "State how many gear checks you will receive",
+      "Explain the correct way to approach the aircraft",
+      "Demonstrate correct procedure for landing with the plane in an emergency",
+      "Demonstrate correct procedures for emergency exit (exit using main parachute, exit using reserve parachute)",
+      "Respond correctly to questions about how to handle an open parachute in the aircraft with the door open and with the door closed",
+      "Demonstrate the basic arch position",
+      "Demonstrate proper arm and leg position and positive leg extension with symmetry",
+      "Demonstrate the correct exit procedure",
+      "Demonstrate the correct deployment procedure",
+      "Recognize and respond to signals you have been trained on (e.g., exit commands, freefall hand signals)",
+      "Explain your three pull priorities",
+      "Demonstrate the correct technique to handle both a hard pull and an inability to find the handle for the main deployment",
+      "Demonstrate how to clear a pilot-chute hesitation (main or reserve)",
+      "Respond correctly and within 5 seconds to canopy opening scenarios, including line twists, slider up, end-cell closures, and the four types of two-canopies-out configurations",
+      "Name and explain “decision altitude” and “cutaway hard deck”",
+      "Solve canopy descent problems from opening to 1,000 feet",
+      "Explain your landing priorities",
+      "Identify the wind direction and draw your landing pattern on an aerial map",
+      "Describe how to handle a downwind landing and why you should avoid low turns",
+      "Demonstrate the flare and a proper parachute landing fall (PLF)",
+      "Explain the correct procedure for these landing obstacles: power lines, water, trees, buildings, and hazards specific to the drop zone"
+    ],
+    "freefall": [],
+    "canopy": [],
+    "AFF": [],
+    "Tandem": [],
+    "IAD/SL": []
+  },
+  "a": {
+    "ground": [
+      "Complete All Ground School Advancement Criteria",
+      "Discuss ground winds and winds aloft for the day",
+      "Plan your flight to the holding area and in the pattern with assistance",
+      "Practice a PLF",
+      "Pass the category quiz at 100%"
+    ],
+    "freefall": [
+      "Perform a safe exit",
+      "Show overall awareness",
+      "Demonstrate a stable body position on the jump",
+      "Be altitude aware throughout the jump"
+    ],
+    "canopy": [
+      "Prepare to PLF",
+      "Fly pattern with assistance",
+      "Perform a staged flare with full finish",
+      "Land within 60 degrees of intended heading with assistance",
+      "Land within 330 feet of intended target with assistance"
+    ],
+    "AFF": ["Initiate main deployment within 1,000 feet of the assigned altitude"],
+    "Tandem": ["Initiate main deployment within 1,000 feet of the assigned altitude"],
+    "IAD/SL": ["Exit on Command"]
+  },
+  "b": {
+    "ground": [
+      "Discuss ground winds and winds aloft for the day",
+      "Plan your flight to the holding area and the pattern with assistance",
+      "Discuss runways and aircraft patterns",
+      "Practice clearing your airspace throughout canopy flight",
+      "Discuss the flight cycle",
+      "Practice a PLF",
+      "Pass the category quiz at 100%",
+      "Review Emergency Procedures"
+    ],
+    "freefall": [
+      "Stable throughout skydive",
+      "Demonstrate leg control"
+    ],
+    "canopy": [
+      "Fly your pattern with assistance",
+      "Perform a stage flared with full finish",
+      "Land within 30 degrees of your intended heading with assistance",
+      "Land within 330 feet of intended target with assistance"
+    ],
+    "AFF": ["Initiate deployment within 500 feet of assigned altitude"],
+    "Tandem": ["Initiate deployment within 500 feet of assigned altitude"],
+    "IAD/SL": ["Succesfully perform three practice pulls, three jumps in a row"]
+  },
+  "c": {
+    "ground": [
+      "Discuss ground and winds aloft",
+      "Plan flight to holding area and pattern",
+      "Discuss adjusting pattern for wind changes",
+      "Discuss wing loading",
+      "Discuss downwind landings",
+      "Discuss turbulence and flight cycle",
+      "Review off-field landings, choose landing area by 2,000 feet, obstacle avoidance",
+      "Read SIM Ch. 1 Cat. C",
+      "Train exit / freefall",
+      "Review open parachute in aircraft",
+      "Observe equipment pre-flight and AAD operation",
+      "Pass the category quiz at 100%"
+    ],
+    "freefall": [
+      "Control within 5 seconds",
+      "Relaxed fall",
+      "Heading control",
+      "Wave-off",
+      "Solo pull at assigned altitude with stability"
+    ],
+    "canopy": [
+      "Flight cycle drill",
+      "Fly pattern with minimum assistance",
+      "Staged flare with full finish - minimum assistance",
+      "PLF"
+    ],
+    "AFF": [],
+    "Tandem": [],
+    "IAD/SL": []
+  },
+  "d": {
+    "ground": [
+      "Student gives ground and winds aloft",
+      "Spotting, wind drift, and opening point",
+      "Discuss cloud clearance",
+      "Plan flight to holding area and pattern",
+      "Discuss landing accuracy / choose target",
+      "Jump run observation",
+      "Review building landings",
+      "Canopy flight EP: Train rear riser turns",
+      "Read SIM Ch. 1 Cat. D",
+      "Train exit / freefall",
+      "EP review with training harness",
+      "Conduct 4 gear checks",
+      "Pass the category quiz at 100%"
+    ],
+    "freefall": [
+      "Solo exit, stable within 5 seconds",
+      "90-degree turns within 20 degrees (4 times)",
+      "180-degree turns within 45 degrees (2 times)",
+      "360-degree turns within 45 degrees (2 times)"
+    ],
+    "canopy": [
+      "90-degree rear riser turns with brakes set (2 times)",
+      "90-degree rear riser turns with brakes released (2 times)",
+      "Fly pattern, land within 165 feet with assistance"
+    ],
+    "AFF": [],
+    "Tandem": [],
+    "IAD/SL": []
+  },
+  "e": {
+    "ground": [
+      "Student gives ground and winds aloft",
+      "Discuss time between exits and spotting techniques",
+      "Review aircraft EPs",
+      "Plan spot, exit separation, wind drift and opening point",
+      "Plan flight to holding area, pattern, and traffic avoidance",
+      "Discuss landing accuracy / choose target",
+      "Discuss flare techniques: staged (sweet spot) and continuous",
+      "Train sweet spot drill",
+      "Train stall point drills",
+      "Read SIM Ch. 1 Cat. E",
+      "Train exit / freefall",
+      "Review aircraft EPs",
+      "Expand on causes of two parachutes out",
+      "Review high wind landings",
+      "Identify components, their function and potential malfunctions",
+      "Join USPA",
+      "Pass the category quiz at 100%"
+    ],
+    "freefall": [
+      "Barrel roll",
+      "Back loop",
+      "Front loop",
+      "Cleared to jump without FF supervision by recovering from intentional instability within 5 seconds (2 times)"
+    ],
+    "canopy": [
+      "Participate in jump run using S.P.A.C.E.",
+      "Sweet spot practice",
+      "Stall point practice with toggles above 2,500 feet",
+      "Land within 165 feet without assistance (2 times)"
+    ],
+    "AFF": [],
+    "Tandem": [],
+    "IAD/SL": []
+  },
+  "f": {
+    "ground": [
+      "Student gives ground and winds aloft",
+      "Plan spot, exit separation, wind drift and opening point",
+      "Plan flight to holding area, pattern, choose target",
+      "Canopy flight EP: Train braked turns",
+      "Canopy flight EP: Train half-braked flare",
+      "Read SIM Ch. 1 Cat. F",
+      "Train exit / freefall",
+      "Review power-line landings",
+      "Review SHAGG",
+      "Pack with assistance",
+      "Check other jumper's gear",
+      "Discuss aircraft weight and balance",
+      "Pass the category quiz at 100%"
+    ],
+    "freefall": [
+      "90-degree braked turns (4 times)",
+      "Half-braked flare (2 times)"
+    ],
+    "canopy": [
+      "Spot with minimum assistance, exit separation",
+      "Tracking sequence within 30 degrees (3 times)",
+      "Clear and pull at 5,500 feet",
+      "Clear and pull at 3,500 feet",
+      "Land within 82 feet without assistance (2 times)"
+    ],
+    "AFF": [],
+    "Tandem": [],
+    "IAD/SL": []
+  },
+  "g": {
+    "ground": [
+      "Student gives ground and winds aloft",
+      "Plan spot, exit separation, wind drift and opening point",
+      "Plan flight to holding area, pattern, choose target",
+      "Discuss maximum rate of turn",
+      "Canopy flight EP: Train turn reversals",
+      "Train adjusting glide path",
+      "Read SIM Ch. 1 Cat. G",
+      "Train exit / freefall",
+      "Review tree landings",
+      "Discuss equipment maintenance",
+      "Pack with assistance",
+      "Pass the category quiz at 100%"
+    ],
+    "freefall": [
+      "Redock from 10 feet with SCS (2 times)",
+      "Match level with SCS: up 6 feet",
+      "Match level with SCS: down 6 feet",
+      "Redock with adjacent level with SCS (2 times)",
+      "Break-off at altitude without prompt",
+      "Track 50 feet within 10 degrees"
+    ],
+    "canopy": [
+      "Spot with minimum assistance",
+      "Adjust glide path",
+      "Turn reversal drills above 2,500 feet (4 times)",
+      "Land within 65 feet without assistance (2 times)"
+    ],
+    "AFF": [],
+    "Tandem": [],
+    "IAD/SL": []
+  },
+  "h": {
+    "ground": [
+      "Student gives ground and winds aloft",
+      "Plan spot, exit separation, wind drift and opening point",
+      "Plan flight to holding area, pattern, choose target",
+      "Canopy flight EP: Train low-turn recovery",
+      "Read SIM Ch. 1 Cat. H",
+      "Train exit / freefall",
+      "Review water landings and flotation",
+      "Replace closing loop",
+      "Assemble 3-ring",
+      "Pass the category quiz at 100%"
+    ],
+    "freefall": [
+      "Dive to dock with stairstep approach",
+      "Break-off at altitude without prompt",
+      "Track 100 feet within 10 degrees"
+    ],
+    "canopy": [
+      "Spot without assistance",
+      "Low-turn recovery drills (2 times)",
+      "Land within 65 feet without assistance (3 times)"
+    ],
+    "AFF": [],
+    "Tandem": [],
+    "IAD/SL": []
+  }
+}

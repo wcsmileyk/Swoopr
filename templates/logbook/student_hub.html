@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% block title %}Student — Flare{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white">Student</h1>
+  <p class="text-sm text-gray-500 mt-0.5">USPA A-License Integrated Student Program</p>
+</div>
+
+{% if coach_unlocked %}
+<div class="bg-green-900/30 border border-green-800 text-green-300 rounded-xl px-4 py-3 mb-5 text-sm">
+  Coach method unlocked — Category F clear &amp; pull criteria have been signed off.
+</div>
+{% endif %}
+
+<!-- Tabs -->
+<div x-data="{ tab: '{{ active_tab }}' }">
+  <div class="flex gap-1 border-b border-gray-800 mb-6">
+    <a href="?tab=progress"
+       @click.prevent="tab = 'progress'; history.replaceState(null,'','?tab=progress')"
+       :class="tab === 'progress' ? 'border-sky-400 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'"
+       class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px cursor-pointer">
+      Progress
+    </a>
+    <a href="?tab=history"
+       @click.prevent="tab = 'history'; history.replaceState(null,'','?tab=history')"
+       :class="tab === 'history' ? 'border-sky-400 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'"
+       class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px cursor-pointer">
+      Jump History
+    </a>
+  </div>
+
+  <!-- Progress tab -->
+  <div x-show="tab === 'progress'" x-cloak>
+
+    <!-- Category summary cards -->
+    <div class="grid grid-cols-4 sm:grid-cols-8 gap-2 mb-6">
+      {% for cat, data in progress.items %}
+      <div class="bg-gray-900 rounded-xl border {% if data.complete %}border-green-800{% else %}border-gray-800{% endif %} p-3 text-center">
+        <p class="text-sm font-bold {% if data.complete %}text-green-400{% else %}text-white{% endif %}">
+          {{ cat|upper }}
+        </p>
+        {% if data.complete %}
+          <p class="text-xs text-green-600 mt-1">Done</p>
+        {% elif data.total > 0 %}
+          <p class="text-xs text-gray-600 mt-1">{{ data.passed }}/{{ data.total }}</p>
+        {% else %}
+          <p class="text-xs text-gray-700 mt-1">—</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Detailed category breakdown -->
+    {% for cat, data in progress.items %}
+    <div x-data="{ open: false }"
+         class="bg-gray-900 rounded-xl border {% if data.complete %}border-green-800/50{% else %}border-gray-800{% endif %} mb-3 overflow-hidden">
+      <button type="button" @click="open = !open"
+              class="w-full px-5 py-4 flex items-center justify-between text-left">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="text-base font-semibold {% if data.complete %}text-green-400{% else %}text-white{% endif %}">
+            Category {{ cat|upper }}
+          </span>
+          {% if data.complete %}
+            <span class="text-xs bg-green-900/50 text-green-400 border border-green-800 rounded-full px-2 py-0.5">Complete</span>
+            {% for k, info in signoff_info.items %}{% if k == cat %}
+            <span class="text-xs text-gray-500">{{ info.instructor_name }} · {{ info.signed_at|date:"M j, Y" }}</span>
+            {% endif %}{% endfor %}
+          {% elif data.passed > 0 %}
+            <span class="text-xs bg-sky-900/40 text-sky-400 border border-sky-800 rounded-full px-2 py-0.5">In progress</span>
+          {% endif %}
+          <span class="text-xs text-gray-500">{{ data.passed }}/{{ data.total }} criteria</span>
+        </div>
+        <svg :class="open ? 'rotate-180' : ''"
+             class="w-4 h-4 text-gray-500 transition-transform shrink-0"
+             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+
+      <div x-show="open" x-cloak class="px-5 pb-5 border-t border-gray-800">
+        {% if data.total > 0 %}
+        <div class="mb-4 mt-4">
+          <div class="flex justify-between text-xs text-gray-500 mb-1">
+            <span>{{ data.passed }} / {{ data.total }}</span>
+            <span>{% widthratio data.passed data.total 100 %}%</span>
+          </div>
+          <div class="w-full bg-gray-800 rounded-full h-1.5">
+            <div class="{% if data.complete %}bg-green-500{% else %}bg-sky-500{% endif %} h-1.5 rounded-full transition-all"
+                 style="width: {% widthratio data.passed data.total 100 %}%"></div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% for section, items in data.criteria.items %}
+        {% if items %}
+        <h4 class="text-xs font-semibold text-sky-400 uppercase tracking-wider mt-4 mb-2">{{ section|capfirst }}</h4>
+        <ul class="space-y-1.5">
+          {% for item in items %}
+          <li class="flex items-start gap-2.5">
+            {% if item in data.passed_set %}
+            <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="text-sm text-gray-300">{{ item }}</span>
+            {% else %}
+            <svg class="w-4 h-4 text-gray-700 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"/>
+            </svg>
+            <span class="text-sm text-gray-600">{{ item }}</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+  </div>
+
+  <!-- Jump History tab -->
+  <div x-show="tab === 'history'" x-cloak>
+    {% if jump_history %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+              <th class="px-4 py-3 text-left">#</th>
+              <th class="px-4 py-3 text-left">Date</th>
+              <th class="px-4 py-3 text-left">Category</th>
+              <th class="px-4 py-3 text-left">Location</th>
+              <th class="px-4 py-3 text-left">Sign-off</th>
+              <th class="px-4 py-3 text-left">Instructor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in jump_history %}
+            {% with jump=entry.jump so=entry.signoff status=entry.status %}
+            <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 cursor-pointer transition-colors"
+                onclick="window.location='{% url 'edit_jump' jump.pk %}'">
+              <td class="px-4 py-2.5 text-gray-600 text-xs">{% if jump.jump_number %}#{{ jump.jump_number }}{% else %}—{% endif %}</td>
+              <td class="px-4 py-2.5 text-gray-300 whitespace-nowrap">{{ jump.date|date:"M j, Y" }}</td>
+              <td class="px-4 py-2.5">
+                <span class="text-xs font-medium text-white">Cat {{ jump.student_category|upper }}</span>
+                {% if jump.student_jump_method %}
+                  <span class="ml-1 text-xs text-gray-500">{{ jump.get_student_jump_method_display }}</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-2.5 text-gray-300">{% if jump.dropzone %}{{ jump.dropzone.name }}{% else %}—{% endif %}</td>
+              <td class="px-4 py-2.5">
+                {% if status == 'signed' %}
+                  <span class="text-xs bg-green-900/50 text-green-400 border border-green-800 rounded-full px-2 py-0.5">Signed</span>
+                {% elif status == 'pending' %}
+                  <span class="text-xs bg-amber-900/50 text-amber-400 border border-amber-800 rounded-full px-2 py-0.5">Pending</span>
+                {% else %}
+                  <a href="{% url 'request_signoff' jump.pk %}"
+                     onclick="event.stopPropagation()"
+                     class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5 hover:text-gray-200 hover:border-gray-600 transition-colors">
+                    Request
+                  </a>
+                {% endif %}
+              </td>
+              <td class="px-4 py-2.5 text-xs text-gray-500">
+                {% if so %}{{ so.instructor_name }}{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 py-14 text-center">
+      <p class="text-gray-500 mb-4">No student jumps logged yet.</p>
+      <a href="{% url 'log_jumps' %}"
+         class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+        Log Jumps
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

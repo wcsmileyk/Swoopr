@@ -1,0 +1,340 @@
+{% extends 'base.html' %}
+{% block title %}Instructor Hub — Flare{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between" x-data="{ settingsOpen: false }">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Instructor Hub</h1>
+    <p class="text-sm text-gray-500 mt-0.5">Your queue, sign-off history, and earnings</p>
+  </div>
+  <!-- Rate settings modal trigger (only relevant in earnings tab, but always available) -->
+  <button type="button" @click="settingsOpen = true"
+          class="flex items-center gap-2 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded-lg px-4 py-2 transition-colors">
+    <i class="bi bi-sliders2"></i> Rate Settings
+  </button>
+
+  <!-- Rate Settings Modal -->
+  <div x-show="settingsOpen" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       @keydown.escape.window="settingsOpen = false">
+    <div class="absolute inset-0 bg-black/60" @click="settingsOpen = false"></div>
+    <div class="relative bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+        <h2 class="text-base font-semibold text-white">Pay Rate Settings</h2>
+        <button @click="settingsOpen = false" class="text-gray-500 hover:text-gray-300 transition-colors">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <form method="post" action="{% url 'instructor_hub' %}" class="flex flex-col flex-1 overflow-hidden">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_rates">
+        <div class="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+          <p class="text-xs text-gray-500 mb-4">
+            Set a dollar amount for each jump type you get paid for. Leave blank to exclude a type.
+          </p>
+          {% for jt, amount in jump_types_with_rates %}
+          <div class="flex items-center gap-3">
+            <label class="flex-1 text-sm text-gray-300">
+              {{ jt.name }}
+              {% if not jt.working_jump %}<span class="text-xs text-gray-600 ml-1">(leisure)</span>{% endif %}
+            </label>
+            <div class="flex items-center gap-1.5">
+              <span class="text-gray-500 text-sm">$</span>
+              <input type="number" name="rate_{{ jt.id }}"
+                     value="{{ amount|default:'' }}"
+                     placeholder="—"
+                     min="0" max="9999" step="0.01"
+                     class="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-100 text-right focus:outline-none focus:border-sky-500">
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="px-6 py-4 border-t border-gray-800 flex justify-end gap-3">
+          <button type="button" @click="settingsOpen = false"
+                  class="text-sm text-gray-400 hover:text-gray-200 px-4 py-2 rounded-lg transition-colors">Cancel</button>
+          <button type="submit"
+                  class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+            Save Rates
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div x-data="{ tab: '{{ active_tab }}' }">
+
+  <div class="flex gap-1 border-b border-gray-800 mb-6">
+    <button @click="tab = 'queue'"
+            :class="tab === 'queue' ? 'border-b-2 border-sky-400 text-white' : 'text-gray-500 hover:text-gray-300'"
+            class="px-4 py-2.5 text-sm font-medium transition-colors flex items-center gap-2">
+      Queue
+      {% if pending %}
+      <span class="bg-sky-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full leading-none">{{ pending|length }}</span>
+      {% endif %}
+    </button>
+    <button @click="tab = 'history'"
+            :class="tab === 'history' ? 'border-b-2 border-sky-400 text-white' : 'text-gray-500 hover:text-gray-300'"
+            class="px-4 py-2.5 text-sm font-medium transition-colors">
+      History
+    </button>
+    <button @click="tab = 'earnings'"
+            :class="tab === 'earnings' ? 'border-b-2 border-sky-400 text-white' : 'text-gray-500 hover:text-gray-300'"
+            class="px-4 py-2.5 text-sm font-medium transition-colors">
+      Earnings
+    </button>
+  </div>
+
+  <!-- ── Queue tab ──────────────────────────────────────────────────────── -->
+  <div x-show="tab === 'queue'" x-cloak>
+    {% if not pending %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-10 text-center text-gray-500 text-sm">
+      No pending sign-off requests.
+    </div>
+    {% else %}
+    <div class="space-y-3">
+      {% for req in pending %}
+      {% with jump=req.jump student=req.jump.user.profile %}
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-3 flex-wrap">
+            <span class="text-white font-medium">{{ student.display_name }}</span>
+            <span class="text-xs bg-sky-900/50 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">
+              Cat {{ jump.student_category|upper }}
+            </span>
+            <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5">
+              {{ jump.get_student_jump_method_display }}
+            </span>
+          </div>
+          <div class="text-xs text-gray-500 mt-1.5 flex gap-4 flex-wrap">
+            <span>Jump #{{ jump.jump_number }}</span>
+            <span>{{ jump.date }}</span>
+            <span>{{ jump.dropzone.name }}</span>
+            <span>Submitted {{ req.created_at|date:"M j, Y" }}</span>
+          </div>
+          {% if req.student_criteria %}
+          <div class="mt-2 text-xs text-gray-500">
+            Student pre-filled
+            {% with total=req.student_criteria.ground|length|add:req.student_criteria.freefall|length|add:req.student_criteria.canopy|length|add:req.student_criteria.method|length %}
+            {{ total }} criteria
+            {% endwith %}
+          </div>
+          {% endif %}
+        </div>
+        <a href="{% url 'signoff_form' req.pk %}"
+           class="shrink-0 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors text-center">
+          Review &amp; Sign
+        </a>
+      </div>
+      {% endwith %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── History tab ────────────────────────────────────────────────────── -->
+  <div x-show="tab === 'history'" x-cloak>
+    {% if not history %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-10 text-center text-gray-500 text-sm">
+      No sign-offs given yet.
+    </div>
+    {% else %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+            <th class="px-5 py-3 text-left">Student</th>
+            <th class="px-5 py-3 text-left">Jump</th>
+            <th class="px-5 py-3 text-left">Date</th>
+            <th class="px-5 py-3 text-left">Dropzone</th>
+            <th class="px-5 py-3 text-left">Category</th>
+            <th class="px-5 py-3 text-left">Method</th>
+            <th class="px-5 py-3 text-left">Signed</th>
+            <th class="px-5 py-3 text-left"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in history %}
+          <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 transition-colors">
+            <td class="px-5 py-3 text-gray-200 font-medium">{{ s.jump.user.profile.display_name }}</td>
+            <td class="px-5 py-3 text-gray-500">#{{ s.jump.jump_number|default:"—" }}</td>
+            <td class="px-5 py-3 text-gray-400">{{ s.jump.date|date:"M j, Y" }}</td>
+            <td class="px-5 py-3 text-gray-400">{{ s.jump.dropzone.name }}</td>
+            <td class="px-5 py-3">
+              <span class="text-xs bg-sky-900/50 text-sky-300 border border-sky-800 rounded-full px-2 py-0.5">
+                Cat {{ s.jump.student_category|upper }}
+              </span>
+            </td>
+            <td class="px-5 py-3 text-gray-400">{{ s.jump.get_student_jump_method_display }}</td>
+            <td class="px-5 py-3 text-gray-500 text-xs">{{ s.signed_at|date:"M j, Y" }}</td>
+            <td class="px-5 py-3">
+              {% if s.criteria_modified %}
+              <span class="text-xs text-amber-400">Modified</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Earnings tab ───────────────────────────────────────────────────── -->
+  <div x-show="tab === 'earnings'" x-cloak>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <p class="text-xs uppercase tracking-widest text-gray-500 mb-3">Last 7 Days</p>
+        <p class="text-3xl font-bold text-white">${{ last_7_total|floatformat:2 }}</p>
+        <p class="text-sm text-gray-500 mt-1">{{ last_7_count }} work jump{{ last_7_count|pluralize }}</p>
+      </div>
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <p class="text-xs uppercase tracking-widest text-gray-500 mb-3">
+          Last Jump Day{% if last_jump_date %} — {{ last_jump_date|date:"M j, Y" }}{% endif %}
+        </p>
+        {% if last_jump_date %}
+          <p class="text-3xl font-bold text-white">${{ last_jump_day_total|floatformat:2 }}</p>
+          <p class="text-sm text-gray-500 mt-1">{{ last_jump_day_count }} work jump{{ last_jump_day_count|pluralize }}</p>
+        {% else %}
+          <p class="text-gray-600 text-sm">No jumps logged yet</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Day of week chart -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
+      <p class="text-xs uppercase tracking-widest text-gray-500 mb-4">
+        Average Pay by Day of the Week
+        {% if date_from or date_to %}<span class="normal-case text-gray-600 ml-1">(filtered range)</span>{% endif %}
+      </p>
+      {% if dow_has_data %}
+      <div class="h-40">
+        <canvas id="dowChart"></canvas>
+      </div>
+      {% else %}
+      <p class="text-gray-600 text-sm">No data yet{% if date_from or date_to %} in this range{% endif %}.</p>
+      {% endif %}
+    </div>
+
+    <!-- Jump table with filter -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-800 flex flex-wrap items-end gap-4">
+        <form method="get" class="flex flex-wrap items-end gap-3 flex-1">
+          <input type="hidden" name="tab" value="earnings">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">From</label>
+            <input type="date" name="from" value="{{ date_from }}"
+                   class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">To</label>
+            <input type="date" name="to" value="{{ date_to }}"
+                   class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+          </div>
+          <button type="submit"
+                  class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+            Filter
+          </button>
+          {% if date_from or date_to %}
+          <a href="{% url 'instructor_hub' %}?tab=earnings"
+             class="text-sm text-gray-400 hover:text-gray-200 px-3 py-2 rounded-lg transition-colors">Clear</a>
+          {% endif %}
+        </form>
+        <div class="text-right">
+          <p class="text-xs text-gray-500">Total</p>
+          <p class="text-xl font-bold text-sky-400">${{ table_total|floatformat:2 }}</p>
+          <p class="text-xs text-gray-600">{{ table_rows|length }} jump{{ table_rows|length|pluralize }}</p>
+        </div>
+      </div>
+
+      {% if table_rows %}
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs uppercase tracking-widest text-gray-500 border-b border-gray-800">
+            <th class="px-5 py-3 text-left">Date</th>
+            <th class="px-5 py-3 text-left">#</th>
+            <th class="px-5 py-3 text-left">Dropzone</th>
+            <th class="px-5 py-3 text-left">Type</th>
+            <th class="px-5 py-3 text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in table_rows %}
+          <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 transition-colors">
+            <td class="px-5 py-3 text-gray-300">{{ row.jump.date|date:"M j, Y" }}</td>
+            <td class="px-5 py-3 text-gray-500">#{{ row.jump.jump_number|default:"—" }}</td>
+            <td class="px-5 py-3 text-gray-300">{{ row.jump.dropzone.name }}</td>
+            <td class="px-5 py-3 text-gray-400">{{ row.jump.jump_type.name }}</td>
+            <td class="px-5 py-3 text-right font-semibold text-green-400">${{ row.amount|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-gray-700 bg-gray-800/30">
+            <td colspan="4" class="px-5 py-3 text-sm font-semibold text-gray-400">Total</td>
+            <td class="px-5 py-3 text-right font-bold text-sky-400 text-base">${{ table_total|floatformat:2 }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      {% else %}
+      <div class="text-center py-14">
+        {% if has_rates %}
+          <p class="text-gray-500 mb-2">No work jumps found{% if date_from or date_to %} in this date range{% endif %}.</p>
+          {% if date_from or date_to %}
+            <a href="{% url 'instructor_hub' %}?tab=earnings" class="text-sky-500 hover:text-sky-300 text-sm">Clear filter</a>
+          {% endif %}
+        {% else %}
+          <p class="text-gray-500 mb-3">No pay rates configured yet.</p>
+          <p class="text-sm text-gray-600">Click <strong class="text-gray-400">Rate Settings</strong> to add jump types and their pay amounts.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+  </div><!-- /earnings tab -->
+
+</div><!-- /x-data tabs -->
+{% endblock %}
+
+{% block scripts %}
+{% if dow_has_data %}
+<script>
+(function() {
+  const data = {{ dow_averages_json }};
+  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  new Chart(document.getElementById('dowChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: data.map(v => v > 0 ? 'rgba(56,189,248,0.25)' : 'rgba(75,85,99,0.2)'),
+        borderColor:     data.map(v => v > 0 ? 'rgb(56,189,248)'       : 'rgba(75,85,99,0.4)'),
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => '$' + ctx.parsed.y.toFixed(2) } }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6b7280' } },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#6b7280', callback: v => '$' + v },
+          beginAtZero: true,
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

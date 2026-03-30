@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}ISP Progress — Flare{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+  <div>
+    <h1 class="text-2xl font-bold text-white">ISP Progress</h1>
+    <p class="text-sm text-gray-400 mt-1">USPA A-License Integrated Student Program — Category completion</p>
+  </div>
+  <a href="{% url 'jump_list' %}" class="text-xs text-gray-500 hover:text-gray-300 transition-colors self-center">&larr; Logbook</a>
+</div>
+
+{% if coach_unlocked %}
+<div class="bg-green-900/30 border border-green-800 text-green-300 rounded-xl px-4 py-3 mb-6 text-sm">
+  Coach method unlocked — Category F clear &amp; pull criteria have been signed off.
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  {% for cat, data in progress.items %}
+  <div class="bg-gray-900 rounded-xl border {% if data.complete %}border-green-800{% else %}border-gray-800{% endif %} p-4">
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-lg font-bold {% if data.complete %}text-green-400{% else %}text-white{% endif %}">
+        Category {{ cat|upper }}
+      </span>
+      {% if data.complete %}
+      <span class="text-xs bg-green-900/50 text-green-400 border border-green-800 rounded-full px-2 py-0.5">Complete</span>
+      {% elif data.passed > 0 %}
+      <span class="text-xs bg-sky-900/40 text-sky-400 border border-sky-800 rounded-full px-2 py-0.5">In progress</span>
+      {% else %}
+      <span class="text-xs text-gray-600">Not started</span>
+      {% endif %}
+    </div>
+
+    {% if data.total > 0 %}
+    <div class="mb-3">
+      <div class="flex justify-between text-xs text-gray-500 mb-1">
+        <span>{{ data.passed }} / {{ data.total }}</span>
+        <span>{% widthratio data.passed data.total 100 %}%</span>
+      </div>
+      <div class="w-full bg-gray-800 rounded-full h-1.5">
+        <div class="{% if data.complete %}bg-green-500{% else %}bg-sky-500{% endif %} h-1.5 rounded-full transition-all"
+             style="width: {% widthratio data.passed data.total 100 %}%"></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Detailed breakdown -->
+{% for cat, data in progress.items %}
+<div x-data="{ open: false }"
+     class="bg-gray-900 rounded-xl border {% if data.complete %}border-green-800/50{% else %}border-gray-800{% endif %} mb-4 overflow-hidden">
+  <button type="button" @click="open = !open"
+          class="w-full px-5 py-4 flex items-center justify-between text-left">
+    <div class="flex items-center gap-3">
+      <span class="text-base font-semibold {% if data.complete %}text-green-400{% else %}text-white{% endif %}">
+        Category {{ cat|upper }}
+      </span>
+      {% if data.complete %}
+      <span class="text-xs bg-green-900/50 text-green-400 border border-green-800 rounded-full px-2 py-0.5">Complete</span>
+      {% endif %}
+      <span class="text-xs text-gray-500">{{ data.passed }}/{{ data.total }} criteria</span>
+    </div>
+    <svg :class="open ? 'rotate-180' : ''"
+         class="w-4 h-4 text-gray-500 transition-transform shrink-0"
+         fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+    </svg>
+  </button>
+
+  <div x-show="open" x-cloak class="px-5 pb-5 border-t border-gray-800">
+    {% for section, items in data.criteria.items %}
+    {% if items %}
+    <h4 class="text-xs font-semibold text-sky-400 uppercase tracking-wider mt-4 mb-2">{{ section|capfirst }}</h4>
+    <ul class="space-y-1.5">
+      {% for item in items %}
+      <li class="flex items-start gap-2.5">
+        {% if item in data.passed_set %}
+        <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span class="text-sm text-gray-300">{{ item }}</span>
+        {% else %}
+        <svg class="w-4 h-4 text-gray-700 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9"/>
+        </svg>
+        <span class="text-sm text-gray-600">{{ item }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Alpine x-data scopes are per-element, so the expand/collapse on detail
+  // rows needs to be initialized per row — handled by x-data inline above.
+</script>
+{% endblock %}

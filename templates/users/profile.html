@@ -12,7 +12,7 @@
       <form method="post" class="space-y-5">
         {% csrf_token %}
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5" x-data="{ licenseLevel: '{{ form.license_level.value|default:'' }}' }">
           <div>
             <label class="form-label">License Number</label>
             {{ form.license_number }}
@@ -23,7 +23,16 @@
           </div>
           <div>
             <label class="form-label">License Level</label>
-            {{ form.license_level }}
+            <select name="{{ form.license_level.html_name }}" id="{{ form.license_level.id_for_label }}"
+                    class="form-control" x-model="licenseLevel">
+              {% for val, label in form.license_level.field.choices %}
+                <option value="{{ val }}" {% if val == form.license_level.value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div x-show="licenseLevel === 'S'" x-cloak>
+            <label class="form-label">Student Program</label>
+            {{ form.student_program }}
           </div>
           <div>
             <label class="form-label">Exit Weight (lbs)</label>
@@ -43,7 +52,7 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-5">
           <div>
             <label class="form-label">Coach</label>
             {{ form.coach }}
@@ -55,6 +64,10 @@
           <div>
             <label class="form-label">Tandem-I</label>
             {{ form.ti }}
+          </div>
+          <div>
+            <label class="form-label">IAD / SL</label>
+            {{ form.iad_sl }}
           </div>
         </div>
 

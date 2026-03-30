@@ -141,6 +141,10 @@
           <th class="px-3 py-3 text-center w-16">Swoop</th>
           <th class="px-3 py-3 text-left w-24">Turn (°)</th>
           <th class="px-3 py-3 text-left w-24">Formation</th>
+          {% if is_student %}
+          <th class="px-3 py-3 text-left w-28">Category</th>
+          <th class="px-3 py-3 text-left w-36">Method</th>
+          {% endif %}
           <th class="px-3 py-3 w-8"></th>
         </tr>
       </thead>
@@ -229,6 +233,30 @@
                      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
               <span x-show="!row.working" class="text-gray-600 text-xs pl-1">—</span>
             </td>
+
+            {% if is_student %}
+            <!-- Student Category -->
+            <td class="px-3 py-2">
+              <select :name="`row_${i}_student_category`" x-model="row.student_category"
+                      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+                <option value="">— none —</option>
+                {% for val, label in student_categories %}
+                <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+
+            <!-- Student Method -->
+            <td class="px-3 py-2">
+              <select :name="`row_${i}_student_jump_method`" x-model="row.student_jump_method"
+                      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-sky-500">
+                <option value="">— none —</option>
+                {% for val, label in jump_methods %}
+                <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            {% endif %}
 
             <!-- Remove -->
             <td class="px-3 py-2">
@@ -324,6 +352,8 @@
         turn_rotation: '',
         formation_size: '',
         working: false,
+        student_category: '',
+        student_jump_method: '{{ default_student_method|default:'' }}',
       }, overrides || {});
     }
 
@@ -342,6 +372,8 @@
           turn_rotation: last.turn_rotation,
           formation_size: last.formation_size,
           working: last.working,
+          student_category: last.student_category,
+          student_jump_method: last.student_jump_method,
         }));
       },
 

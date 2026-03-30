@@ -37,6 +37,10 @@ class SignUpForm(UserCreationForm):
         choices=[('', 'Select License Level')] + UserProfile._meta.get_field('license_level').choices,
         required=False
     )
+    student_program = forms.ChoiceField(
+        choices=[('', 'Select Program')] + UserProfile._meta.get_field('student_program').choices,
+        required=False
+    )
 
     total_jumps = forms.IntegerField(required=False, min_value=0, help_text="Total number of jumps")
     swoop_jumps = forms.IntegerField(required=False, min_value=0, help_text="Number of swoop jumps")
@@ -59,6 +63,7 @@ class SignUpForm(UserCreationForm):
         self.fields['license_number'].widget.attrs.update({'class': 'form-control'})
         self.fields['uspa_number'].widget.attrs.update({'class': 'form-control'})
         self.fields['license_level'].widget.attrs.update({'class': 'form-control'})
+        self.fields['student_program'].widget.attrs.update({'class': 'form-control'})
         self.fields['total_jumps'].widget.attrs.update({'class': 'form-control'})
         self.fields['swoop_jumps'].widget.attrs.update({'class': 'form-control'})
         self.fields['exit_weight'].widget.attrs.update({'class': 'form-control'})
@@ -78,6 +83,7 @@ class SignUpForm(UserCreationForm):
             profile.license_number = self.cleaned_data['license_number']
             profile.uspa_number = self.cleaned_data['uspa_number']
             profile.license_level = self.cleaned_data['license_level']
+            profile.student_program = self.cleaned_data['student_program']
             profile.total_jumps = self.cleaned_data['total_jumps']
             profile.swoop_jumps = self.cleaned_data['swoop_jumps']
             profile.exit_weight = self.cleaned_data['exit_weight']
@@ -143,7 +149,7 @@ class UserProfileForm(forms.ModelForm):
     class Meta:
         model = UserProfile
         fields = [
-            'license_number', 'uspa_number', 'license_level', 'coach', 'affi', 'ti',
+            'license_number', 'uspa_number', 'license_level', 'student_program', 'coach', 'affi', 'ti', 'iad_sl',
             'exit_weight', 'home_dz', 'phone',
             'emergency_contact', 'emergency_phone', 'units', 'public_profile', 'auto_public_flights',
             'jump_number_offset',
@@ -152,9 +158,11 @@ class UserProfileForm(forms.ModelForm):
             'license_number': forms.TextInput(attrs={'class': 'form-control'}),
             'uspa_number': forms.TextInput(attrs={'class': 'form-control'}),
             'license_level': forms.Select(attrs={'class': 'form-control'}),
+            'student_program': forms.Select(attrs={'class': 'form-control'}),
             'coach': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'affi': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'ti': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'iad_sl': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'exit_weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
             'home_dz': forms.TextInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),

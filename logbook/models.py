@@ -1,6 +1,21 @@
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import Max
+
+
+STUDENT_CATEGORY_CHOICES = [
+    ('a', 'Category A'), ('b', 'Category B'), ('c', 'Category C'),
+    ('d', 'Category D'), ('e', 'Category E'), ('f', 'Category F'),
+    ('g', 'Category G'), ('h', 'Category H'),
+]
+
+JUMP_METHOD_CHOICES = [
+    ('AFF', 'AFF'),
+    ('Tandem', 'Tandem'),
+    ('IAD_SL', 'IAD / Static Line'),
+    ('Coach', 'Coach'),
+]
 
 
 class Dropzone(models.Model):
@@ -88,6 +103,14 @@ class Jump(models.Model):
     )
     notes = models.TextField(blank=True)
 
+    # Student jump fields (auto-populated when user has no license)
+    student_category = models.CharField(
+        max_length=1, choices=STUDENT_CATEGORY_CHOICES, null=True, blank=True
+    )
+    student_jump_method = models.CharField(
+        max_length=10, choices=JUMP_METHOD_CHOICES, null=True, blank=True
+    )
+
     # GPS file link (optional — attached during upload or retroactively)
     flight = models.OneToOneField(
         'flights.Flight', on_delete=models.SET_NULL,
@@ -151,6 +174,21 @@ class Jump(models.Model):
     def has_swoop_analysis(self):
         return self.flight_id is not None and self.flight.analysis_successful and self.flight.is_swoop
 
+    @property
+    def is_student_jump(self):
+        return self.student_category is not None
+
+    @property
+    def signoff_status(self):
+        """Returns 'signed', 'pending', or 'unsigned' for student jumps."""
+        if not self.is_student_jump:
+            return None
+        if hasattr(self, 'student_signoff'):
+            return 'signed'
+        if self.pending_instructor_requests.exists():
+            return 'pending'
+        return 'unsigned'
+
 
 class InstructorRate(models.Model):
     """Maps a jump type to a dollar amount earned per jump for an instructor."""
@@ -163,3 +201,68 @@ class InstructorRate(models.Model):
 
     def __str__(self):
         return f'{self.user.username} — {self.jump_type.name}: ${self.amount}'
+
+
+class PendingInstructorRequest(models.Model):
+    """
+    Created when a student submits a jump to one or more instructors for sign-off.
+    The first instructor to sign off completes the loop; the rest are deleted.
+    """
+    jump = models.ForeignKey(Jump, on_delete=models.CASCADE, related_name='pending_instructor_requests')
+    instructor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='pending_sign_requests'
+    )
+    # What the student thinks they passed — stored so the instructor sees it pre-filled
+    student_criteria = models.JSONField(
+        default=dict,
+        help_text='{"ground": [...], "freefall": [...], "canopy": [...], "method": [...]}'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('jump', 'instructor')]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Pending: Jump #{self.jump.jump_number} → {self.instructor.username}'
+
+
+class StudentSignoff(models.Model):
+    """
+    Immutable record created when an instructor signs off on a student jump.
+    Credentials are snapshotted at sign time so profile changes don't alter records.
+    Only the signing instructor (or co-instructors added as pending) can request changes.
+    """
+    RATING_CHOICES = [
+        ('AFF-I', 'AFF Instructor'),
+        ('TI', 'Tandem Instructor'),
+        ('IAD-I', 'IAD/Static Line Instructor'),
+        ('Coach', 'Coach'),
+    ]
+
+    jump = models.OneToOneField(Jump, on_delete=models.CASCADE, related_name='student_signoff')
+    signed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='student_signoffs_given'
+    )
+    signed_at = models.DateTimeField(auto_now_add=True)
+
+    # Credential snapshot
+    instructor_name = models.CharField(max_length=100)
+    instructor_license = models.CharField(max_length=20, blank=True)
+    instructor_rating = models.CharField(max_length=10, choices=RATING_CHOICES)
+
+    # Criteria that passed on this jump
+    criteria_passed = models.JSONField(
+        default=dict,
+        help_text='{"ground": [...], "freefall": [...], "canopy": [...], "method": [...]}'
+    )
+
+    # Modification tracking for student notification
+    criteria_modified = models.BooleanField(
+        default=False,
+        help_text='True if the instructor changed the student\'s pre-filled criteria'
+    )
+    student_notified = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f'Signoff: Jump #{self.jump.jump_number} by {self.instructor_name}'

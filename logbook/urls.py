@@ -16,4 +16,13 @@ urlpatterns = [
     path('<int:pk>/unlink-flight/', views.unlink_flight, name='unlink_flight'),
     path('bulk-delete/', views.bulk_delete_jumps, name='bulk_delete_jumps'),
     path('earnings/', views.instructor_earnings_view, name='instructor_earnings'),
+    # Student ISP sign-off
+    path('student/', views.student_hub, name='student_hub'),
+    path('student/progress/', views.student_progress, name='student_progress'),
+    path('student/instructor-search/', views.instructor_search, name='instructor_search'),
+    path('<int:pk>/request-signoff/', views.request_signoff, name='request_signoff'),
+    path('<int:pk>/signoff/', views.view_signoff, name='view_signoff'),
+    path('instructor/', views.instructor_hub, name='instructor_hub'),
+    path('instructor/queue/', views.instructor_queue, name='instructor_queue'),
+    path('instructor/sign/<int:pk>/', views.signoff_form, name='signoff_form'),
 ]

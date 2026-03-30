@@ -583,8 +583,9 @@ class FlightManager:
             landing_time = self._interpolate_landing_time(df, landing_idx)
             rollout_time = df.iloc[rollout_end_idx]['t_s'] - df.iloc[rollout_start_idx]['t_s']
 
-            # Windowed peak speeds (3-second sliding window, FlyS ight-style)
-            max_vspeed_ms, max_gspeed_ms = self.find_windowed_peak_speeds(df, flare_idx, landing_idx)
+            # Instantaneous peak speeds at the indices already found by find_max_speeds
+            max_vspeed_ms = float(np.abs(df.iloc[max_vspeed_idx]['velD']))
+            max_gspeed_ms = float(df.iloc[max_gspeed_idx]['gspeed'])
 
             # Update flight with analysis results
             flight.is_swoop = True

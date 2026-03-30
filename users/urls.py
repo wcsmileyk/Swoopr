@@ -9,6 +9,7 @@ urlpatterns = [
 
     # User dashboard and profile
     path('dashboard/', views.dashboard_view, name='dashboard'),
+    path('swooper/', views.swooper_dashboard_view, name='swooper_dashboard'),
     path('onboarding/', views.logbook_onboarding_view, name='logbook_onboarding'),
     path('profile/', views.profile_view, name='profile'),
     path('flights/', views.flights_view, name='flights'),

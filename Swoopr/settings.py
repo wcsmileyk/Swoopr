@@ -86,6 +86,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'flights.context_processors.user_units',
+                'logbook.context_processors.notifications',
             ],
         },
     },
