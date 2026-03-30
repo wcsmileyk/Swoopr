@@ -105,19 +105,27 @@
 
   <!-- Right sidebar -->
   <div class="space-y-5">
-    <!-- Logbook settings -->
+    <!-- Logbook settings — has its own form so jump number is always submitted -->
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
       <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Logbook Settings</h2>
-      <div>
-        <label class="form-label">Starting Jump Number</label>
-        {{ form.jump_number_offset }}
-        <p class="text-xs text-gray-500 mt-1.5">
-          Your first jump in Flare will be assigned this number.
-          Saving this will renumber all your existing jumps.
-          Use the <a href="{% url 'logbook_import' %}" class="text-sky-400 hover:text-sky-300">CSV import</a>
-          to bulk-load an existing logbook.
-        </p>
-      </div>
+      <form method="post" class="space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="_jump_number_only" value="1">
+        <div>
+          <label class="form-label">Starting Jump Number</label>
+          {{ form.jump_number_offset }}
+          <p class="text-xs text-gray-500 mt-1.5">
+            Your first jump in Flare will be assigned this number.
+            Saving this will renumber all your existing jumps.
+            Use the <a href="{% url 'logbook_import' %}" class="text-sky-400 hover:text-sky-300">CSV import</a>
+            to bulk-load an existing logbook.
+          </p>
+        </div>
+        <button type="submit"
+                class="text-sm text-sky-400 hover:text-sky-300 transition-colors">
+          Update Jump Number →
+        </button>
+      </form>
     </div>
 
     <!-- Account info -->

@@ -313,13 +313,28 @@ def logbook_onboarding_view(request):
 def profile_view(request):
     """User profile view and edit"""
     if request.method == 'POST':
+        if '_jump_number_only' in request.POST:
+            # Separate jump-number form in the sidebar
+            try:
+                new_offset = int(request.POST.get('jump_number_offset', ''))
+                if new_offset >= 1:
+                    profile = request.user.profile
+                    old_offset = profile.jump_number_offset
+                    if new_offset != old_offset:
+                        profile.jump_number_offset = new_offset
+                        profile.save(update_fields=['jump_number_offset'])
+                        from logbook.models import Jump
+                        Jump.renumber_for_user(request.user)
+                    messages.success(request, 'Jump number updated.')
+                else:
+                    messages.error(request, 'Starting jump number must be at least 1.')
+            except (ValueError, TypeError):
+                messages.error(request, 'Invalid jump number.')
+            return redirect('profile')
+
         form = UserProfileForm(request.POST, instance=request.user.profile)
         if form.is_valid():
-            old_offset = request.user.profile.jump_number_offset
             form.save()
-            if form.cleaned_data.get('jump_number_offset') != old_offset:
-                from logbook.models import Jump
-                Jump.renumber_for_user(request.user)
             messages.success(request, 'Profile updated successfully!')
             return redirect('profile')
         else:

@@ -152,7 +152,6 @@ class UserProfileForm(forms.ModelForm):
             'license_number', 'uspa_number', 'license_level', 'student_program', 'coach', 'affi', 'ti', 'iad_sl',
             'exit_weight', 'home_dz', 'phone',
             'emergency_contact', 'emergency_phone', 'units', 'public_profile', 'auto_public_flights',
-            'jump_number_offset',
         ]
         widgets = {
             'license_number': forms.TextInput(attrs={'class': 'form-control'}),
@@ -171,7 +170,6 @@ class UserProfileForm(forms.ModelForm):
             'units': forms.Select(attrs={'class': 'form-control'}),
             'public_profile': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'auto_public_flights': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'jump_number_offset': forms.NumberInput(attrs={'class': 'form-control', 'min': '1'}),
         }
 
 
