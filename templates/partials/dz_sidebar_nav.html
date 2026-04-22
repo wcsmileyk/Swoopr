@@ -1,0 +1,77 @@
+{% with url=request.resolver_match.url_name %}
+<nav class="flex-1 px-3 py-4 space-y-0.5">
+
+  <p class="text-[10px] uppercase tracking-widest text-gray-600 px-3 pt-1 pb-1.5">{{ dz.name }}</p>
+
+  <a href="{% url 'dz_dashboard' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_dashboard' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-grid-1x2 text-base w-4 text-center shrink-0"></i>
+    Dashboard
+  </a>
+
+  <a href="{% url 'dz_staff_list' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_staff_list' or url == 'dz_staff_detail' or url == 'dz_add_member' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-people text-base w-4 text-center shrink-0"></i>
+    Staff & Roles
+  </a>
+
+  <a href="{% url 'dz_student_list' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_student_list' or url == 'dz_student_detail' or url == 'dz_enroll_student' or url == 'dz_log_student_jump' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-mortarboard text-base w-4 text-center shrink-0"></i>
+    Students
+  </a>
+
+  <a href="{% url 'dz_manifest' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_manifest' or url == 'dz_manifest_board' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-layout-three-columns text-base w-4 text-center shrink-0"></i>
+    Manifest
+  </a>
+
+  <div class="pt-2 pb-1">
+    <p class="text-[10px] uppercase tracking-widest text-gray-600 px-3 pt-2 pb-1">Daily Ops</p>
+  </div>
+
+  <a href="{% url 'dz_checkin' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_checkin' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-person-check text-base w-4 text-center shrink-0"></i>
+    Check-In
+  </a>
+
+  <a href="{% url 'dz_roster' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_roster' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-clipboard-check text-base w-4 text-center shrink-0"></i>
+    Roster
+  </a>
+
+  <a href="{% url 'dz_reservations' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_reservations' or url == 'dz_reservation_new' or url == 'dz_reservation_detail' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-calendar2-check text-base w-4 text-center shrink-0"></i>
+    Reservations
+  </a>
+
+  <a href="{% url 'dz_schedule' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_schedule' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-calendar3 text-base w-4 text-center shrink-0"></i>
+    Schedule
+  </a>
+
+  <div class="pt-3 pb-1">
+    <div class="border-t border-gray-800"></div>
+  </div>
+
+  <a href="{% url 'dashboard' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-gray-500 hover:text-gray-300 hover:bg-gray-800/60">
+    <i class="bi bi-arrow-left text-base w-4 text-center shrink-0"></i>
+    Back to Skydiver
+  </a>
+
+</nav>
+{% endwith %}

@@ -1,19 +1,6 @@
 from django.contrib import admin
-from .models import Aircraft, Dropzone, Jump, JumpType
 
-
-@admin.register(Dropzone)
-class DropzoneAdmin(admin.ModelAdmin):
-    list_display = ('name', 'city', 'state', 'country', 'icao')
-    search_fields = ('name', 'city', 'state', 'icao')
-    ordering = ('name',)
-
-
-@admin.register(Aircraft)
-class AircraftAdmin(admin.ModelAdmin):
-    list_display = ('manufacturer', 'model')
-    search_fields = ('manufacturer', 'model')
-    ordering = ('manufacturer', 'model')
+from .models import Jump, JumpType
 
 
 @admin.register(JumpType)

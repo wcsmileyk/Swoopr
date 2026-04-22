@@ -353,4 +353,40 @@
   </div>
   {% endif %}
 </div>
+
+<!-- Manifest Slot Section -->
+<div class="mt-5 bg-gray-900 rounded-xl border border-gray-800 p-5">
+  <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-4">Manifest Slot</h2>
+
+  {% if jump.load_slot_id %}
+  <div class="flex items-center justify-between">
+    <div>
+      <p class="text-sm text-gray-200">
+        Load {{ jump.load_slot.load.load_number }} — {{ jump.load_slot.load.dropzone.name }}
+      </p>
+      <p class="text-xs text-gray-500 mt-0.5">
+        {{ jump.load_slot.get_role_display }} · {{ jump.load_slot.get_jump_type_display }}
+        · {{ jump.load_slot.load.date }}
+      </p>
+    </div>
+    <form method="post" action="{% url 'unlink_slot' jump.pk %}"
+          onsubmit="return confirm('Detach this manifest slot from the jump?')">
+      {% csrf_token %}
+      <button type="submit"
+              class="text-sm text-gray-500 hover:text-red-400 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-red-800 transition-colors">
+        Unlink
+      </button>
+    </form>
+  </div>
+
+  {% else %}
+  <div class="flex items-center gap-3">
+    <p class="text-sm text-gray-500 flex-1">No manifest slot linked.</p>
+    <a href="{% url 'link_slot' jump.pk %}"
+       class="text-sm text-sky-400 hover:text-sky-300 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-sky-700 transition-colors">
+      Link Slot
+    </a>
+  </div>
+  {% endif %}
+</div>
 {% endblock %}

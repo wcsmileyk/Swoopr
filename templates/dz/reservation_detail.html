@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}Reservation — {{ res.display_name }}{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="mb-6 flex items-center gap-4">
+  <a href="{% url 'dz_reservations' dz_id=dz.pk %}?date={{ res.date|date:'Y-m-d' }}"
+     class="text-gray-500 hover:text-gray-300 transition-colors">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <div class="flex-1">
+    <div class="flex items-center gap-3">
+      <h1 class="text-2xl font-bold text-white">{{ res.display_name }}</h1>
+      <span class="text-sm px-2.5 py-1 rounded-full font-medium
+        {% if res.status == 'pending' %}bg-yellow-900/40 text-yellow-400
+        {% elif res.status == 'confirmed' %}bg-sky-900/40 text-sky-400
+        {% elif res.status == 'checked_in' %}bg-blue-900/40 text-blue-300
+        {% elif res.status == 'jumped' %}bg-emerald-900/40 text-emerald-400
+        {% elif res.status == 'cancelled' %}bg-gray-800 text-gray-500
+        {% else %}bg-red-900/40 text-red-400{% endif %}">
+        {{ res.get_status_display }}
+      </span>
+    </div>
+    <p class="text-sm text-gray-500 mt-0.5">
+      {{ res.get_jump_type_display }} &mdash; {{ res.date|date:"N j, Y" }}{% if res.time_slot %} at {{ res.time_slot|date:"g:i A" }}{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if messages %}
+  {% for msg in messages %}
+  <div class="mb-4 px-4 py-3 rounded-lg text-sm
+    {% if msg.tags == 'error' %}bg-red-900/40 text-red-300 border border-red-800
+    {% else %}bg-emerald-900/40 text-emerald-300 border border-emerald-800{% endif %}">
+    {{ msg }}
+  </div>
+  {% endfor %}
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- Left: guest info edit -->
+  <div class="lg:col-span-2 space-y-5">
+
+    <!-- Status transitions -->
+    {% if allowed_transitions %}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Move to</h2>
+      <div class="flex flex-wrap gap-2">
+        {% for action_key, label in allowed_transitions %}
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="transition">
+          <input type="hidden" name="to" value="{{ action_key }}">
+          <button type="submit"
+                  class="px-4 py-2 text-sm font-medium rounded-lg transition-colors
+                    {% if action_key == 'cancel' or action_key == 'no_show' %}
+                      bg-gray-800 hover:bg-gray-700 text-gray-400
+                    {% elif action_key == 'jumped' %}
+                      bg-emerald-800 hover:bg-emerald-700 text-emerald-200
+                    {% else %}
+                      bg-sky-700 hover:bg-sky-600 text-white
+                    {% endif %}">
+            {{ label }}
+          </button>
+        </form>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Edit guest info -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-gray-300 mb-4">Customer Details</h2>
+      <form method="post" class="space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="col-span-2">
+            <label class="block text-xs text-gray-500 mb-1.5">Name</label>
+            <input type="text" name="guest_name" value="{{ res.guest_name }}"
+                   placeholder="Guest name"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Email</label>
+            <input type="email" name="guest_email" value="{{ res.guest_email }}"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Phone</label>
+            <input type="tel" name="guest_phone" value="{{ res.guest_phone }}"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Weight (lbs)</label>
+            <input type="number" name="weight_lbs" value="{{ res.weight_lbs|default:'' }}" min="0" max="500"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Time Slot</label>
+            <input type="time" name="time_slot" value="{{ res.time_slot|date:'H:i'|default:'' }}"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs text-gray-500 mb-1.5">Notes</label>
+            <textarea name="notes" rows="2"
+                      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 resize-none">{{ res.notes }}</textarea>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <button type="submit"
+                  class="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg transition-colors">
+            Save changes
+          </button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- Right: sidebar info -->
+  <div class="space-y-4">
+
+    <!-- Instructor assignment -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-gray-300 mb-3">Instructor</h2>
+      {% if res.assigned_instructor %}
+      <p class="text-sm text-gray-200 mb-3">{{ res.assigned_instructor.get_full_name|default:res.assigned_instructor.username }}</p>
+      {% else %}
+      <p class="text-sm text-gray-500 italic mb-3">Unassigned</p>
+      {% endif %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="assign">
+        <select name="assigned_instructor"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-sky-500 mb-2">
+          <option value="">— unassigned —</option>
+          {% for i in instructors %}
+          <option value="{{ i.pk }}" {% if res.assigned_instructor_id == i.pk %}selected{% endif %}>
+            {{ i.get_full_name|default:i.username }}
+          </option>
+          {% endfor %}
+        </select>
+        <button type="submit"
+                class="w-full py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors">
+          Update
+        </button>
+      </form>
+    </div>
+
+    <!-- Meta info -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+      <h2 class="text-sm font-semibold text-gray-300">Info</h2>
+      <div class="space-y-2 text-xs">
+        <div class="flex justify-between">
+          <span class="text-gray-500">Source</span>
+          <span class="text-gray-300">{{ res.get_source_display }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Type</span>
+          <span class="text-gray-300">{{ res.get_jump_type_display }}</span>
+        </div>
+        {% if res.user %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Platform user</span>
+          <span class="text-gray-300">{{ res.user.get_full_name|default:res.user.username }}</span>
+        </div>
+        {% endif %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Created</span>
+          <span class="text-gray-300">{{ res.created_at|date:"N j, g:i A" }}</span>
+        </div>
+        {% if res.updated_at != res.created_at %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Updated</span>
+          <span class="text-gray-300">{{ res.updated_at|date:"N j, g:i A" }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

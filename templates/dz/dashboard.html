@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{{ dz.name }} — DZ Operations{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-white">{{ dz.name }}</h1>
+      {% if dz.city and dz.state %}
+        <p class="text-sm text-gray-500 mt-0.5">{{ dz.city }}, {{ dz.state }}</p>
+      {% endif %}
+    </div>
+
+    {% if user_dzs.count > 1 %}
+    <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
+      <button @click="open = !open"
+              class="text-sm text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors">
+        <i class="bi bi-building"></i>
+        Switch DZ
+        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div x-show="open" x-cloak @click.outside="open = false"
+           class="absolute top-full right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 z-50">
+        {% for m in user_dzs %}
+        <a href="{% url 'dz_dashboard' dz_id=m.dropzone.pk %}"
+           class="block px-4 py-2.5 text-sm transition-colors
+             {% if m.dropzone.pk == dz.pk %}text-sky-400 bg-sky-900/20{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}">
+          {{ m.dropzone.name }}
+          <span class="text-xs text-gray-500 ml-1">{{ m.get_role_display }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Active Members</p>
+    <p class="text-3xl font-bold text-white">{{ member_count }}</p>
+  </div>
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Active Authorizations</p>
+    <p class="text-3xl font-bold text-white">{{ auth_count }}</p>
+  </div>
+</div>
+
+<!-- Staff overview -->
+<div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+    <h2 class="text-sm font-semibold text-gray-200">Staff & Members</h2>
+    <a href="{% url 'dz_staff_list' dz_id=dz.pk %}"
+       class="text-xs text-sky-400 hover:text-sky-300 transition-colors">View all</a>
+  </div>
+
+  {% if memberships %}
+  <div class="divide-y divide-gray-800">
+    {% for m in memberships %}
+    <a href="{% url 'dz_staff_detail' dz_id=dz.pk user_id=m.user.pk %}"
+       class="flex items-center justify-between px-5 py-3 hover:bg-gray-800/50 transition-colors">
+      <div class="flex items-center gap-3">
+        <span class="w-8 h-8 rounded-full bg-sky-700 flex items-center justify-center text-xs font-bold text-white uppercase shrink-0">
+          {{ m.user.get_full_name|default:m.user.username|slice:":1" }}
+        </span>
+        <div>
+          <p class="text-sm font-medium text-gray-200">{{ m.user.get_full_name|default:m.user.username }}</p>
+          <p class="text-xs text-gray-500">@{{ m.user.username }}</p>
+        </div>
+      </div>
+      <span class="text-xs px-2 py-0.5 rounded-full
+        {% if m.role == 'admin' %}bg-sky-900/40 text-sky-400
+        {% elif m.role == 'staff' %}bg-emerald-900/40 text-emerald-400
+        {% else %}bg-gray-800 text-gray-500{% endif %}">
+        {{ m.get_role_display }}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="px-5 py-8 text-sm text-gray-500 text-center">No members yet.</p>
+  {% endif %}
+
+  <div class="px-5 py-3 border-t border-gray-800">
+    <a href="{% url 'dz_add_member' dz_id=dz.pk %}"
+       class="text-sm text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1.5">
+      <i class="bi bi-person-plus"></i> Add member
+    </a>
+  </div>
+</div>
+{% endblock %}

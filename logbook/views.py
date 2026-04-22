@@ -9,7 +9,8 @@ from datetime import date, datetime
 
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Avg, Count, Max, Min, Q
+from django.db.models.functions import ExtractYear
 from django.shortcuts import get_object_or_404, redirect, render
 
 from flights.flight_manager import process_flysight_file
@@ -17,8 +18,16 @@ from flights.models import Flight
 from users.forms import FlightUploadForm
 from users.models import Canopy as UserCanopy
 
+from aircraft.models import Aircraft
+from organizations.models import Dropzone
+from training.models import PendingInstructorRequest, StudentSignoff
+from training.isp_criteria import (
+    can_use_coach_method, get_category_progress, get_criteria_for_jump,
+    get_signing_rating,
+)
+
 from .forms import JumpEditForm, SessionHeaderForm
-from .models import Aircraft, Dropzone, InstructorRate, Jump, JumpType, PendingInstructorRequest, StudentSignoff, STUDENT_CATEGORY_CHOICES, JUMP_METHOD_CHOICES
+from .models import InstructorRate, Jump, JumpType, SavedQuery, STUDENT_CATEGORY_CHOICES, JUMP_METHOD_CHOICES
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +290,7 @@ _SORT_MAP = {
 def jump_list(request):
     jumps = (
         Jump.objects.filter(user=request.user)
-        .select_related('dropzone', 'aircraft', 'canopy', 'jump_type', 'student_signoff')
+        .select_related('dropzone', 'aircraft', 'canopy', 'jump_type', 'student_signoff', 'load_slot__load')
         .prefetch_related('pending_instructor_requests')
     )
 
@@ -455,6 +464,8 @@ def edit_jump(request, pk):
             jump.turn_rotation = int(turn_raw) if turn_raw else None
             jump.formation_size = int(formation_raw) if formation_raw else None
             jump.notes         = request.POST.get('notes', '').strip()
+            jump.student_category    = request.POST.get('student_category') or None
+            jump.student_jump_method = request.POST.get('student_jump_method') or None
             jump.save()
             return redirect('jump_list')
 
@@ -562,6 +573,52 @@ def unlink_flight(request, pk):
     if request.method == 'POST' and jump.flight_id:
         jump.flight = None
         jump.save(update_fields=['flight'])
+    return redirect('edit_jump', pk=pk)
+
+
+@login_required
+def link_slot(request, pk):
+    """Link a DZ load slot to a logbook jump (slots for the same date as the jump)."""
+    from dz.models import LoadSlot
+    jump = get_object_or_404(Jump, pk=pk, user=request.user)
+
+    if request.method == 'POST':
+        slot_id = request.POST.get('slot_id')
+        if slot_id:
+            try:
+                slot = LoadSlot.objects.select_related('load__dropzone').get(
+                    pk=slot_id,
+                    user=request.user,
+                    load__date=jump.date,
+                    jump__isnull=True,  # not already linked to another jump
+                )
+                jump.load_slot = slot
+                jump.save(update_fields=['load_slot'])
+            except LoadSlot.DoesNotExist:
+                pass
+        return redirect('edit_jump', pk=pk)
+
+    # GET — show available slots for this date
+    from dz.models import LoadSlot
+    available_slots = (
+        LoadSlot.objects
+        .filter(user=request.user, load__date=jump.date, jump__isnull=True)
+        .select_related('load__dropzone', 'load__aircraft')
+        .order_by('load__load_number')
+    )
+    return render(request, 'logbook/link_slot.html', {
+        'jump': jump,
+        'available_slots': available_slots,
+    })
+
+
+@login_required
+def unlink_slot(request, pk):
+    """Detach the manifest slot from a jump (leaves the LoadSlot intact)."""
+    jump = get_object_or_404(Jump, pk=pk, user=request.user)
+    if request.method == 'POST' and jump.load_slot_id:
+        jump.load_slot = None
+        jump.save(update_fields=['load_slot'])
     return redirect('edit_jump', pk=pk)
 
 
@@ -1125,6 +1182,252 @@ def import_csv_confirm(request):
 
 
 # ---------------------------------------------------------------------------
+# Logbook query
+# ---------------------------------------------------------------------------
+
+_QUERY_FILTER_KEYS = [
+    'date_from', 'date_to', 'dropzone', 'jump_type', 'canopy', 'aircraft',
+    'swoop_only', 'has_gps', 'altitude_min', 'altitude_max',
+    'formation_min', 'formation_max', 'notes_contains',
+]
+
+_GROUP_BY_OPTIONS = [
+    ('', 'No grouping'),
+    ('year', 'Year'),
+    ('dropzone', 'Dropzone'),
+    ('jump_type', 'Jump Type'),
+    ('canopy', 'Canopy'),
+    ('aircraft', 'Aircraft'),
+    ('swoop', 'Swoop vs. Non-swoop'),
+]
+
+
+def _apply_query_filters(queryset, params):
+    if params.get('date_from'):
+        queryset = queryset.filter(date__gte=params.get('date_from'))
+    if params.get('date_to'):
+        queryset = queryset.filter(date__lte=params.get('date_to'))
+    if params.get('dropzone'):
+        queryset = queryset.filter(dropzone_id=params.get('dropzone'))
+    if params.get('jump_type'):
+        queryset = queryset.filter(jump_type_id=params.get('jump_type'))
+    if params.get('canopy'):
+        queryset = queryset.filter(canopy_id=params.get('canopy'))
+    if params.get('aircraft'):
+        queryset = queryset.filter(aircraft_id=params.get('aircraft'))
+    if params.get('swoop_only'):
+        queryset = queryset.filter(swoop=True)
+    if params.get('has_gps'):
+        queryset = queryset.filter(flight__isnull=False)
+    try:
+        if params.get('altitude_min'):
+            queryset = queryset.filter(altitude__gte=int(params.get('altitude_min')))
+    except (ValueError, TypeError):
+        pass
+    try:
+        if params.get('altitude_max'):
+            queryset = queryset.filter(altitude__lte=int(params.get('altitude_max')))
+    except (ValueError, TypeError):
+        pass
+    try:
+        if params.get('formation_min'):
+            queryset = queryset.filter(formation_size__gte=int(params.get('formation_min')))
+    except (ValueError, TypeError):
+        pass
+    try:
+        if params.get('formation_max'):
+            queryset = queryset.filter(formation_size__lte=int(params.get('formation_max')))
+    except (ValueError, TypeError):
+        pass
+    if params.get('notes_contains'):
+        queryset = queryset.filter(notes__icontains=params.get('notes_contains'))
+    return queryset
+
+
+def _compute_query_stats(jumps):
+    agg = jumps.aggregate(
+        total=Count('id'),
+        gps_count=Count('flight', filter=Q(flight__isnull=False)),
+        swoop_count=Count('id', filter=Q(swoop=True)),
+        avg_altitude=Avg('altitude'),
+        min_altitude=Min('altitude'),
+        max_altitude=Max('altitude'),
+        avg_formation=Avg('formation_size'),
+        date_min=Min('date'),
+        date_max=Max('date'),
+    )
+    agg['dz_count'] = jumps.values('dropzone').distinct().count()
+    agg['canopy_count'] = (
+        jumps.filter(canopy__isnull=False).values('canopy').distinct().count()
+    )
+    if agg['avg_altitude'] is not None:
+        agg['avg_altitude'] = round(agg['avg_altitude'])
+    if agg['avg_formation'] is not None:
+        agg['avg_formation'] = round(agg['avg_formation'], 1)
+    return agg
+
+
+def _compute_breakdown(jumps, group_by):
+    if not group_by:
+        return None
+
+    field_map = {
+        'dropzone': 'dropzone__name',
+        'jump_type': 'jump_type__name',
+        'canopy': 'canopy__model',
+        'aircraft': 'aircraft__model',
+        'swoop': 'swoop',
+    }
+
+    common_agg = dict(
+        count=Count('id'),
+        swoop_count=Count('id', filter=Q(swoop=True)),
+        gps_count=Count('flight', filter=Q(flight__isnull=False)),
+        avg_alt=Avg('altitude'),
+    )
+
+    if group_by == 'year':
+        rows = (
+            jumps
+            .annotate(group_val=ExtractYear('date'))
+            .values('group_val')
+            .annotate(**common_agg)
+            .order_by('group_val')
+        )
+        return [
+            {
+                'label': str(r['group_val']),
+                'count': r['count'],
+                'swoop_count': r['swoop_count'],
+                'gps_count': r['gps_count'],
+                'avg_alt': round(r['avg_alt']) if r['avg_alt'] else None,
+            }
+            for r in rows if r['group_val'] is not None
+        ]
+
+    field = field_map.get(group_by)
+    if not field:
+        return None
+
+    rows = (
+        jumps
+        .values(field)
+        .annotate(**common_agg)
+        .order_by('-count')
+    )
+
+    result = []
+    for r in rows:
+        raw = r[field]
+        if raw is None:
+            label = '(none)'
+        elif group_by == 'swoop':
+            label = 'Swoop' if raw else 'No swoop'
+        else:
+            label = raw
+        result.append({
+            'label': label,
+            'count': r['count'],
+            'swoop_count': r['swoop_count'],
+            'gps_count': r['gps_count'],
+            'avg_alt': round(r['avg_alt']) if r['avg_alt'] else None,
+        })
+    return result
+
+
+@login_required
+def query_view(request):
+    from urllib.parse import urlencode as _urlencode
+    params = request.GET
+    group_by = params.get('group_by', '')
+    has_filters = any(params.get(k) for k in _QUERY_FILTER_KEYS + ['group_by'])
+
+    stats = None
+    breakdown = None
+
+    if has_filters:
+        jumps = Jump.objects.filter(user=request.user)
+        jumps = _apply_query_filters(jumps, params)
+        stats = _compute_query_stats(jumps)
+        if group_by:
+            breakdown = _compute_breakdown(jumps, group_by)
+
+    # Params for the save-query form and the "view in logbook" link
+    active_params = {k: params[k] for k in _QUERY_FILTER_KEYS + ['group_by'] if params.get(k)}
+    logbook_compat = ['date_from', 'date_to', 'dropzone', 'jump_type', 'canopy', 'swoop_only']
+    logbook_qs = _urlencode({k: active_params[k] for k in logbook_compat if k in active_params})
+
+    context = {
+        'filters': params,
+        'has_filters': has_filters,
+        'group_by': group_by,
+        'group_by_options': _GROUP_BY_OPTIONS,
+        'stats': stats,
+        'breakdown': breakdown,
+        'params_json': json.dumps(active_params),
+        'logbook_filter_qs': logbook_qs,
+        'saved_queries': SavedQuery.objects.filter(user=request.user),
+        'dropzones': Dropzone.objects.all().order_by('name'),
+        'jump_types': JumpType.objects.all().order_by('name'),
+        'canopies': request.user.canopies.filter(is_active=True).order_by('model'),
+        'aircraft_list': Aircraft.objects.all().order_by('model'),
+    }
+
+    if request.headers.get('HX-Request'):
+        return render(request, 'logbook/partials/query_results.html', context)
+
+    return render(request, 'logbook/query.html', context)
+
+
+@login_required
+def save_query(request):
+    if request.method != 'POST':
+        return redirect('logbook_query')
+
+    name = request.POST.get('name', '').strip()
+    params_raw = request.POST.get('params', '{}')
+    try:
+        params = json.loads(params_raw)
+    except json.JSONDecodeError:
+        params = {}
+
+    save_error = None
+    if not name:
+        save_error = 'Enter a name for this query.'
+    elif not params:
+        save_error = 'No filters are set — apply at least one filter before saving.'
+    else:
+        SavedQuery.objects.update_or_create(
+            user=request.user,
+            name=name,
+            defaults={'params': params},
+        )
+
+    saved_queries = SavedQuery.objects.filter(user=request.user)
+    return render(request, 'logbook/partials/saved_queries_list.html', {
+        'saved_queries': saved_queries,
+        'save_error': save_error,
+    })
+
+
+@login_required
+def delete_query(request, pk):
+    if request.method == 'POST':
+        SavedQuery.objects.filter(pk=pk, user=request.user).delete()
+    saved_queries = SavedQuery.objects.filter(user=request.user)
+    return render(request, 'logbook/partials/saved_queries_list.html', {
+        'saved_queries': saved_queries,
+    })
+
+
+@login_required
+def load_query(request, pk):
+    from urllib.parse import urlencode as _urlencode
+    query = get_object_or_404(SavedQuery, pk=pk, user=request.user)
+    return redirect(f"/logbook/query/?{_urlencode(query.params)}")
+
+
+# ---------------------------------------------------------------------------
 # Instructor earnings
 # ---------------------------------------------------------------------------
 
@@ -1143,12 +1446,6 @@ from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 
-from .isp_criteria import (
-    can_use_coach_method,
-    get_category_progress,
-    get_criteria_for_jump,
-    get_signing_rating,
-)
 _UserModel = get_user_model()
 
 

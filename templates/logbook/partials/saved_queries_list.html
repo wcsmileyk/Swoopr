@@ -1,0 +1,35 @@
+<div id="saved-queries-list">
+
+  {% if save_error %}
+  <p class="text-sm text-red-400 mb-3">{{ save_error }}</p>
+  {% endif %}
+
+  {% if saved_queries %}
+  <div class="flex flex-col gap-2">
+    {% for query in saved_queries %}
+    <div class="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5">
+      <span class="text-sm text-gray-200">{{ query.name }}</span>
+      <div class="flex items-center gap-3">
+        <a href="{% url 'logbook_query_load' query.pk %}"
+           class="text-xs text-sky-400 hover:text-sky-300 transition-colors">
+          Load
+        </a>
+        <form hx-post="{% url 'logbook_query_delete' query.pk %}"
+              hx-target="#saved-queries-list"
+              hx-swap="outerHTML"
+              hx-confirm="Delete '{{ query.name }}'?">
+          {% csrf_token %}
+          <button type="submit"
+                  class="text-xs text-gray-600 hover:text-red-400 transition-colors">
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm text-gray-600">No saved queries yet. Run a query and save it to see it here.</p>
+  {% endif %}
+
+</div>

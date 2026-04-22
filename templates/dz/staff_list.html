@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Staff — {{ dz.name }}{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between gap-4 mb-6">
+  <div>
+    <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">{{ dz.name }}</p>
+    <h1 class="text-2xl font-bold text-white">Staff &amp; Roles</h1>
+  </div>
+  <a href="{% url 'dz_add_member' dz_id=dz.pk %}"
+     class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2">
+    <i class="bi bi-person-plus"></i>
+    <span class="hidden sm:inline">Add Member</span>
+  </a>
+</div>
+
+<div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+  {% if memberships %}
+  <div class="divide-y divide-gray-800">
+    {% for m in memberships %}
+    <a href="{% url 'dz_staff_detail' dz_id=dz.pk user_id=m.user.pk %}"
+       class="flex items-center gap-4 px-5 py-4 hover:bg-gray-800/50 transition-colors">
+
+      <span class="w-9 h-9 rounded-full bg-sky-700 flex items-center justify-center text-sm font-bold text-white uppercase shrink-0">
+        {{ m.user.get_full_name|default:m.user.username|slice:":1" }}
+      </span>
+
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-gray-200">{{ m.user.get_full_name|default:m.user.username }}</p>
+        <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+          <!-- USPA ratings -->
+          {% for r in m.user.instructor_ratings.all %}
+          <span class="text-[11px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{{ r.rating_type }}</span>
+          {% endfor %}
+          <!-- DZ auths at this DZ -->
+          {% for a in m.user.this_dz_auths %}
+          <span class="text-[11px] px-1.5 py-0.5 rounded
+            {% if a.stage == 'full' %}bg-emerald-900/30 text-emerald-400
+            {% elif a.stage == 'provisional' %}bg-amber-900/30 text-amber-400
+            {% else %}bg-gray-800 text-gray-500{% endif %}">
+            {{ a.authorization_type }} · {{ a.get_stage_display }}
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <span class="text-xs px-2 py-0.5 rounded-full shrink-0
+        {% if m.role == 'admin' %}bg-sky-900/40 text-sky-400
+        {% elif m.role == 'staff' %}bg-emerald-900/40 text-emerald-400
+        {% else %}bg-gray-800 text-gray-500{% endif %}">
+        {{ m.get_role_display }}
+      </span>
+
+      <i class="bi bi-chevron-right text-gray-600 shrink-0 text-xs"></i>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="px-5 py-10 text-sm text-gray-500 text-center">
+    No staff yet. <a href="{% url 'dz_add_member' dz_id=dz.pk %}" class="text-sky-400 hover:text-sky-300">Add someone.</a>
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

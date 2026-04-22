@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% block title %}Link Manifest Slot — Flare{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-3 mb-6">
+  <a href="{% url 'edit_jump' jump.pk %}" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+    </svg>
+  </a>
+  <h1 class="text-2xl font-bold text-white">Link Manifest Slot</h1>
+  <span class="text-gray-500 text-sm">
+    Jump {% if jump.jump_number %}#{{ jump.jump_number }} · {% endif %}{{ jump.date }}
+  </span>
+</div>
+
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+  {% if available_slots %}
+  <p class="text-sm text-gray-400 mb-5">
+    Select a manifest slot from <strong class="text-gray-200">{{ jump.date }}</strong> to link to this jump.
+    Only slots assigned to your account that aren't already linked appear here.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="space-y-2 mb-5">
+      {% for slot in available_slots %}
+      <label class="flex items-center gap-4 p-3 rounded-lg border border-gray-700 hover:border-sky-700 cursor-pointer transition-colors has-[:checked]:border-sky-500 has-[:checked]:bg-sky-900/20">
+        <input type="radio" name="slot_id" value="{{ slot.pk }}" class="accent-sky-500 shrink-0">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm text-gray-200">
+            Load {{ slot.load.load_number }}
+            <span class="text-gray-500 mx-1">·</span>
+            {{ slot.load.dropzone.name }}
+            {% if slot.load.aircraft %}<span class="text-gray-500 mx-1">·</span>{{ slot.load.aircraft }}{% endif %}
+          </p>
+          <p class="text-xs text-gray-500 mt-0.5">
+            {{ slot.get_role_display }} · {{ slot.get_jump_type_display }}
+            {% if slot.exit_altitude %} · {{ slot.exit_altitude }} ft{% endif %}
+          </p>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded-full shrink-0
+                     {% if slot.load.status == 'landed' %}bg-emerald-900/50 text-emerald-300
+                     {% elif slot.load.status == 'in_air' %}bg-sky-900/50 text-sky-300
+                     {% else %}bg-gray-700 text-gray-400{% endif %}">
+          {{ slot.load.get_status_display }}
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="flex gap-3">
+      <button type="submit"
+              class="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold rounded-lg transition-colors">
+        Link Slot
+      </button>
+      <a href="{% url 'edit_jump' jump.pk %}"
+         class="px-5 py-2 text-gray-400 hover:text-gray-200 text-sm rounded-lg border border-gray-700 hover:border-gray-500 transition-colors">
+        Cancel
+      </a>
+    </div>
+  </form>
+
+  {% else %}
+  <div class="text-center py-8">
+    <i class="bi bi-layout-three-columns text-3xl text-gray-700 mb-3 block"></i>
+    <p class="text-gray-500 text-sm">No available manifest slots found for {{ jump.date }}.</p>
+    <p class="text-gray-600 text-xs mt-1">
+      Slots must be assigned to your account and not already linked to another jump.
+    </p>
+    <a href="{% url 'edit_jump' jump.pk %}"
+       class="inline-block mt-4 text-sm text-sky-400 hover:text-sky-300 transition-colors">
+      Back to jump
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

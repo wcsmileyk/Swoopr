@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% block title %}Query — Flare{% endblock %}
+
+{% block content %}
+<div>
+
+  <!-- Tab nav -->
+  <div class="flex items-center gap-1 mb-6 border-b border-gray-800">
+    <a href="{% url 'jump_list' %}"
+       class="px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-300 transition-colors border-b-2 border-transparent -mb-px">
+      Jump Log
+    </a>
+    <a href="{% url 'logbook_query' %}"
+       class="px-4 py-2.5 text-sm font-medium text-white border-b-2 border-sky-500 -mb-px">
+      Query
+    </a>
+  </div>
+
+  <!-- Filter form -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-4">
+    <form id="query-form"
+          hx-get="{% url 'logbook_query' %}"
+          hx-trigger="change, submit"
+          hx-target="#query-results"
+          hx-indicator="#query-spinner">
+
+      <!-- Row 1: date + categorical -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">From</label>
+          <input type="date" name="date_from" value="{{ filters.date_from }}"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">To</label>
+          <input type="date" name="date_to" value="{{ filters.date_to }}"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Dropzone</label>
+          <select name="dropzone"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+            <option value="">All</option>
+            {% for dz in dropzones %}
+              <option value="{{ dz.id }}" {% if filters.dropzone == dz.id|stringformat:"s" %}selected{% endif %}>{{ dz.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Jump Type</label>
+          <select name="jump_type"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+            <option value="">All</option>
+            {% for jt in jump_types %}
+              <option value="{{ jt.id }}" {% if filters.jump_type == jt.id|stringformat:"s" %}selected{% endif %}>{{ jt.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Canopy</label>
+          <select name="canopy"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+            <option value="">All</option>
+            {% for c in canopies %}
+              <option value="{{ c.id }}" {% if filters.canopy == c.id|stringformat:"s" %}selected{% endif %}>{{ c.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Aircraft</label>
+          <select name="aircraft"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+            <option value="">All</option>
+            {% for ac in aircraft_list %}
+              <option value="{{ ac.id }}" {% if filters.aircraft == ac.id|stringformat:"s" %}selected{% endif %}>{{ ac.model }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Row 2: numeric ranges + text + toggles + group by -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 items-end">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Alt min (ft)</label>
+          <input type="number" name="altitude_min" value="{{ filters.altitude_min }}" min="0" max="30000"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Alt max (ft)</label>
+          <input type="number" name="altitude_max" value="{{ filters.altitude_max }}" min="0" max="30000"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Formation min</label>
+          <input type="number" name="formation_min" value="{{ filters.formation_min }}" min="1"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Formation max</label>
+          <input type="number" name="formation_max" value="{{ filters.formation_max }}"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+        </div>
+        <div class="col-span-2">
+          <label class="block text-xs text-gray-500 mb-1">Notes contain</label>
+          <input type="text" name="notes_contains" value="{{ filters.notes_contains }}"
+                 placeholder="search notes..."
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+        </div>
+        <div class="flex flex-col gap-1.5 pb-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="swoop_only" value="1"
+                   {% if filters.swoop_only %}checked{% endif %}
+                   class="accent-sky-500 w-4 h-4">
+            <span class="text-sm text-gray-300">Swoops only</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="has_gps" value="1"
+                   {% if filters.has_gps %}checked{% endif %}
+                   class="accent-sky-500 w-4 h-4">
+            <span class="text-sm text-gray-300">Has GPS</span>
+          </label>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Group by</label>
+          <select name="group_by"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
+            {% for val, label in group_by_options %}
+              <option value="{{ val }}" {% if group_by == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div id="query-spinner" class="htmx-indicator h-0.5 bg-sky-500 w-full mb-4 rounded"></div>
+
+  <!-- Results -->
+  <div id="query-results">
+    {% include 'logbook/partials/query_results.html' %}
+  </div>
+
+  <!-- Saved queries -->
+  <div class="mt-10">
+    <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Saved Queries</h2>
+    <div id="saved-queries-list">
+      {% include 'logbook/partials/saved_queries_list.html' %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

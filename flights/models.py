@@ -1,8 +1,8 @@
 
+from django.conf import settings
 from django.contrib.gis.db import models
 from django.contrib.gis.geos import Point
 from django.contrib.postgres.indexes import GistIndex
-from django.contrib.auth.models import User
 import json
 import gzip
 import base64
@@ -21,7 +21,7 @@ class CompetitionGate(models.Model):
     gate_type = models.CharField(max_length=20, choices=GATE_TYPE_CHOICES, help_text="Type of gates")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='competition_gates')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='competition_gates')
 
     # File storage
     gate_file = models.FileField(upload_to='gate_files/', help_text="Upload .gsw or .CSV gate file")
@@ -117,7 +117,7 @@ class CompetitionGate(models.Model):
 
 class Flight(models.Model):
     # User association
-    pilot = models.ForeignKey(User, on_delete=models.CASCADE, related_name='flights', null=True, blank=True)
+    pilot = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='flights', null=True, blank=True)
     canopy = models.ForeignKey('users.Canopy', on_delete=models.SET_NULL, null=True, blank=True, related_name='flights')
     competition_gate = models.ForeignKey(CompetitionGate, on_delete=models.SET_NULL, null=True, blank=True, related_name='flights', help_text="Competition gate/course for this flight")
 

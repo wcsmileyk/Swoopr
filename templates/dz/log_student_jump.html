@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Log Jump — {{ enrollment.student.get_full_name|default:enrollment.student.username }}{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <a href="{% url 'dz_student_detail' dz_id=dz.pk enrollment_id=enrollment.pk %}"
+     class="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1 mb-3">
+    <i class="bi bi-arrow-left text-[11px]"></i>
+    {{ enrollment.student.get_full_name|default:enrollment.student.username }}
+  </a>
+  <h1 class="text-2xl font-bold text-white">Log student jump</h1>
+  <p class="text-sm text-gray-500 mt-0.5">
+    {{ enrollment.student.get_full_name|default:enrollment.student.username }}
+    &mdash; {{ enrollment.get_program_type_display }}
+  </p>
+</div>
+
+<form method="post" x-data="jumpForm()" x-init="init()">
+  {% csrf_token %}
+
+  <div class="grid lg:grid-cols-2 gap-6">
+
+    <!-- Left: jump details -->
+    <div class="space-y-4">
+
+      <!-- Program jump selector -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+          <h2 class="text-sm font-semibold text-gray-200">Jump</h2>
+        </div>
+        <div class="px-5 py-4 space-y-4">
+
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Program jump</label>
+            <select name="program_jump_id" x-model="selectedJumpId" @change="onJumpChange()"
+                    class="w-full text-sm bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-2">
+              <option value="">Select jump…</option>
+              {% regroup program_jumps by category as category_groups %}
+              {% for group in category_groups %}
+              <optgroup label="{{ group.grouper.name }}">
+                {% for pj in group.list %}
+                <option value="{{ pj.pk }}"
+                        data-methods="{{ pj.allowed_methods|join:',' }}"
+                        data-criteria="{{ pj.assigned_criteria|escapejs }}"
+                        data-diveflow="{{ pj.dive_flow|join:'|' }}"
+                        {% if selected_jump and pj.pk == selected_jump.pk %}selected{% endif %}>
+                  {% if pj.name %}{{ pj.name }}{% else %}#{{ pj.jump_number }}{% endif %}
+                  [{{ pj.get_method_group_display }}]
+                </option>
+                {% endfor %}
+              </optgroup>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Jump method</label>
+            <select name="jump_method"
+                    class="w-full text-sm bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-2">
+              {% for val, label in jump_method_choices %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Jump date</label>
+            <input type="date" name="jump_date"
+                   value="{% now 'Y-m-d' %}"
+                   class="w-full text-sm bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-2">
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Outcome</label>
+            <select name="outcome"
+                    class="w-full text-sm bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-2">
+              <option value="">Pending / not yet evaluated</option>
+              {% for val, label in outcome_choices %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500 mb-1.5">Notes</label>
+            <textarea name="notes" rows="3" placeholder="Debrief notes, observations…"
+                      class="w-full text-sm bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-2 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-sky-600 resize-none"></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Dive flow (informational) -->
+      <div x-show="diveFlow.length > 0" x-cloak
+           class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800">
+          <h2 class="text-sm font-semibold text-gray-200">Dive flow</h2>
+          <p class="text-xs text-gray-500 mt-0.5">From the SIM</p>
+        </div>
+        <ol class="px-5 py-4 space-y-1.5 list-decimal list-inside">
+          <template x-for="(item, i) in diveFlow" :key="i">
+            <li class="text-sm text-gray-400" x-text="item"></li>
+          </template>
+        </ol>
+      </div>
+
+    </div>
+
+    <!-- Right: criteria checklist -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden self-start">
+      <div class="px-5 py-4 border-b border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-200">Criteria passed</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Check each item the student completed</p>
+      </div>
+
+      <div x-show="!hasCriteria" x-cloak class="px-5 py-8 text-sm text-gray-500 text-center">
+        Select a jump to see criteria.
+      </div>
+
+      <div x-show="hasCriteria" x-cloak class="divide-y divide-gray-800">
+
+        <template x-for="(items, group) in criteria" :key="group">
+          <div class="px-5 py-4" x-show="items.length > 0">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3" x-text="group"></p>
+            <div class="space-y-2.5">
+              <template x-for="(item, i) in items" :key="i">
+                <label class="flex items-start gap-3 cursor-pointer group">
+                  <input type="checkbox"
+                         :name="'criteria_' + group"
+                         :value="item"
+                         class="mt-0.5 rounded border-gray-600 bg-gray-800 text-sky-500 focus:ring-sky-600 focus:ring-offset-gray-900 shrink-0">
+                  <span class="text-sm text-gray-300 group-hover:text-white transition-colors" x-text="item"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+        </template>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div class="mt-6 flex items-center justify-end gap-3">
+    <a href="{% url 'dz_student_detail' dz_id=dz.pk enrollment_id=enrollment.pk %}"
+       class="text-sm text-gray-400 hover:text-gray-200 transition-colors px-4 py-2">
+      Cancel
+    </a>
+    <button type="submit"
+            class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+      Save jump
+    </button>
+  </div>
+</form>
+
+<script>
+function jumpForm() {
+  return {
+    selectedJumpId: '{{ selected_jump.pk|default:"" }}',
+    diveFlow: [],
+    criteria: {},
+    hasCriteria: false,
+
+    init() {
+      if (this.selectedJumpId) {
+        this.onJumpChange();
+      }
+    },
+
+    onJumpChange() {
+      const select = document.querySelector('[name=program_jump_id]');
+      const opt = select.options[select.selectedIndex];
+      if (!opt || !opt.value) {
+        this.diveFlow = [];
+        this.criteria = {};
+        this.hasCriteria = false;
+        return;
+      }
+
+      const diveFlowRaw = opt.dataset.diveflow || '';
+      this.diveFlow = diveFlowRaw ? diveFlowRaw.split('|') : [];
+
+      try {
+        const rawCriteria = JSON.parse(opt.dataset.criteria || '{}');
+        // criteria is an object {group: [items,...]}
+        this.criteria = rawCriteria;
+        this.hasCriteria = Object.values(rawCriteria).some(v => v.length > 0);
+      } catch (e) {
+        this.criteria = {};
+        this.hasCriteria = false;
+      }
+    }
+  };
+}
+</script>
+{% endblock %}

@@ -21,9 +21,10 @@ from io import StringIO
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Swoopr.settings')
 django.setup()
 
+from django.contrib.auth import get_user_model
 from flights.flight_manager import FlightManager
 from flights.models import Flight
-from django.contrib.auth.models import User
+User = get_user_model()
 
 class PerformanceProfiler:
     def __init__(self):

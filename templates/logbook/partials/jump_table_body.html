@@ -31,13 +31,19 @@
       {% endif %}
     </td>
     <td class="px-4 py-3 text-center">
-      {% if jump.flight_id %}
-        <a href="{% url 'flight_detail' jump.flight_id %}"
-           class="text-sky-400 hover:text-sky-300 text-xs transition-colors"
-           title="View GPS flight">GPS</a>
-      {% else %}
-        <span class="text-gray-600">—</span>
-      {% endif %}
+      <div class="flex items-center justify-center gap-1.5">
+        {% if jump.flight_id %}
+          <a href="{% url 'flight_detail' jump.flight_id %}"
+             class="text-sky-400 hover:text-sky-300 text-xs transition-colors"
+             title="View GPS flight">GPS</a>
+        {% endif %}
+        {% if jump.load_slot_id %}
+          <span class="text-xs text-violet-400" title="Manifested on Load {{ jump.load_slot.load.load_number }}">L{{ jump.load_slot.load.load_number }}</span>
+        {% endif %}
+        {% if not jump.flight_id and not jump.load_slot_id %}
+          <span class="text-gray-600">—</span>
+        {% endif %}
+      </div>
     </td>
     <td class="px-4 py-3 text-right">
       {% if jump.is_student_jump %}

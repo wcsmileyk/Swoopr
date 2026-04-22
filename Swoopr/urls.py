@@ -24,4 +24,6 @@ urlpatterns = [
     path('users/', include('users.urls')),
     path('flights/', include('flights.urls')),
     path('logbook/', include('logbook.urls')),
+    path('dz/', include('dz.urls')),
+    path('api/dz/', include('dz.api.urls')),
 ]

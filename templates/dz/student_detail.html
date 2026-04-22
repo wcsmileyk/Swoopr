@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}{{ enrollment.student.get_full_name|default:enrollment.student.username }} — {{ dz.name }}{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <a href="{% url 'dz_student_list' dz_id=dz.pk %}"
+     class="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1 mb-3">
+    <i class="bi bi-arrow-left text-[11px]"></i> Students
+  </a>
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div class="flex items-center gap-4">
+      <span class="w-12 h-12 rounded-full bg-sky-700 flex items-center justify-center text-lg font-bold text-white uppercase shrink-0">
+        {{ enrollment.student.get_full_name|default:enrollment.student.username|slice:":1" }}
+      </span>
+      <div>
+        <h1 class="text-xl font-bold text-white">{{ enrollment.student.get_full_name|default:enrollment.student.username }}</h1>
+        <p class="text-sm text-gray-500">{{ enrollment.get_program_type_display }}
+          &mdash; enrolled {{ enrollment.enrolled_date|date:"M j, Y" }}
+          {% if enrollment.enrolled_by %}by {{ enrollment.enrolled_by.get_full_name|default:enrollment.enrolled_by.username }}{% endif %}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <!-- Status selector -->
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="set_status">
+        <select name="status" onchange="this.form.submit()"
+                class="text-sm bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-1.5">
+          {% for val, label in status_choices %}
+          <option value="{{ val }}" {% if val == enrollment.status %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+
+      <a href="{% url 'dz_log_student_jump' dz_id=dz.pk enrollment_id=enrollment.pk %}"
+         class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2">
+        <i class="bi bi-plus"></i> Log jump
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-6">
+
+  <!-- Jump history -->
+  <div class="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-gray-200">Jump history</h2>
+      <span class="text-xs text-gray-500">{{ student_jumps|length }} jump{{ student_jumps|length|pluralize }}</span>
+    </div>
+
+    {% if student_jumps %}
+    <div class="divide-y divide-gray-800">
+      {% for sj in student_jumps %}
+      <div class="px-5 py-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium text-gray-200">
+              {{ sj.program_jump.category.name }}
+              {% if sj.program_jump.name %} — {{ sj.program_jump.name }}{% endif %}
+            </p>
+            <p class="text-xs text-gray-500 mt-0.5">
+              {{ sj.jump_date|date:"M j, Y" }}
+              &middot; {{ sj.get_jump_method_display }}
+              &middot; {{ sj.instructor.get_full_name|default:sj.instructor.username }}
+            </p>
+          </div>
+          {% if sj.outcome %}
+          <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0
+            {% if sj.outcome == 'pass' %}bg-emerald-900/30 text-emerald-400
+            {% elif sj.outcome == 'partial' %}bg-amber-900/30 text-amber-400
+            {% elif sj.outcome == 'repeat' %}bg-red-900/30 text-red-400
+            {% else %}bg-gray-800 text-gray-500{% endif %}">
+            {{ sj.get_outcome_display }}
+          </span>
+          {% else %}
+          <span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-500 shrink-0">Pending</span>
+          {% endif %}
+        </div>
+        {% if sj.notes %}
+        <p class="text-xs text-gray-500 mt-2 italic">{{ sj.notes }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="px-5 py-10 text-sm text-gray-500 text-center">No jumps logged yet.</p>
+    {% endif %}
+  </div>
+
+  <!-- Sidebar: current jump + program overview -->
+  <div class="space-y-4">
+
+    <!-- Current jump -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-200">Current jump</h2>
+      </div>
+      <div class="px-5 py-4">
+        {% if enrollment.current_jump %}
+        <p class="text-sm font-medium text-gray-200">{{ enrollment.current_jump.category.name }}</p>
+        {% if enrollment.current_jump.name %}
+        <p class="text-xs text-gray-500 mt-0.5">{{ enrollment.current_jump.name }}</p>
+        {% endif %}
+        <p class="text-xs text-gray-600 mt-1">{{ enrollment.current_jump.get_method_group_display }}</p>
+        {% else %}
+        <p class="text-sm text-gray-500">Not set</p>
+        {% endif %}
+
+        <!-- Set current jump -->
+        <form method="post" class="mt-3" x-data="{ open: false }">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="set_current_jump">
+          <button type="button" @click="open = !open"
+                  class="text-xs text-sky-400 hover:text-sky-300 transition-colors">
+            Change
+          </button>
+          <div x-show="open" x-cloak class="mt-2 flex gap-2">
+            <select name="program_jump_id"
+                    class="flex-1 text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-2 py-1.5">
+              {% for pj in program_jumps %}
+              <option value="{{ pj.pk }}" {% if enrollment.current_jump and pj.pk == enrollment.current_jump.pk %}selected{% endif %}>
+                {{ pj.category.name }}{% if pj.name %} / {{ pj.name }}{% endif %} [{{ pj.get_method_group_display }}]
+              </option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    class="text-xs bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg transition-colors">
+              Set
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Program progress -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-200">Program</h2>
+        <p class="text-xs text-gray-500 mt-0.5">{{ enrollment.get_program_type_display }}</p>
+      </div>
+      <div class="px-5 py-3 divide-y divide-gray-800/60">
+        {% regroup program_jumps by category as category_groups %}
+        {% for group in category_groups %}
+        <div class="py-2.5">
+          <p class="text-xs font-medium text-gray-400 mb-1.5">{{ group.grouper.name }}</p>
+          <div class="space-y-1">
+            {% for pj in group.list %}
+            {% with passed=student_jumps|dictsort:"program_jump_id" %}
+            <div class="flex items-center gap-2">
+              {% comment %} Check if any passed jump matches this program jump {% endcomment %}
+              {% if enrollment.current_jump and pj.pk == enrollment.current_jump.pk %}
+              <span class="w-4 h-4 rounded-full border-2 border-sky-400 flex items-center justify-center shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+              </span>
+              {% else %}
+              <span class="w-4 h-4 rounded-full border border-gray-700 shrink-0"></span>
+              {% endif %}
+              <span class="text-xs text-gray-400">
+                {% if pj.name %}{{ pj.name }}{% else %}#{{ pj.jump_number }}{% endif %}
+                <span class="text-gray-600 ml-1">[{{ pj.get_method_group_display }}]</span>
+              </span>
+            </div>
+            {% endwith %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

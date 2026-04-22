@@ -64,13 +64,35 @@
       </button>
       {% endif %}
 
-      <a href="{% url 'dashboard' %}" class="font-bold text-sky-400 text-lg tracking-tight shrink-0">Flare</a>
+      {% if in_dz_ops %}
+        <a href="{% url 'dashboard' %}" class="font-bold text-sky-400 text-lg tracking-tight shrink-0">Flare</a>
+        <span class="text-gray-700 text-sm hidden sm:inline">/</span>
+        <span class="text-sm font-medium text-gray-300 hidden sm:inline truncate max-w-[160px]">DZ Operations</span>
+      {% else %}
+        <a href="{% url 'dashboard' %}" class="font-bold text-sky-400 text-lg tracking-tight shrink-0">Flare</a>
+      {% endif %}
 
       {% if user.is_authenticated %}
 
       <div class="ml-auto flex items-center gap-2 sm:gap-3">
 
+        <!-- DZ Ops / Skydiver toggle -->
+        {% if in_dz_ops %}
+          <a href="{% url 'dashboard' %}"
+             class="text-sm text-gray-400 hover:text-gray-200 transition-colors hidden sm:flex items-center gap-1.5 border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg">
+            <i class="bi bi-person text-sm"></i>
+            <span>Skydiver</span>
+          </a>
+        {% elif user_admin_dzs %}
+          <a href="{% url 'dz_redirect' %}"
+             class="text-sm text-gray-400 hover:text-gray-200 transition-colors hidden sm:flex items-center gap-1.5 border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded-lg">
+            <i class="bi bi-building text-sm"></i>
+            <span>DZ Ops</span>
+          </a>
+        {% endif %}
+
         <!-- Log Jump -->
+        {% if not in_dz_ops %}
         <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
           <button @click="open = !open"
                   class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5">
@@ -93,6 +115,7 @@
             </a>
           </div>
         </div>
+        {% endif %}
 
         <!-- Notification bell -->
         <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
@@ -168,7 +191,7 @@
 
   <!-- ── Desktop sidebar ───────────────────────────────────────────────── -->
   <aside class="fixed top-14 left-0 bottom-0 w-56 bg-gray-900 border-r border-gray-800 z-40 hidden lg:flex flex-col overflow-y-auto">
-    {% include 'partials/sidebar_nav.html' %}
+    {% block sidebar_nav %}{% include 'partials/sidebar_nav.html' %}{% endblock %}
   </aside>
 
   <!-- ── Mobile sidebar overlay ───────────────────────────────────────── -->
@@ -184,7 +207,7 @@
           <i class="bi bi-x-lg"></i>
         </button>
       </div>
-      {% include 'partials/sidebar_nav.html' %}
+      {% block sidebar_nav_mobile %}{% include 'partials/sidebar_nav.html' %}{% endblock %}
     </aside>
   </div>
 
@@ -209,11 +232,13 @@
   {% endif %}
 
   <!-- ── Main content ──────────────────────────────────────────────────── -->
+  {% block main %}
   <main class="pt-14 {% if user.is_authenticated %}lg:pl-56{% endif %} min-h-screen">
     <div class="px-4 sm:px-6 lg:px-8 py-7 max-w-7xl mx-auto">
       {% block content %}{% endblock %}
     </div>
   </main>
+  {% endblock main %}
 
   <script>
     document.addEventListener('htmx:configRequest', function(e) {

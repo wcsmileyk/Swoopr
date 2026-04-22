@@ -14,7 +14,13 @@ urlpatterns = [
     path('<int:pk>/attach-gps/', views.attach_gps, name='attach_gps'),
     path('<int:pk>/link-flight/', views.link_flight, name='link_flight'),
     path('<int:pk>/unlink-flight/', views.unlink_flight, name='unlink_flight'),
+    path('<int:pk>/link-slot/', views.link_slot, name='link_slot'),
+    path('<int:pk>/unlink-slot/', views.unlink_slot, name='unlink_slot'),
     path('bulk-delete/', views.bulk_delete_jumps, name='bulk_delete_jumps'),
+    path('query/', views.query_view, name='logbook_query'),
+    path('query/save/', views.save_query, name='logbook_query_save'),
+    path('query/<int:pk>/delete/', views.delete_query, name='logbook_query_delete'),
+    path('query/<int:pk>/load/', views.load_query, name='logbook_query_load'),
     path('earnings/', views.instructor_earnings_view, name='instructor_earnings'),
     # Student ISP sign-off
     path('student/', views.student_hub, name='student_hub'),

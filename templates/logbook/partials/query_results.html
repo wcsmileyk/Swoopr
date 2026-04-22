@@ -1,0 +1,123 @@
+{% if stats %}
+
+  <!-- Stats cards -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <div class="text-xs text-gray-500 mb-1">Jumps</div>
+      <div class="text-2xl font-bold text-white">{{ stats.total }}</div>
+    </div>
+
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <div class="text-xs text-gray-500 mb-1">With GPS</div>
+      <div class="text-2xl font-bold text-sky-400">{{ stats.gps_count }}</div>
+      {% if stats.total %}
+        <div class="text-xs text-gray-600 mt-0.5">of {{ stats.total }}</div>
+      {% endif %}
+    </div>
+
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <div class="text-xs text-gray-500 mb-1">Swoops</div>
+      <div class="text-2xl font-bold text-emerald-400">{{ stats.swoop_count }}</div>
+      {% if stats.total %}
+        <div class="text-xs text-gray-600 mt-0.5">of {{ stats.total }}</div>
+      {% endif %}
+    </div>
+
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <div class="text-xs text-gray-500 mb-1">Avg Altitude</div>
+      {% if stats.avg_altitude %}
+        <div class="text-2xl font-bold text-white">{{ stats.avg_altitude }}<span class="text-sm font-normal text-gray-500 ml-1">ft</span></div>
+        {% if stats.min_altitude and stats.max_altitude %}
+          <div class="text-xs text-gray-600 mt-0.5">{{ stats.min_altitude }} – {{ stats.max_altitude }}</div>
+        {% endif %}
+      {% else %}
+        <div class="text-2xl font-bold text-gray-600">—</div>
+      {% endif %}
+    </div>
+
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <div class="text-xs text-gray-500 mb-1">Dropzones</div>
+      <div class="text-2xl font-bold text-white">{{ stats.dz_count }}</div>
+      {% if stats.canopy_count %}
+        <div class="text-xs text-gray-600 mt-0.5">{{ stats.canopy_count }} canop{{ stats.canopy_count|pluralize:"y,ies" }}</div>
+      {% endif %}
+    </div>
+
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <div class="text-xs text-gray-500 mb-1">Date Range</div>
+      {% if stats.date_min %}
+        <div class="text-sm font-semibold text-white leading-tight">{{ stats.date_min|date:"M j, Y" }}</div>
+        {% if stats.date_max and stats.date_max != stats.date_min %}
+          <div class="text-xs text-gray-500 mt-0.5">to {{ stats.date_max|date:"M j, Y" }}</div>
+        {% endif %}
+      {% else %}
+        <div class="text-2xl font-bold text-gray-600">—</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  {% if breakdown %}
+  <!-- Breakdown table -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden mb-6">
+    <div class="px-4 py-3 border-b border-gray-800">
+      <span class="text-sm font-semibold text-gray-300">Breakdown</span>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-800 text-xs uppercase tracking-widest text-gray-500 select-none">
+          <th class="px-4 py-3 text-left">Group</th>
+          <th class="px-4 py-3 text-right">Jumps</th>
+          <th class="px-4 py-3 text-right">Swoops</th>
+          <th class="px-4 py-3 text-right">With GPS</th>
+          <th class="px-4 py-3 text-right">Avg Alt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in breakdown %}
+        <tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+          <td class="px-4 py-3 text-gray-200">{{ row.label }}</td>
+          <td class="px-4 py-3 text-right font-medium text-white">{{ row.count }}</td>
+          <td class="px-4 py-3 text-right {% if row.swoop_count %}text-emerald-400{% else %}text-gray-600{% endif %}">{{ row.swoop_count }}</td>
+          <td class="px-4 py-3 text-right {% if row.gps_count %}text-sky-400{% else %}text-gray-600{% endif %}">{{ row.gps_count }}</td>
+          <td class="px-4 py-3 text-right text-gray-400">{% if row.avg_alt %}{{ row.avg_alt }} ft{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Actions: view in logbook + save query -->
+  <div class="flex flex-wrap items-center justify-between gap-4">
+
+    <a href="{% url 'jump_list' %}{% if logbook_filter_qs %}?{{ logbook_filter_qs }}{% endif %}"
+       class="text-sm text-sky-400 hover:text-sky-300 transition-colors">
+      View {{ stats.total }} matching jump{{ stats.total|pluralize }} in log &rarr;
+    </a>
+
+    <form hx-post="{% url 'logbook_query_save' %}"
+          hx-target="#saved-queries-list"
+          hx-swap="outerHTML"
+          class="flex items-center gap-2">
+      {% csrf_token %}
+      <input type="hidden" name="params" value="{{ params_json }}">
+      <input type="text" name="name" placeholder="Name this query..."
+             class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-sky-500 w-44">
+      <button type="submit"
+              class="bg-sky-700 hover:bg-sky-600 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
+        Save Query
+      </button>
+    </form>
+
+  </div>
+
+{% else %}
+
+  <!-- Empty state -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-12 text-center">
+    <p class="text-gray-500 text-sm">Set filters above to run a query.</p>
+  </div>
+
+{% endif %}

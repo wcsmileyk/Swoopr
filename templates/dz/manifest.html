@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Manifest — {{ dz.name }}{% endblock %}
+
+{# Use the DZ sidebar in the base fixed aside — same pattern as roster/checkin #}
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{# Override main to get full-height layout without the max-w-7xl container,
+   but keep pt-14 (top nav) and lg:pl-56 (fixed sidebar) #}
+{% block main %}
+<div class="pt-14 lg:pl-56 h-screen flex flex-col overflow-hidden bg-[#0a0c0f]">
+
+  {# Top bar #}
+  <header class="shrink-0 flex items-center justify-between px-6 py-3 border-b border-gray-800 bg-gray-900/40">
+    <div class="flex items-center gap-4">
+      <h1 class="text-white font-semibold text-base">Manifest Board</h1>
+
+      {# Date nav #}
+      <div class="flex items-center gap-1 text-sm">
+        <a href="?date={{ prev_date|date:'Y-m-d' }}"
+           class="px-2 py-1 rounded text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+        <span class="px-3 py-1 rounded bg-gray-800 text-gray-200 font-medium">
+          {{ date|date:"D, M j" }}{% if date == today %} <span class="text-sky-400 text-xs ml-1">Today</span>{% endif %}
+        </span>
+        <a href="?date={{ next_date|date:'Y-m-d' }}"
+           class="px-2 py-1 rounded text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+        {% if date != today %}
+        <a href="?" class="ml-2 text-xs text-sky-400 hover:text-sky-300">Today</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <form method="post"
+          action="{% url 'dz_manifest_load_new' dz_id=dz.pk %}"
+          hx-post="{% url 'dz_manifest_load_new' dz_id=dz.pk %}?date={{ date|date:'Y-m-d' }}"
+          hx-target="#manifest-board"
+          hx-swap="innerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
+      <button type="submit"
+              class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition-colors">
+        <i class="bi bi-plus-lg"></i> New Load
+      </button>
+    </form>
+  </header>
+
+  {# Content row: left info panel + board #}
+  <div class="flex-1 flex min-h-0 overflow-hidden">
+
+    {# Left panel: jump run + roster #}
+    <div class="w-64 shrink-0 flex flex-col gap-4 p-4 border-r border-gray-800 overflow-y-auto"
+         x-data="{ jumpRunOpen: false }">
+
+      {# Jump run conditions #}
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-[10px] uppercase tracking-widest text-gray-500">Jump Run</p>
+          <button @click="jumpRunOpen = !jumpRunOpen"
+                  class="text-xs text-sky-400 hover:text-sky-300">
+            <span x-text="jumpRunOpen ? 'Cancel' : 'Update'"></span>
+          </button>
+        </div>
+
+        {% if jump_run %}
+        <div class="rounded-lg bg-gray-800/60 p-3 text-sm space-y-1">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-400">Exit Alt</span>
+            <span class="text-white font-medium">{{ jump_run.exit_altitude|floatformat:0 }} ft</span>
+          </div>
+          {% if jump_run.spot_notes %}
+          <p class="text-gray-400 text-xs leading-relaxed">{{ jump_run.spot_notes }}</p>
+          {% endif %}
+          <p class="text-gray-600 text-[10px]">
+            Set {{ jump_run.set_at|time:"g:i A" }}{% if jump_run.set_by %} by {{ jump_run.set_by.get_full_name|default:jump_run.set_by.username }}{% endif %}
+          </p>
+        </div>
+        {% else %}
+        <p class="text-gray-600 text-xs">No conditions set for today.</p>
+        {% endif %}
+
+        <form x-show="jumpRunOpen" x-cloak
+              method="post"
+              action="{% url 'dz_manifest_jump_run' dz_id=dz.pk %}"
+              hx-post="{% url 'dz_manifest_jump_run' dz_id=dz.pk %}?date={{ date|date:'Y-m-d' }}"
+              hx-target="#manifest-board"
+              hx-swap="innerHTML"
+              @htmx:after-request="jumpRunOpen = false"
+              class="mt-2 space-y-2">
+          {% csrf_token %}
+          <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
+          <div>
+            <label class="text-[10px] uppercase text-gray-500 block mb-1">Exit Altitude (ft)</label>
+            <input type="number" name="exit_altitude" min="3000" max="18000" step="500"
+                   value="{{ jump_run.exit_altitude|default:'' }}"
+                   class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                   required>
+          </div>
+          <div>
+            <label class="text-[10px] uppercase text-gray-500 block mb-1">Spot Notes</label>
+            <textarea name="spot_notes" rows="2"
+                      class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 resize-none">{{ jump_run.spot_notes|default:'' }}</textarea>
+          </div>
+          <button type="submit"
+                  class="w-full py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition-colors">
+            Set Conditions
+          </button>
+        </form>
+      </div>
+
+      {# Available staff #}
+      <div>
+        <p class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Available Staff</p>
+        {% if available_roster %}
+        <ul class="space-y-1.5">
+          {% for entry in available_roster %}
+          <li class="flex items-start gap-2 text-xs">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0"></span>
+            <div>
+              <span class="text-gray-200">{{ entry.user.get_full_name|default:entry.user.username }}</span>
+              {% with ratings=entry.user.instructor_ratings.all %}
+              {% if ratings %}
+              <div class="flex flex-wrap gap-0.5 mt-0.5">
+                {% for r in ratings %}
+                <span class="px-1 rounded text-[9px] bg-gray-700 text-gray-400">{{ r.rating_type }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% endwith %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-gray-600 text-xs">No staff available today.</p>
+        {% endif %}
+      </div>
+
+    </div>
+
+    {# Board — HTMX polling target #}
+    <div class="flex-1 overflow-x-auto overflow-y-auto p-4">
+      <div id="manifest-board"
+           hx-get="{% url 'dz_manifest_board' dz_id=dz.pk %}?date={{ date|date:'Y-m-d' }}"
+           hx-trigger="every 20s"
+           hx-swap="innerHTML">
+        {% include "dz/partials/manifest_board.html" %}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock main %}

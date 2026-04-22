@@ -159,8 +159,9 @@ def check_analyze_swoop():
     print("\n6️⃣  Checking full swoop analysis...")
 
     try:
+        from django.contrib.auth import get_user_model
         from flights.models import Flight
-        from django.contrib.auth.models import User
+        User = get_user_model()
 
         fm = FlightManager()
 

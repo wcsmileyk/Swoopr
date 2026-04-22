@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule — {{ dz.name }}{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white">Operating Schedule</h1>
+  <p class="text-sm text-gray-500 mt-0.5">{{ dz.name }} — weekly defaults</p>
+</div>
+
+{% if messages %}
+  {% for msg in messages %}
+  <div class="mb-4 px-4 py-3 rounded-lg text-sm bg-emerald-900/40 text-emerald-300 border border-emerald-800">
+    {{ msg }}
+  </div>
+  {% endfor %}
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+
+  <div class="space-y-3 mb-6">
+    {% for day in days %}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden"
+         x-data="{ open: {{ day.is_open|yesno:'true,false' }} }">
+
+      <!-- Day header row -->
+      <div class="flex items-center gap-4 px-5 py-4">
+
+        <!-- Open toggle -->
+        <label class="flex items-center gap-3 cursor-pointer select-none">
+          <input type="checkbox" name="open_{{ day.day_of_week }}"
+                 {% if day.is_open %}checked{% endif %}
+                 @change="open = $event.target.checked"
+                 class="sr-only peer">
+          <div class="relative w-9 h-5 bg-gray-700 peer-checked:bg-sky-600 rounded-full transition-colors
+                      after:content-[''] after:absolute after:top-0.5 after:left-0.5
+                      after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all
+                      peer-checked:after:translate-x-4"></div>
+          <span class="text-sm font-semibold text-gray-200 w-24">{{ day.get_day_of_week_display }}</span>
+        </label>
+
+        <!-- Closed label when shut -->
+        <span x-show="!open" class="text-xs text-gray-600 italic">Closed</span>
+
+        <!-- Inline fields when open -->
+        <div x-show="open" x-cloak class="flex flex-wrap items-center gap-4 flex-1">
+
+          <label class="flex items-center gap-2 text-xs text-gray-400">
+            First load
+            <input type="time" name="first_load_{{ day.day_of_week }}"
+                   value="{{ day.first_load_time|date:'H:i'|default:'' }}"
+                   class="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-sky-500">
+          </label>
+
+          <label class="flex items-center gap-2 text-xs text-gray-400">
+            Cutoff
+            <input type="number" name="cutoff_{{ day.day_of_week }}" min="0" max="168"
+                   value="{{ day.reservation_cutoff_hours }}"
+                   class="w-16 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-sky-500">
+            <span class="text-gray-600">hrs</span>
+          </label>
+
+          <div class="flex items-center gap-3 text-xs text-gray-400">
+            <span>Slots</span>
+            <label class="flex items-center gap-1">
+              <span class="text-gray-500">TAN</span>
+              <input type="number" name="cap_tandem_{{ day.day_of_week }}" min="0" max="99"
+                     value="{{ day.slot_capacities.tandem|default:'' }}"
+                     placeholder="—"
+                     class="w-12 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-sky-500">
+            </label>
+            <label class="flex items-center gap-1">
+              <span class="text-gray-500">AFF</span>
+              <input type="number" name="cap_aff_{{ day.day_of_week }}" min="0" max="99"
+                     value="{{ day.slot_capacities.aff|default:'' }}"
+                     placeholder="—"
+                     class="w-12 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-sky-500">
+            </label>
+            <label class="flex items-center gap-1">
+              <span class="text-gray-500">Coach</span>
+              <input type="number" name="cap_coach_{{ day.day_of_week }}" min="0" max="99"
+                     value="{{ day.slot_capacities.coach|default:'' }}"
+                     placeholder="—"
+                     class="w-12 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-sm text-white text-center focus:outline-none focus:border-sky-500">
+            </label>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Notes row (only when open) -->
+      <div x-show="open" x-cloak class="px-5 pb-4 border-t border-gray-800/60 pt-3">
+        <input type="text" name="notes_{{ day.day_of_week }}"
+               value="{{ day.notes }}"
+               placeholder="Notes (optional)..."
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-sky-500">
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="flex justify-end">
+    <button type="submit"
+            class="px-6 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg transition-colors">
+      Save schedule
+    </button>
+  </div>
+
+</form>
+
+{% endblock %}

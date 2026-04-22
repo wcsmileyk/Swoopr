@@ -1,6 +1,6 @@
 from django.urls import reverse
 
-from .models import PendingInstructorRequest, StudentSignoff
+from training.models import PendingInstructorRequest, StudentSignoff
 
 _STUDENT_URLS = {
     'student_hub', 'student_progress', 'request_signoff', 'view_signoff',
@@ -91,6 +91,13 @@ def notifications(request):
     else:
         active_section = 'logbook'
 
+    from organizations.models import DropzoneMembership
+    user_admin_dzs = (
+        DropzoneMembership.objects
+        .filter(user=request.user, role__in=['admin', 'staff'], active=True)
+        .exists()
+    )
+
     return {
         'notif_count': pending_count + unread_count,
         'notif_items': items,
@@ -98,4 +105,5 @@ def notifications(request):
         'show_swooper': show_swooper,
         'show_instructor': show_instructor,
         'active_section': active_section,
+        'user_admin_dzs': user_admin_dzs,
     }
