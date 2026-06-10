@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, manifest_views
+from . import booking_views, manifest_views, views
 
 urlpatterns = [
     path('', views.dz_redirect, name='dz_redirect'),
@@ -15,10 +15,13 @@ urlpatterns = [
     path('<int:dz_id>/roster/', views.dz_roster, name='dz_roster'),
     path('<int:dz_id>/checkin/', views.dz_checkin, name='dz_checkin'),
     path('<int:dz_id>/schedule/', views.dz_schedule, name='dz_schedule'),
+    # Pricing
+    path('<int:dz_id>/pricing/', views.dz_pricing, name='dz_pricing'),
     # Reservations
     path('<int:dz_id>/reservations/', views.dz_reservations, name='dz_reservations'),
     path('<int:dz_id>/reservations/new/', views.dz_reservation_new, name='dz_reservation_new'),
     path('<int:dz_id>/reservations/<int:reservation_id>/', views.dz_reservation_detail, name='dz_reservation_detail'),
+    path('<int:dz_id>/reservations/<int:reservation_id>/manifest/', views.dz_reservation_manifest, name='dz_reservation_manifest'),
     # Manifest board
     path('<int:dz_id>/manifest/', manifest_views.dz_manifest, name='dz_manifest'),
     path('<int:dz_id>/manifest/board/', manifest_views.dz_manifest_board, name='dz_manifest_board'),
@@ -35,4 +38,9 @@ urlpatterns = [
     path('<int:dz_id>/students/enroll/', views.dz_enroll_student, name='dz_enroll_student'),
     path('<int:dz_id>/students/<int:enrollment_id>/', views.dz_student_detail, name='dz_student_detail'),
     path('<int:dz_id>/students/<int:enrollment_id>/log/', views.dz_log_student_jump, name='dz_log_student_jump'),
+    # Public booking
+    path('book/<int:dz_id>/', booking_views.booking_home, name='booking_home'),
+    path('book/<int:dz_id>/confirm/', booking_views.booking_confirm, name='booking_confirm'),
+    path('book/<int:dz_id>/thanks/<str:token>/', booking_views.booking_thanks, name='booking_thanks'),
+    path('book/<int:dz_id>/price/', booking_views.booking_price, name='booking_price'),
 ]

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Booking Confirmed — {{ dz.name }}{% endblock %}
+
+{% block sidebar_nav %}{% endblock %}
+{% block sidebar_nav_mobile %}{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto text-center">
+
+  <div class="mb-8">
+    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-900/50 border border-emerald-700 mb-5">
+      <i class="bi bi-check-lg text-2xl text-emerald-400"></i>
+    </div>
+    <h1 class="text-3xl font-bold text-white mb-2">You're booked!</h1>
+    <p class="text-gray-400">A confirmation has been sent to {{ reservation.display_email }}.</p>
+  </div>
+
+  <!-- Booking details -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6 text-left">
+    <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Booking Details</h2>
+    <div class="space-y-3">
+
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-500">Reference</span>
+        <span class="text-sm font-mono font-medium text-gray-300">{{ reservation.pk }}</span>
+      </div>
+
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-500">Name</span>
+        <span class="text-sm font-medium text-gray-200">{{ reservation.display_name }}</span>
+      </div>
+
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-500">Jump Type</span>
+        <span class="text-sm font-medium text-gray-200">{{ reservation.get_jump_type_display }}</span>
+      </div>
+
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-500">Date</span>
+        <span class="text-sm font-medium text-gray-200">{{ reservation.date|date:"l, N j, Y" }}</span>
+      </div>
+
+      {% if reservation.time_slot %}
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-500">Time</span>
+        <span class="text-sm font-medium text-gray-200">{{ reservation.time_slot|date:"g:i A" }}</span>
+      </div>
+      {% endif %}
+
+      <div class="flex justify-between">
+        <span class="text-sm text-gray-500">Dropzone</span>
+        <span class="text-sm font-medium text-gray-200">{{ dz.name }}</span>
+      </div>
+
+      {% if reservation.charged_price_cents %}
+      <div class="border-t border-gray-700 pt-3 flex justify-between">
+        <span class="text-sm font-semibold text-gray-200">Charged</span>
+        <span class="text-lg font-bold text-sky-400">{{ reservation.charged_price_display }}</span>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+  {% if payment %}
+  <div class="bg-yellow-900/20 border border-yellow-800/40 rounded-xl p-4 mb-6 text-left">
+    <p class="text-xs text-yellow-500 font-semibold uppercase tracking-widest mb-1">Payment Note</p>
+    <p class="text-sm text-yellow-300/80">
+      Payment processing is currently in test mode. No real charge occurred.
+      Transaction: <span class="font-mono text-xs">{{ payment.provider_transaction_id|default:"—" }}</span>
+    </p>
+  </div>
+  {% endif %}
+
+  <p class="text-sm text-gray-500">
+    Save this page URL to view your booking details.<br>
+    Questions? Contact {{ dz.name }} directly.
+  </p>
+
+</div>
+{% endblock %}

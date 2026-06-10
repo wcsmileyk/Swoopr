@@ -7,23 +7,54 @@
   {% if saved_queries %}
   <div class="flex flex-col gap-2">
     {% for query in saved_queries %}
-    <div class="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5">
-      <span class="text-sm text-gray-200">{{ query.name }}</span>
-      <div class="flex items-center gap-3">
+    <div class="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 gap-3">
+      <span class="text-sm text-gray-200 min-w-0 truncate">{{ query.name }}</span>
+      <div class="flex items-center gap-1 shrink-0">
+
+        <!-- Pin to Dashboard -->
+        <form hx-post="{% url 'logbook_query_toggle_widget' query.pk %}"
+              hx-target="#saved-queries-list"
+              hx-swap="outerHTML"
+              hx-vals='{"type": "dashboard"}'>
+          {% csrf_token %}
+          <button type="submit"
+                  title="{% if query.is_dashboard_widget %}Remove from dashboard{% else %}Pin to dashboard{% endif %}"
+                  class="text-xs px-2 py-1 rounded transition-colors {% if query.is_dashboard_widget %}text-sky-400 bg-sky-900/30 border border-sky-700/40{% else %}text-gray-600 hover:text-gray-400 border border-transparent{% endif %}">
+            Dash
+          </button>
+        </form>
+
+        <!-- Pin to Swooper -->
+        <form hx-post="{% url 'logbook_query_toggle_widget' query.pk %}"
+              hx-target="#saved-queries-list"
+              hx-swap="outerHTML"
+              hx-vals='{"type": "swooper"}'>
+          {% csrf_token %}
+          <button type="submit"
+                  title="{% if query.is_swooper_widget %}Remove from swooper{% else %}Pin to swooper{% endif %}"
+                  class="text-xs px-2 py-1 rounded transition-colors {% if query.is_swooper_widget %}text-emerald-400 bg-emerald-900/30 border border-emerald-700/40{% else %}text-gray-600 hover:text-gray-400 border border-transparent{% endif %}">
+            Swoop
+          </button>
+        </form>
+
+        <!-- Load -->
         <a href="{% url 'logbook_query_load' query.pk %}"
-           class="text-xs text-sky-400 hover:text-sky-300 transition-colors">
+           class="text-xs text-sky-400 hover:text-sky-300 transition-colors px-2 py-1">
           Load
         </a>
+
+        <!-- Delete -->
         <form hx-post="{% url 'logbook_query_delete' query.pk %}"
               hx-target="#saved-queries-list"
               hx-swap="outerHTML"
               hx-confirm="Delete '{{ query.name }}'?">
           {% csrf_token %}
           <button type="submit"
-                  class="text-xs text-gray-600 hover:text-red-400 transition-colors">
+                  class="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1">
             Delete
           </button>
         </form>
+
       </div>
     </div>
     {% endfor %}

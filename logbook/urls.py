@@ -21,6 +21,7 @@ urlpatterns = [
     path('query/save/', views.save_query, name='logbook_query_save'),
     path('query/<int:pk>/delete/', views.delete_query, name='logbook_query_delete'),
     path('query/<int:pk>/load/', views.load_query, name='logbook_query_load'),
+    path('query/<int:pk>/widget/', views.toggle_widget, name='logbook_query_toggle_widget'),
     path('earnings/', views.instructor_earnings_view, name='instructor_earnings'),
     # Student ISP sign-off
     path('student/', views.student_hub, name='student_hub'),

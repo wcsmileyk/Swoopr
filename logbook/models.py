@@ -178,6 +178,8 @@ class SavedQuery(models.Model):
     )
     name = models.CharField(max_length=100)
     params = models.JSONField(default=dict)
+    is_dashboard_widget = models.BooleanField(default=False)
+    is_swooper_widget = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

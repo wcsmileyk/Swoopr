@@ -191,6 +191,14 @@ def dashboard_view(request):
     )
     avg_monthly = round(logbook_total / months_with_data, 1) if months_with_data > 0 else None
 
+    # Dashboard widgets from saved queries
+    from logbook.models import SavedQuery
+    from logbook.views import _compute_widget_stats
+    dashboard_widgets = []
+    for sq in SavedQuery.objects.filter(user=user, is_dashboard_widget=True):
+        widget_stats = _compute_widget_stats(sq, user)
+        dashboard_widgets.append({'query': sq, 'stats': widget_stats})
+
     return render(request, 'users/dashboard.html', {
         'logbook_total': logbook_total,
         'last_jump': last_jump,
@@ -205,6 +213,7 @@ def dashboard_view(request):
         'this_year_total': this_year_total,
         'avg_monthly': avg_monthly,
         'has_chart_data': logbook_total > 0,
+        'dashboard_widgets': dashboard_widgets,
     })
 
 
@@ -221,6 +230,7 @@ def swooper_dashboard_view(request):
 
     stats = {}
     if total_swoops_gps > 0:
+        from logbook.views import normalize_rotation as _norm_rot
         rot = swoops.filter(turn_rotation__isnull=False).aggregate(
             avg=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
             best=Max(models.Func(models.F('turn_rotation'), function='ABS')),
@@ -236,9 +246,13 @@ def swooper_dashboard_view(request):
             swoop_distance_ft__isnull=False,
             swoop_avg_altitude_agl__lte=5.0,
         ).aggregate(best=Max('swoop_distance_ft'))
+        avg_rot_raw  = rot['avg']
+        best_rot_raw = rot['best']
         stats = {
-            'avg_rotation': rot['avg'],
-            'best_rotation': rot['best'],
+            'avg_rotation':      _norm_rot(round(avg_rot_raw))  if avg_rot_raw  else None,
+            'best_rotation':     _norm_rot(round(best_rot_raw)) if best_rot_raw else None,
+            'avg_rotation_raw':  round(avg_rot_raw)             if avg_rot_raw  else None,
+            'best_rotation_raw': round(best_rot_raw)            if best_rot_raw else None,
             'avg_speed': spd['avg'],
             'best_speed': spd['best'],
             'best_ground_speed': gnd['best'],
@@ -255,10 +269,12 @@ def swooper_dashboard_view(request):
             avg_rot=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
             best_spd=Max('max_vertical_speed_mph'),
         )
+        avg_rot_raw = round(gps_agg['avg_rot']) if gps_agg['avg_rot'] else None
         canopy_breakdown.append({
             'canopy': canopy,
             'swoops': swoop_count,
-            'avg_rotation': round(gps_agg['avg_rot']) if gps_agg['avg_rot'] else None,
+            'avg_rotation': _norm_rot(avg_rot_raw) if avg_rot_raw else None,
+            'avg_rotation_raw': avg_rot_raw,
             'best_speed': round(gps_agg['best_spd'], 1) if gps_agg['best_spd'] else None,
             'wing_loading': canopy.wing_loading,
         })
@@ -271,12 +287,21 @@ def swooper_dashboard_view(request):
         .order_by('-date', '-created_at')[:20]
     )
 
+    # Swooper widgets from saved queries
+    from logbook.models import SavedQuery
+    from logbook.views import _compute_widget_stats
+    swooper_widgets = []
+    for sq in SavedQuery.objects.filter(user=user, is_swooper_widget=True):
+        widget_stats = _compute_widget_stats(sq, user)
+        swooper_widgets.append({'query': sq, 'stats': widget_stats})
+
     return render(request, 'users/swooper_dashboard.html', {
         'total_swoops_gps': total_swoops_gps,
         'total_flights': flights_qs.count(),
         'stats': stats,
         'canopy_breakdown': canopy_breakdown,
         'recent_swoops': recent_swoops,
+        'swooper_widgets': swooper_widgets,
     })
 
 

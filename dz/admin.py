@@ -2,7 +2,8 @@ from django.contrib import admin
 
 from .models import (
     BreakRequest, CheckIn, DailyAircraftStats, DailyRoster,
-    JumpRunConditions, Load, LoadSlot, OperatingDay, Reservation,
+    JumpRunConditions, Load, LoadSlot, OperatingDay, Payment,
+    PricingConfig, PricingOverride, PricingTier, Reservation, TimeSlotPricing,
 )
 
 
@@ -94,3 +95,41 @@ class DailyAircraftStatsAdmin(admin.ModelAdmin):
     list_display = ['aircraft', 'date', 'load_count', 'avg_altitude_min', 'avg_turn_min']
     list_filter = ['aircraft', 'date']
     date_hierarchy = 'date'
+
+
+# ---------------------------------------------------------------------------
+# Pricing
+# ---------------------------------------------------------------------------
+
+class PricingTierInline(admin.TabularInline):
+    model = PricingTier
+    extra = 1
+    fields = ['min_sold', 'price_cents', 'label']
+
+
+class TimeSlotPricingInline(admin.TabularInline):
+    model = TimeSlotPricing
+    extra = 1
+    fields = ['label', 'time_from', 'time_to', 'surcharge_cents', 'days_of_week', 'is_active']
+
+
+class PricingOverrideInline(admin.TabularInline):
+    model = PricingOverride
+    extra = 1
+    fields = ['date', 'price_cents', 'reason']
+    readonly_fields = ['created_by', 'created_at']
+
+
+@admin.register(PricingConfig)
+class PricingConfigAdmin(admin.ModelAdmin):
+    list_display = ['dropzone', 'jump_type', 'base_price_cents', 'min_price_cents', 'is_active']
+    list_filter = ['dropzone', 'jump_type', 'is_active']
+    inlines = [PricingTierInline, TimeSlotPricingInline, PricingOverrideInline]
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ['pk', 'reservation', 'provider', 'status', 'amount_cents', 'created_at']
+    list_filter = ['provider', 'status']
+    search_fields = ['reservation__guest_name', 'reservation__guest_email', 'provider_transaction_id']
+    readonly_fields = ['created_at', 'updated_at']

@@ -63,6 +63,13 @@
     Schedule
   </a>
 
+  <a href="{% url 'dz_pricing' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_pricing' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-tag text-base w-4 text-center shrink-0"></i>
+    Pricing
+  </a>
+
   <div class="pt-3 pb-1">
     <div class="border-t border-gray-800"></div>
   </div>

@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing — {{ dz.name }}{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Pricing</h1>
+    <p class="text-sm text-gray-500 mt-0.5">{{ dz.name }}</p>
+  </div>
+</div>
+
+{% if messages %}
+  {% for msg in messages %}
+  <div class="mb-4 px-4 py-3 rounded-lg text-sm
+    {% if msg.tags == 'error' %}bg-red-900/40 text-red-300 border border-red-800
+    {% else %}bg-emerald-900/40 text-emerald-300 border border-emerald-800{% endif %}">
+    {{ msg }}
+  </div>
+  {% endfor %}
+{% endif %}
+
+<!-- Add new config (only for unconfigured types) -->
+{% if remaining_types %}
+<div class="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
+  <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Add Jump Type</h2>
+  <form method="post" class="flex flex-wrap gap-3 items-end">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="add_config">
+    <div>
+      <label class="form-label">Jump Type</label>
+      <select name="jump_type" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-sky-500">
+        {% for val, label in remaining_types %}
+        <option value="{{ val }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label">Base Price ($)</label>
+      <input type="number" name="base_price" step="0.01" min="0" placeholder="199.00"
+             class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+    </div>
+    <div>
+      <label class="form-label">Min Price ($)</label>
+      <input type="number" name="min_price" step="0.01" min="0" placeholder="0.00"
+             class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+    </div>
+    <button type="submit"
+            class="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium rounded-lg transition-colors">
+      Add
+    </button>
+  </form>
+</div>
+{% endif %}
+
+<!-- Configs -->
+{% for config in configs %}
+<div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-6" x-data="{ open: true }">
+
+  <!-- Config header -->
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+    <div class="flex items-center gap-3">
+      <button @click="open = !open" class="text-gray-500 hover:text-gray-300 transition-colors">
+        <i class="bi" :class="open ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+      </button>
+      <span class="font-semibold text-gray-200">{{ config.get_jump_type_display }}</span>
+      {% if not config.is_active %}
+      <span class="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-500">Inactive</span>
+      {% endif %}
+    </div>
+    <div class="flex items-center gap-4 text-xs text-gray-500">
+      <span>Base: <span class="text-gray-300 font-medium">{{ config.base_price_display }}</span></span>
+      <span>Min: <span class="text-gray-300 font-medium">{{ config.min_price_display }}</span></span>
+      <form method="post" class="inline">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="toggle_config">
+        <input type="hidden" name="config_id" value="{{ config.pk }}">
+        <button class="px-2 py-1 rounded text-xs {% if config.is_active %}bg-gray-800 hover:bg-gray-700 text-gray-400{% else %}bg-sky-900/40 hover:bg-sky-800/40 text-sky-400{% endif %} transition-colors">
+          {% if config.is_active %}Disable{% else %}Enable{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div x-show="open" x-cloak class="p-5 space-y-6">
+
+    <!-- Update base/min prices -->
+    <form method="post" class="flex flex-wrap gap-3 items-end">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="update_config">
+      <input type="hidden" name="config_id" value="{{ config.pk }}">
+      <div>
+        <label class="form-label">Base Price ($)</label>
+        <input type="number" name="base_price" step="1" min="0"
+               value="{% widthratio config.base_price_cents 100 1 %}"
+               class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+      </div>
+      <div>
+        <label class="form-label">Min Price ($)</label>
+        <input type="number" name="min_price" step="1" min="0"
+               value="{% widthratio config.min_price_cents 100 1 %}"
+               class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+      </div>
+      <button type="submit" class="px-3 py-2 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors">
+        Save
+      </button>
+    </form>
+
+    <!-- Demand tiers -->
+    <div>
+      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Demand Tiers</h3>
+      <p class="text-xs text-gray-600 mb-3">Active tier = highest "from" count &le; current bookings on that date.</p>
+
+      {% if config.tiers.all %}
+      <div class="space-y-2 mb-4">
+        {% for tier in config.tiers.all %}
+        <div class="flex items-center gap-4 bg-gray-800/50 rounded-lg px-4 py-2.5 text-sm">
+          <span class="text-gray-400 w-32">From <span class="font-medium text-gray-200">{{ tier.min_sold }}</span> sold</span>
+          <span class="text-sky-400 font-semibold w-20">{{ tier.price_display }}</span>
+          {% if tier.label %}<span class="text-gray-500 flex-1">{{ tier.label }}</span>{% else %}<span class="flex-1"></span>{% endif %}
+          <form method="post" class="inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_tier">
+            <input type="hidden" name="tier_id" value="{{ tier.pk }}">
+            <button class="text-gray-600 hover:text-red-400 transition-colors text-xs">Remove</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-xs text-gray-600 italic mb-3">No tiers — base price always used.</p>
+      {% endif %}
+
+      <!-- Add tier -->
+      <form method="post" class="flex flex-wrap gap-2 items-end">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_tier">
+        <input type="hidden" name="config_id" value="{{ config.pk }}">
+        <div>
+          <label class="form-label">From (bookings)</label>
+          <input type="number" name="min_sold" min="0" placeholder="0"
+                 class="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">Price ($)</label>
+          <input type="number" name="price" step="0.01" min="0" placeholder="199.00"
+                 class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">Label (optional)</label>
+          <input type="text" name="label" placeholder="e.g. Early Bird"
+                 class="w-36 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <button type="submit" class="px-3 py-2 text-xs bg-sky-800 hover:bg-sky-700 text-sky-200 rounded-lg transition-colors">
+          Add Tier
+        </button>
+      </form>
+    </div>
+
+    <!-- Time slot pricing -->
+    <div>
+      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Time Window Surcharges</h3>
+      <p class="text-xs text-gray-600 mb-3">Stacks on top of the demand-tier price (e.g. sunset jumps, sunrise specials).</p>
+
+      {% if config.time_slots.all %}
+      <div class="space-y-2 mb-4">
+        {% for ts in config.time_slots.all %}
+        <div class="flex items-center gap-4 bg-gray-800/50 rounded-lg px-4 py-2.5 text-sm">
+          <span class="font-medium text-gray-200 w-40">{{ ts.label }}</span>
+          <span class="text-gray-400 w-36">{{ ts.time_from|date:"g:i A" }} – {{ ts.time_to|date:"g:i A" }}</span>
+          <span class="text-emerald-400 font-semibold w-16">{{ ts.surcharge_display }}</span>
+          {% if ts.days_of_week %}
+          <span class="text-gray-500 text-xs flex-1">
+            {% for d in ts.days_of_week %}{{ day_names|slice:d|last }}{% if not forloop.last %}, {% endif %}{% endfor %}
+          </span>
+          {% else %}
+          <span class="text-gray-600 text-xs flex-1">Every day</span>
+          {% endif %}
+          {% if not ts.is_active %}<span class="text-xs text-gray-600">Inactive</span>{% endif %}
+          <div class="flex items-center gap-2">
+            <form method="post" class="inline">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="toggle_timeslot">
+              <input type="hidden" name="timeslot_id" value="{{ ts.pk }}">
+              <button class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                {% if ts.is_active %}Pause{% else %}Enable{% endif %}
+              </button>
+            </form>
+            <form method="post" class="inline">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete_timeslot">
+              <input type="hidden" name="timeslot_id" value="{{ ts.pk }}">
+              <button class="text-xs text-gray-600 hover:text-red-400 transition-colors">Remove</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-xs text-gray-600 italic mb-3">No time-window surcharges configured.</p>
+      {% endif %}
+
+      <!-- Add time slot -->
+      <form method="post" class="flex flex-wrap gap-2 items-end">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_timeslot">
+        <input type="hidden" name="config_id" value="{{ config.pk }}">
+        <div>
+          <label class="form-label">Label</label>
+          <input type="text" name="label" placeholder="Sunset Jump"
+                 class="w-36 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">From</label>
+          <input type="time" name="time_from"
+                 class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">To</label>
+          <input type="time" name="time_to"
+                 class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">Surcharge ($)</label>
+          <input type="number" name="surcharge" step="0.01" min="0" placeholder="50.00"
+                 class="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">Days (blank = every day)</label>
+          <div class="flex gap-2">
+            {% for name in day_names %}
+            <label class="flex flex-col items-center gap-1 cursor-pointer">
+              <input type="checkbox" name="days_of_week" value="{{ forloop.counter0 }}"
+                     class="form-check-input w-3.5 h-3.5">
+              <span class="text-[10px] text-gray-500">{{ name }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <button type="submit" class="px-3 py-2 text-xs bg-sky-800 hover:bg-sky-700 text-sky-200 rounded-lg transition-colors">
+          Add Surcharge
+        </button>
+      </form>
+    </div>
+
+    <!-- Date overrides -->
+    <div>
+      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Date Overrides</h3>
+      <p class="text-xs text-gray-600 mb-3">Hard-set price for a specific date — bypasses all tiers and surcharges.</p>
+
+      {% if config.overrides.all %}
+      <div class="space-y-2 mb-4">
+        {% for ov in config.overrides.all %}
+        <div class="flex items-center gap-4 bg-gray-800/50 rounded-lg px-4 py-2.5 text-sm">
+          <span class="font-medium text-gray-200 w-28">{{ ov.date|date:"N j, Y" }}</span>
+          <span class="text-sky-400 font-semibold w-20">{{ ov.price_display }}</span>
+          {% if ov.reason %}<span class="text-gray-500 flex-1 text-xs italic">{{ ov.reason }}</span>{% else %}<span class="flex-1"></span>{% endif %}
+          <form method="post" class="inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_override">
+            <input type="hidden" name="override_id" value="{{ ov.pk }}">
+            <button class="text-gray-600 hover:text-red-400 transition-colors text-xs">Remove</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-xs text-gray-600 italic mb-3">No overrides set.</p>
+      {% endif %}
+
+      <!-- Add override -->
+      <form method="post" class="flex flex-wrap gap-2 items-end">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_override">
+        <input type="hidden" name="config_id" value="{{ config.pk }}">
+        <div>
+          <label class="form-label">Date</label>
+          <input type="date" name="date"
+                 class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">Price ($)</label>
+          <input type="number" name="price" step="0.01" min="0" placeholder="279.00"
+                 class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <div>
+          <label class="form-label">Reason (optional)</label>
+          <input type="text" name="reason" placeholder="Holiday weekend"
+                 class="w-48 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500">
+        </div>
+        <button type="submit" class="px-3 py-2 text-xs bg-sky-800 hover:bg-sky-700 text-sky-200 rounded-lg transition-colors">
+          Set Override
+        </button>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% empty %}
+<div class="bg-gray-900 border border-gray-800 rounded-xl px-5 py-12 text-center">
+  <p class="text-sm text-gray-500">No pricing configured yet. Add a jump type above to get started.</p>
+</div>
+{% endfor %}
+
+{% endblock %}

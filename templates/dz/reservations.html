@@ -112,6 +112,11 @@
           <span class="text-gray-400"><i class="bi bi-person mr-1"></i>{{ r.assigned_instructor.get_full_name|default:r.assigned_instructor.username }}</span>
           {% endif %}
           <span class="text-gray-600">{{ r.get_source_display }}</span>
+          {% if r.charged_price_display %}
+          <span class="text-sky-400 font-medium">{{ r.charged_price_display }}</span>
+          {% elif r.quoted_price_display %}
+          <span class="text-gray-400">{{ r.quoted_price_display }}</span>
+          {% endif %}
         </div>
       </div>
 

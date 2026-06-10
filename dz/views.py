@@ -3,7 +3,7 @@ import datetime
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db import models
+from django.db import models, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -1141,12 +1141,254 @@ def dz_reservation_detail(request, dz_id, reservation_id):
         for action_key, label in [TRANSITION_LABELS[status]]
     ]
     instructors = _assignable_instructors(dz, res.date, jump_type=res.jump_type)
+    load_slot_count = res.load_slots.count()
 
     return render(request, 'dz/reservation_detail.html', {
         'dz': dz,
         'res': res,
         'allowed_transitions': allowed,
         'instructors': instructors,
+        'load_slot_count': load_slot_count,
+        'user_dzs': _get_user_op_dzs(request.user),
+        'in_dz_ops': True,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Reservation — manifest promotion
+# ---------------------------------------------------------------------------
+
+@login_required
+def dz_reservation_manifest(request, dz_id, reservation_id):
+    """
+    Promote a confirmed or checked-in reservation onto an active load.
+    Creates LoadSlot(s): always a student slot; instructor slot if assigned.
+    """
+    from .models import Load, LoadSlot, Reservation
+
+    dz = get_object_or_404(Dropzone, pk=dz_id)
+    if not _check_access(request.user, dz):
+        messages.error(request, "You don't have access to this DZ.")
+        return redirect('dashboard')
+
+    res = get_object_or_404(Reservation, pk=reservation_id, dropzone=dz)
+
+    if res.status not in ('confirmed', 'checked_in'):
+        messages.error(request, "Only confirmed or checked-in reservations can be manifested.")
+        return redirect('dz_reservation_detail', dz_id=dz_id, reservation_id=reservation_id)
+
+    if request.method == 'POST':
+        load_id = request.POST.get('load_id')
+        load = get_object_or_404(Load, pk=load_id, dropzone=dz, date=res.date)
+
+        if load.status not in ('building', 'on_call'):
+            messages.error(request, f"Load {load.load_number} is {load.get_status_display()} — cannot add slots.")
+            return redirect('dz_reservation_detail', dz_id=dz_id, reservation_id=reservation_id)
+
+        if res.load_slots.filter(load=load).exists():
+            messages.warning(request, "This reservation is already on that load.")
+            return redirect('dz_reservation_detail', dz_id=dz_id, reservation_id=reservation_id)
+
+        with transaction.atomic():
+            # Assign a new group_key for this party
+            max_key = load.slots.aggregate(models.Max('group_key'))['group_key__max'] or 0
+            group_key = max_key + 1
+
+            ROLE_MAP = {'tandem': 'student', 'aff': 'student', 'coach': 'student'}
+            role = ROLE_MAP.get(res.jump_type, 'student')
+
+            LoadSlot.objects.create(
+                load=load,
+                guest_name=res.guest_name,
+                user=res.user,
+                role=role,
+                jump_type=res.jump_type,
+                group_key=group_key,
+                weight_lbs=res.weight_lbs,
+                media_status='requested' if res.add_ons.get('video') else 'none',
+                reservation=res,
+                added_by=request.user,
+            )
+
+            if res.assigned_instructor:
+                INSTRUCTOR_ROLE = {'tandem': 'instructor', 'aff': 'instructor', 'coach': 'instructor'}
+                LoadSlot.objects.create(
+                    load=load,
+                    user=res.assigned_instructor,
+                    role=INSTRUCTOR_ROLE.get(res.jump_type, 'instructor'),
+                    jump_type=res.jump_type,
+                    group_key=group_key,
+                    reservation=res,
+                    added_by=request.user,
+                )
+
+        messages.success(request, f"{res.display_name} added to Load {load.load_number}.")
+        return redirect('dz_reservation_detail', dz_id=dz_id, reservation_id=reservation_id)
+
+    # GET — show active loads for the date
+    active_loads = (
+        Load.objects
+        .filter(dropzone=dz, date=res.date, status__in=('building', 'on_call'))
+        .prefetch_related('slots')
+        .order_by('load_number')
+    )
+    already_manifested = res.load_slots.exists()
+
+    return render(request, 'dz/reservation_manifest.html', {
+        'dz': dz,
+        'res': res,
+        'active_loads': active_loads,
+        'already_manifested': already_manifested,
+        'user_dzs': _get_user_op_dzs(request.user),
+        'in_dz_ops': True,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Pricing config management
+# ---------------------------------------------------------------------------
+
+@login_required
+def dz_pricing(request, dz_id):
+    """
+    Staff pricing configuration page.
+    POST actions: add_config, add_tier, delete_tier, add_timeslot, delete_timeslot,
+                  add_override, delete_override, toggle_config, toggle_timeslot.
+    """
+    from .models import PricingConfig, PricingOverride, PricingTier, TimeSlotPricing
+
+    dz = get_object_or_404(Dropzone, pk=dz_id)
+    if not _check_access(request.user, dz):
+        messages.error(request, "You don't have access to this DZ.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        if action == 'add_config':
+            jump_type = request.POST.get('jump_type', '')
+            try:
+                base = int(float(request.POST.get('base_price', '0').replace('$', '')) * 100)
+                minimum = int(float(request.POST.get('min_price', '0').replace('$', '')) * 100)
+            except (ValueError, TypeError):
+                messages.error(request, "Invalid price value.")
+                return redirect('dz_pricing', dz_id=dz_id)
+            PricingConfig.objects.get_or_create(
+                dropzone=dz, jump_type=jump_type,
+                defaults={'base_price_cents': base, 'min_price_cents': minimum},
+            )
+            messages.success(request, "Pricing config created.")
+
+        elif action == 'update_config':
+            config_id = request.POST.get('config_id')
+            config = get_object_or_404(PricingConfig, pk=config_id, dropzone=dz)
+            try:
+                config.base_price_cents = int(float(request.POST.get('base_price', '0').replace('$', '')) * 100)
+                config.min_price_cents  = int(float(request.POST.get('min_price', '0').replace('$', '')) * 100)
+            except (ValueError, TypeError):
+                messages.error(request, "Invalid price value.")
+                return redirect('dz_pricing', dz_id=dz_id)
+            config.save()
+            messages.success(request, "Config updated.")
+
+        elif action == 'toggle_config':
+            config = get_object_or_404(PricingConfig, pk=request.POST.get('config_id'), dropzone=dz)
+            config.is_active = not config.is_active
+            config.save()
+
+        elif action == 'add_tier':
+            config = get_object_or_404(PricingConfig, pk=request.POST.get('config_id'), dropzone=dz)
+            try:
+                min_sold = int(request.POST.get('min_sold', '0'))
+                price = int(float(request.POST.get('price', '0').replace('$', '')) * 100)
+            except (ValueError, TypeError):
+                messages.error(request, "Invalid tier values.")
+                return redirect('dz_pricing', dz_id=dz_id)
+            label = request.POST.get('label', '').strip()
+            PricingTier.objects.update_or_create(
+                config=config, min_sold=min_sold,
+                defaults={'price_cents': price, 'label': label},
+            )
+            messages.success(request, "Tier saved.")
+
+        elif action == 'delete_tier':
+            tier = get_object_or_404(PricingTier, pk=request.POST.get('tier_id'), config__dropzone=dz)
+            tier.delete()
+            messages.success(request, "Tier deleted.")
+
+        elif action == 'add_timeslot':
+            config = get_object_or_404(PricingConfig, pk=request.POST.get('config_id'), dropzone=dz)
+            try:
+                surcharge = int(float(request.POST.get('surcharge', '0').replace('$', '')) * 100)
+            except (ValueError, TypeError):
+                messages.error(request, "Invalid surcharge value.")
+                return redirect('dz_pricing', dz_id=dz_id)
+            label      = request.POST.get('label', '').strip()
+            time_from  = request.POST.get('time_from', '').strip()
+            time_to    = request.POST.get('time_to', '').strip()
+            days_raw   = request.POST.getlist('days_of_week')
+            days       = [int(d) for d in days_raw if d.isdigit()]
+            try:
+                tf = datetime.time.fromisoformat(time_from)
+                tt = datetime.time.fromisoformat(time_to)
+            except (ValueError, TypeError):
+                messages.error(request, "Invalid time values.")
+                return redirect('dz_pricing', dz_id=dz_id)
+            TimeSlotPricing.objects.create(
+                config=config, label=label,
+                time_from=tf, time_to=tt,
+                surcharge_cents=surcharge, days_of_week=days,
+            )
+            messages.success(request, f'"{label}" time slot created.')
+
+        elif action == 'toggle_timeslot':
+            ts = get_object_or_404(TimeSlotPricing, pk=request.POST.get('timeslot_id'), config__dropzone=dz)
+            ts.is_active = not ts.is_active
+            ts.save()
+
+        elif action == 'delete_timeslot':
+            ts = get_object_or_404(TimeSlotPricing, pk=request.POST.get('timeslot_id'), config__dropzone=dz)
+            ts.delete()
+            messages.success(request, "Time slot deleted.")
+
+        elif action == 'add_override':
+            config = get_object_or_404(PricingConfig, pk=request.POST.get('config_id'), dropzone=dz)
+            try:
+                price = int(float(request.POST.get('price', '0').replace('$', '')) * 100)
+                date  = datetime.date.fromisoformat(request.POST.get('date', ''))
+            except (ValueError, TypeError):
+                messages.error(request, "Invalid override values.")
+                return redirect('dz_pricing', dz_id=dz_id)
+            reason = request.POST.get('reason', '').strip()
+            PricingOverride.objects.update_or_create(
+                config=config, date=date,
+                defaults={'price_cents': price, 'reason': reason, 'created_by': request.user},
+            )
+            messages.success(request, f"Override set for {date}.")
+
+        elif action == 'delete_override':
+            override = get_object_or_404(PricingOverride, pk=request.POST.get('override_id'), config__dropzone=dz)
+            override.delete()
+            messages.success(request, "Override deleted.")
+
+        return redirect('dz_pricing', dz_id=dz_id)
+
+    configs = (
+        PricingConfig.objects
+        .filter(dropzone=dz)
+        .prefetch_related('tiers', 'time_slots', 'overrides')
+        .order_by('jump_type')
+    )
+    configured_types = {c.jump_type for c in configs}
+    remaining_types = [(v, l) for v, l in PricingConfig.JUMP_TYPE_CHOICES if v not in configured_types]
+
+    DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+    return render(request, 'dz/pricing.html', {
+        'dz': dz,
+        'configs': configs,
+        'remaining_types': remaining_types,
+        'day_names': DAY_NAMES,
         'user_dzs': _get_user_op_dzs(request.user),
         'in_dz_ops': True,
     })

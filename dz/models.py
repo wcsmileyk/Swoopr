@@ -434,6 +434,24 @@ class Reservation(models.Model):
     )
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='online')
     notes = models.TextField(blank=True)
+
+    # Pricing
+    quoted_price_cents = models.IntegerField(
+        null=True, blank=True,
+        help_text='Price shown to the customer when booking.',
+    )
+    charged_price_cents = models.IntegerField(
+        null=True, blank=True,
+        help_text='Final amount actually charged.',
+    )
+    add_ons = models.JSONField(
+        default=dict, blank=True,
+        help_text='e.g. {"video": true, "photos": true}',
+    )
+
+    # Token for guest access to their booking confirmation (no account required)
+    confirmation_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -465,3 +483,184 @@ class Reservation(models.Model):
             )
         self.status = new_status
         self.save()
+
+    @property
+    def quoted_price_display(self):
+        if self.quoted_price_cents is None:
+            return None
+        return f'${self.quoted_price_cents / 100:.2f}'
+
+    @property
+    def charged_price_display(self):
+        if self.charged_price_cents is None:
+            return None
+        return f'${self.charged_price_cents / 100:.2f}'
+
+
+# ---------------------------------------------------------------------------
+# Pricing
+# ---------------------------------------------------------------------------
+
+class PricingConfig(models.Model):
+    """
+    Per-DZ, per-jump-type pricing configuration.
+    base_price_cents is the fallback when no demand tier matches.
+    min_price_cents is an absolute floor — the price will never go below it.
+    """
+    JUMP_TYPE_CHOICES = [
+        ('tandem', 'Tandem'),
+        ('aff', 'AFF'),
+        ('coach', 'Coach Jump'),
+    ]
+
+    dropzone = models.ForeignKey(Dropzone, on_delete=models.CASCADE, related_name='pricing_configs')
+    jump_type = models.CharField(max_length=10, choices=JUMP_TYPE_CHOICES)
+    base_price_cents = models.IntegerField(help_text='Default price when no demand tier applies.')
+    min_price_cents = models.IntegerField(default=0, help_text='Absolute floor — never charge less.')
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = [('dropzone', 'jump_type')]
+        ordering = ['dropzone', 'jump_type']
+
+    def __str__(self):
+        return f'{self.dropzone.name} — {self.get_jump_type_display()} pricing'
+
+    @property
+    def base_price_display(self):
+        return f'${self.base_price_cents / 100:.2f}'
+
+    @property
+    def min_price_display(self):
+        return f'${self.min_price_cents / 100:.2f}'
+
+
+class PricingTier(models.Model):
+    """
+    Demand-based fare bucket. Active tier = highest min_sold ≤ current booking count.
+    e.g. min_sold=0 → $199, min_sold=5 → $229, min_sold=10 → $259.
+    """
+    config = models.ForeignKey(PricingConfig, on_delete=models.CASCADE, related_name='tiers')
+    min_sold = models.IntegerField(
+        help_text='Minimum confirmed+pending bookings on this date to activate this tier.',
+    )
+    price_cents = models.IntegerField()
+    label = models.CharField(max_length=50, blank=True, help_text='e.g. "Early Bird", "Standard", "Peak"')
+
+    class Meta:
+        ordering = ['config', 'min_sold']
+        unique_together = [('config', 'min_sold')]
+
+    def __str__(self):
+        label = f' ({self.label})' if self.label else ''
+        return f'{self.config} — from {self.min_sold} sold: ${self.price_cents / 100:.2f}{label}'
+
+    @property
+    def price_display(self):
+        return f'${self.price_cents / 100:.2f}'
+
+
+class TimeSlotPricing(models.Model):
+    """
+    Recurring time-window surcharge that stacks on the demand-tier price.
+    e.g. sunset jumps (17:00-20:00) add $50 regardless of demand tier.
+    days_of_week is a list of integers [0-6]; empty list means every day.
+    """
+    config = models.ForeignKey(PricingConfig, on_delete=models.CASCADE, related_name='time_slots')
+    label = models.CharField(max_length=100, help_text='e.g. "Sunset Jump", "Sunrise Special"')
+    time_from = models.TimeField()
+    time_to = models.TimeField()
+    surcharge_cents = models.IntegerField(help_text='Added on top of demand-tier price.')
+    days_of_week = models.JSONField(
+        default=list, blank=True,
+        help_text='Day integers [0=Mon … 6=Sun] this applies to. Empty = every day.',
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['config', 'time_from']
+
+    def __str__(self):
+        return f'{self.label} +${self.surcharge_cents / 100:.2f} ({self.time_from.strftime("%H:%M")}–{self.time_to.strftime("%H:%M")})'
+
+    def applies_on(self, day_of_week):
+        return not self.days_of_week or day_of_week in self.days_of_week
+
+    @property
+    def surcharge_display(self):
+        return f'+${self.surcharge_cents / 100:.2f}'
+
+
+class PricingOverride(models.Model):
+    """
+    Manual date-specific price override. Takes priority over all tiers and surcharges.
+    Use for holidays, special events, or manual corrections.
+    """
+    config = models.ForeignKey(PricingConfig, on_delete=models.CASCADE, related_name='overrides')
+    date = models.DateField()
+    price_cents = models.IntegerField()
+    reason = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='pricing_overrides',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('config', 'date')]
+        ordering = ['-date']
+
+    def __str__(self):
+        return f'{self.config} override {self.date}: ${self.price_cents / 100:.2f}'
+
+    @property
+    def price_display(self):
+        return f'${self.price_cents / 100:.2f}'
+
+
+# ---------------------------------------------------------------------------
+# Payment
+# ---------------------------------------------------------------------------
+
+class Payment(models.Model):
+    """
+    Provider-agnostic payment record linked to a Reservation.
+    Real providers are not implemented — StubProvider is used until a real integration is added.
+    Swap providers by changing the provider field and wiring up the provider class in payment_service.py.
+    """
+    PROVIDER_CHOICES = [
+        ('stub',   'Stub (no-op)'),
+        ('stripe', 'Stripe'),
+        ('square', 'Square'),
+        ('cash',   'Cash'),
+    ]
+    STATUS_CHOICES = [
+        ('pending',    'Pending'),
+        ('authorized', 'Authorized'),
+        ('captured',   'Captured'),
+        ('refunded',   'Refunded'),
+        ('failed',     'Failed'),
+        ('voided',     'Voided'),
+    ]
+
+    reservation = models.OneToOneField(
+        'dz.Reservation', on_delete=models.CASCADE, related_name='payment',
+    )
+    provider = models.CharField(max_length=10, choices=PROVIDER_CHOICES, default='stub')
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='pending')
+    amount_cents = models.IntegerField()
+    currency = models.CharField(max_length=3, default='USD')
+    provider_transaction_id = models.CharField(max_length=255, blank=True)
+    provider_data = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Payment {self.pk} — {self.reservation} — ${self.amount_cents / 100:.2f} [{self.status}]'
+
+    @property
+    def amount_display(self):
+        return f'${self.amount_cents / 100:.2f}'

@@ -1,0 +1,16 @@
+<div id="price-widget" class="bg-gray-900 border border-sky-900/50 rounded-xl p-4 mb-4 flex items-center justify-between">
+  <div>
+    <p class="text-xs text-gray-500 uppercase tracking-widest">Current Price</p>
+    {% if price_display %}
+    <p class="text-2xl font-bold text-sky-400">{{ price_display }}</p>
+    {% else %}
+    <p class="text-xl font-bold text-gray-500">—</p>
+    {% endif %}
+  </div>
+  {% if price_display %}
+  <div class="text-right">
+    <p class="text-xs text-gray-500">Demand-based pricing</p>
+    <p class="text-xs text-gray-600">Price may change before checkout</p>
+  </div>
+  {% endif %}
+</div>

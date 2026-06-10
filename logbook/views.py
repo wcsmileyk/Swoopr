@@ -1185,11 +1185,34 @@ def import_csv_confirm(request):
 # Logbook query
 # ---------------------------------------------------------------------------
 
-_QUERY_FILTER_KEYS = [
-    'date_from', 'date_to', 'dropzone', 'jump_type', 'canopy', 'aircraft',
-    'swoop_only', 'has_gps', 'altitude_min', 'altitude_max',
-    'formation_min', 'formation_max', 'notes_contains',
-]
+# Canonical turn values skydivers use: 90/180/270 for recreational,
+# then every 180° for competition entries (skipping 360 which isn't a
+# standard entry point).
+_CANONICAL_TURNS = [90, 180, 270, 450, 630, 810, 990, 1170, 1350, 1530]
+
+
+def normalize_rotation(degrees):
+    """Snap raw turn degrees to the nearest canonical value."""
+    if degrees is None:
+        return None
+    return min(_CANONICAL_TURNS, key=lambda c: abs(c - degrees))
+
+
+def _rotation_bounds(canonical):
+    """
+    Return (lower, upper) inclusive raw-value bounds for the canonical bucket,
+    i.e. the range of raw values that normalize to `canonical`.
+    """
+    try:
+        idx = _CANONICAL_TURNS.index(int(canonical))
+    except (ValueError, TypeError):
+        return None, None
+    prev  = _CANONICAL_TURNS[idx - 1] if idx > 0 else 0
+    next_ = _CANONICAL_TURNS[idx + 1] if idx < len(_CANONICAL_TURNS) - 1 else 9999
+    lower = (prev + canonical) // 2 + 1 if idx > 0 else 1
+    upper = (canonical + next_) // 2
+    return lower, upper
+
 
 _GROUP_BY_OPTIONS = [
     ('', 'No grouping'),
@@ -1202,46 +1225,143 @@ _GROUP_BY_OPTIONS = [
 ]
 
 
-def _apply_query_filters(queryset, params):
-    if params.get('date_from'):
-        queryset = queryset.filter(date__gte=params.get('date_from'))
-    if params.get('date_to'):
-        queryset = queryset.filter(date__lte=params.get('date_to'))
-    if params.get('dropzone'):
-        queryset = queryset.filter(dropzone_id=params.get('dropzone'))
-    if params.get('jump_type'):
-        queryset = queryset.filter(jump_type_id=params.get('jump_type'))
-    if params.get('canopy'):
-        queryset = queryset.filter(canopy_id=params.get('canopy'))
-    if params.get('aircraft'):
-        queryset = queryset.filter(aircraft_id=params.get('aircraft'))
-    if params.get('swoop_only'):
-        queryset = queryset.filter(swoop=True)
-    if params.get('has_gps'):
-        queryset = queryset.filter(flight__isnull=False)
+def _build_rule_q(field, op, value):
+    """Build a Django Q object for a single filter rule. Returns None if invalid/empty."""
     try:
-        if params.get('altitude_min'):
-            queryset = queryset.filter(altitude__gte=int(params.get('altitude_min')))
+        if field == 'dropzone':
+            if op == 'is' and value:
+                return Q(dropzone_id=int(value))
+        elif field == 'jump_type':
+            if op == 'is' and value:
+                return Q(jump_type_id=int(value))
+        elif field == 'canopy':
+            if op == 'is' and value:
+                return Q(canopy_id=int(value))
+        elif field == 'aircraft':
+            if op == 'is' and value:
+                return Q(aircraft_id=int(value))
+        elif field == 'swoop':
+            if op == 'is_true':
+                return Q(swoop=True)
+            if op == 'is_false':
+                return Q(swoop=False)
+        elif field == 'has_gps':
+            if op == 'is_true':
+                return Q(flight__isnull=False)
+            if op == 'is_false':
+                return Q(flight__isnull=True)
+        elif field == 'altitude':
+            if value:
+                v = int(value)
+                if op == 'gte':   return Q(altitude__gte=v)
+                if op == 'lte':   return Q(altitude__lte=v)
+                if op == 'eq':    return Q(altitude=v)
+        elif field == 'formation_size':
+            if value:
+                v = int(value)
+                if op == 'gte':   return Q(formation_size__gte=v)
+                if op == 'lte':   return Q(formation_size__lte=v)
+                if op == 'eq':    return Q(formation_size=v)
+        elif field == 'turn_rotation':
+            if value:
+                v = int(value)
+                if op == 'norm_eq':
+                    lower, upper = _rotation_bounds(v)
+                    if lower is not None:
+                        return Q(turn_rotation__gte=lower, turn_rotation__lte=upper)
+                elif op == 'gte':
+                    lower, _ = _rotation_bounds(v)
+                    if lower is not None:
+                        return Q(turn_rotation__gte=lower)
+                elif op == 'lte':
+                    _, upper = _rotation_bounds(v)
+                    if upper is not None:
+                        return Q(turn_rotation__lte=upper)
+        elif field == 'jump_number':
+            if value:
+                v = int(value)
+                if op == 'gte':   return Q(jump_number__gte=v)
+                if op == 'lte':   return Q(jump_number__lte=v)
+                if op == 'eq':    return Q(jump_number=v)
+        elif field == 'notes':
+            if op == 'contains' and value:
+                return Q(notes__icontains=value)
+        elif field == 'student_category':
+            if op == 'is' and value:
+                return Q(student_category=value)
+        elif field == 'student_jump_method':
+            if op == 'is' and value:
+                return Q(student_jump_method=value)
     except (ValueError, TypeError):
         pass
-    try:
-        if params.get('altitude_max'):
-            queryset = queryset.filter(altitude__lte=int(params.get('altitude_max')))
-    except (ValueError, TypeError):
-        pass
-    try:
-        if params.get('formation_min'):
-            queryset = queryset.filter(formation_size__gte=int(params.get('formation_min')))
-    except (ValueError, TypeError):
-        pass
-    try:
-        if params.get('formation_max'):
-            queryset = queryset.filter(formation_size__lte=int(params.get('formation_max')))
-    except (ValueError, TypeError):
-        pass
-    if params.get('notes_contains'):
-        queryset = queryset.filter(notes__icontains=params.get('notes_contains'))
+    return None
+
+
+def _apply_advanced_filters(queryset, rules):
+    """Apply a list of filter rules (v2 format) to a queryset using AND/OR/NOT logic."""
+    combined = None
+    for rule in rules:
+        field = rule.get('field', '')
+        op = rule.get('op', '')
+        value = rule.get('value', '')
+        negate = rule.get('negate', False)
+        join = rule.get('join', 'AND')
+
+        rule_q = _build_rule_q(field, op, value)
+        if rule_q is None:
+            continue
+        if negate:
+            rule_q = ~rule_q
+
+        if combined is None:
+            combined = rule_q
+        elif join == 'OR':
+            combined |= rule_q
+        else:
+            combined &= rule_q
+
+    if combined is not None:
+        queryset = queryset.filter(combined)
     return queryset
+
+
+def _convert_v1_params(params):
+    """Convert old flat SavedQuery params to v2 format."""
+    rules = []
+    if params.get('dropzone'):
+        rules.append({'field': 'dropzone', 'op': 'is', 'value': str(params['dropzone']), 'negate': False, 'join': 'AND'})
+    if params.get('jump_type'):
+        rules.append({'field': 'jump_type', 'op': 'is', 'value': str(params['jump_type']), 'negate': False, 'join': 'AND'})
+    if params.get('canopy'):
+        rules.append({'field': 'canopy', 'op': 'is', 'value': str(params['canopy']), 'negate': False, 'join': 'AND'})
+    if params.get('aircraft'):
+        rules.append({'field': 'aircraft', 'op': 'is', 'value': str(params['aircraft']), 'negate': False, 'join': 'AND'})
+    if params.get('swoop_only'):
+        rules.append({'field': 'swoop', 'op': 'is_true', 'value': '', 'negate': False, 'join': 'AND'})
+    if params.get('has_gps'):
+        rules.append({'field': 'has_gps', 'op': 'is_true', 'value': '', 'negate': False, 'join': 'AND'})
+    if params.get('altitude_min'):
+        rules.append({'field': 'altitude', 'op': 'gte', 'value': str(params['altitude_min']), 'negate': False, 'join': 'AND'})
+    if params.get('altitude_max'):
+        rules.append({'field': 'altitude', 'op': 'lte', 'value': str(params['altitude_max']), 'negate': False, 'join': 'AND'})
+    if params.get('formation_min'):
+        rules.append({'field': 'formation_size', 'op': 'gte', 'value': str(params['formation_min']), 'negate': False, 'join': 'AND'})
+    if params.get('formation_max'):
+        rules.append({'field': 'formation_size', 'op': 'lte', 'value': str(params['formation_max']), 'negate': False, 'join': 'AND'})
+    if params.get('notes_contains'):
+        rules.append({'field': 'notes', 'op': 'contains', 'value': params['notes_contains'], 'negate': False, 'join': 'AND'})
+    date_from = params.get('date_from', '')
+    date_to = params.get('date_to', '')
+    return {
+        'v': 2,
+        'rules': rules,
+        'timebox': 'custom' if (date_from or date_to) else 'all',
+        'date_from': date_from,
+        'date_to': date_to,
+        'sort_field': 'jump_num',
+        'sort_dir': 'desc',
+        'group_by': params.get('group_by', ''),
+    }
 
 
 def _compute_query_stats(jumps):
@@ -1253,6 +1373,7 @@ def _compute_query_stats(jumps):
         min_altitude=Min('altitude'),
         max_altitude=Max('altitude'),
         avg_formation=Avg('formation_size'),
+        avg_turn_raw=Avg('turn_rotation', filter=Q(turn_rotation__isnull=False)),
         date_min=Min('date'),
         date_max=Max('date'),
     )
@@ -1264,6 +1385,10 @@ def _compute_query_stats(jumps):
         agg['avg_altitude'] = round(agg['avg_altitude'])
     if agg['avg_formation'] is not None:
         agg['avg_formation'] = round(agg['avg_formation'], 1)
+    if agg['avg_turn_raw'] is not None:
+        agg['avg_turn_norm'] = normalize_rotation(round(agg['avg_turn_raw']))
+    else:
+        agg['avg_turn_norm'] = None
     return agg
 
 
@@ -1335,42 +1460,105 @@ def _compute_breakdown(jumps, group_by):
     return result
 
 
+def _build_query_choices(user):
+    return {
+        'dropzone': [{'id': dz.id, 'label': dz.name} for dz in Dropzone.objects.all().order_by('name')],
+        'jump_type': [{'id': jt.id, 'label': jt.name} for jt in JumpType.objects.all().order_by('name')],
+        'canopy': [{'id': c.id, 'label': c.display_name} for c in user.canopies.filter(is_active=True).order_by('model')],
+        'aircraft': [{'id': ac.id, 'label': ac.model} for ac in Aircraft.objects.all().order_by('model')],
+        'student_category': [{'id': k, 'label': v} for k, v in STUDENT_CATEGORY_CHOICES],
+        'student_jump_method': [{'id': k, 'label': v} for k, v in JUMP_METHOD_CHOICES],
+        'turn_rotation': [{'id': t, 'label': f'{t}°'} for t in _CANONICAL_TURNS],
+    }
+
+
+def _compute_widget_stats(saved_query, user):
+    """Compute basic stats for a dashboard/swooper widget card."""
+    params = saved_query.params
+    if params.get('v') != 2:
+        params = _convert_v1_params(params)
+
+    jumps = Jump.objects.filter(user=user)
+    date_from = params.get('date_from', '')
+    date_to = params.get('date_to', '')
+    if date_from:
+        jumps = jumps.filter(date__gte=date_from)
+    if date_to:
+        jumps = jumps.filter(date__lte=date_to)
+    jumps = _apply_advanced_filters(jumps, params.get('rules', []))
+
+    return jumps.aggregate(
+        total=Count('id'),
+        swoop_count=Count('id', filter=Q(swoop=True)),
+        gps_count=Count('flight', filter=Q(flight__isnull=False)),
+    )
+
+
 @login_required
 def query_view(request):
-    from urllib.parse import urlencode as _urlencode
-    params = request.GET
-    group_by = params.get('group_by', '')
-    has_filters = any(params.get(k) for k in _QUERY_FILTER_KEYS + ['group_by'])
+    from urllib.parse import unquote as _unquote
 
+    q_raw = request.GET.get('q', '')
+    state = {}
+    if q_raw:
+        try:
+            state = json.loads(_unquote(q_raw))
+        except (ValueError, Exception):
+            state = {}
+
+    # Normalise to v2
+    if state and state.get('v') != 2:
+        state = _convert_v1_params(state)
+
+    rules = state.get('rules', [])
+    timebox = state.get('timebox', 'all')
+    date_from = state.get('date_from', '')
+    date_to = state.get('date_to', '')
+    sort_field_key = state.get('sort_field', 'jump_num')
+    sort_dir = state.get('sort_dir', 'desc')
+    group_by = state.get('group_by', '')
+
+    has_filters = bool(q_raw)
     stats = None
     breakdown = None
 
     if has_filters:
         jumps = Jump.objects.filter(user=request.user)
-        jumps = _apply_query_filters(jumps, params)
+        if date_from:
+            jumps = jumps.filter(date__gte=date_from)
+        if date_to:
+            jumps = jumps.filter(date__lte=date_to)
+        jumps = _apply_advanced_filters(jumps, rules)
+
+        # Apply sort
+        sort_field_raw = _SORT_MAP.get(sort_field_key, 'jump_number')
+        sort_field = f'-{sort_field_raw}' if sort_dir == 'desc' else sort_field_raw
+        jumps = jumps.order_by(sort_field, '-id')
+
         stats = _compute_query_stats(jumps)
         if group_by:
             breakdown = _compute_breakdown(jumps, group_by)
 
-    # Params for the save-query form and the "view in logbook" link
-    active_params = {k: params[k] for k in _QUERY_FILTER_KEYS + ['group_by'] if params.get(k)}
-    logbook_compat = ['date_from', 'date_to', 'dropzone', 'jump_type', 'canopy', 'swoop_only']
-    logbook_qs = _urlencode({k: active_params[k] for k in logbook_compat if k in active_params})
+    initial_state = {
+        'v': 2,
+        'rules': rules,
+        'timebox': timebox,
+        'date_from': date_from,
+        'date_to': date_to,
+        'sort_field': sort_field_key,
+        'sort_dir': sort_dir,
+        'group_by': group_by,
+    }
 
     context = {
-        'filters': params,
         'has_filters': has_filters,
         'group_by': group_by,
         'group_by_options': _GROUP_BY_OPTIONS,
         'stats': stats,
         'breakdown': breakdown,
-        'params_json': json.dumps(active_params),
-        'logbook_filter_qs': logbook_qs,
+        'initial_state': initial_state,
+        'choices': _build_query_choices(request.user),
         'saved_queries': SavedQuery.objects.filter(user=request.user),
-        'dropzones': Dropzone.objects.all().order_by('name'),
-        'jump_types': JumpType.objects.all().order_by('name'),
-        'canopies': request.user.canopies.filter(is_active=True).order_by('model'),
-        'aircraft_list': Aircraft.objects.all().order_by('model'),
     }
 
     if request.headers.get('HX-Request'):
@@ -1386,6 +1574,9 @@ def save_query(request):
 
     name = request.POST.get('name', '').strip()
     params_raw = request.POST.get('params', '{}')
+    is_dashboard = bool(request.POST.get('is_dashboard_widget'))
+    is_swooper = bool(request.POST.get('is_swooper_widget'))
+
     try:
         params = json.loads(params_raw)
     except json.JSONDecodeError:
@@ -1395,12 +1586,16 @@ def save_query(request):
     if not name:
         save_error = 'Enter a name for this query.'
     elif not params:
-        save_error = 'No filters are set — apply at least one filter before saving.'
+        save_error = 'No query state to save.'
     else:
         SavedQuery.objects.update_or_create(
             user=request.user,
             name=name,
-            defaults={'params': params},
+            defaults={
+                'params': params,
+                'is_dashboard_widget': is_dashboard,
+                'is_swooper_widget': is_swooper,
+            },
         )
 
     saved_queries = SavedQuery.objects.filter(user=request.user)
@@ -1421,10 +1616,32 @@ def delete_query(request, pk):
 
 
 @login_required
-def load_query(request, pk):
-    from urllib.parse import urlencode as _urlencode
+def toggle_widget(request, pk):
+    """Toggle dashboard or swooper widget flag on a saved query."""
+    if request.method != 'POST':
+        return redirect('logbook_query')
     query = get_object_or_404(SavedQuery, pk=pk, user=request.user)
-    return redirect(f"/logbook/query/?{_urlencode(query.params)}")
+    widget_type = request.POST.get('type')
+    if widget_type == 'dashboard':
+        query.is_dashboard_widget = not query.is_dashboard_widget
+        query.save(update_fields=['is_dashboard_widget'])
+    elif widget_type == 'swooper':
+        query.is_swooper_widget = not query.is_swooper_widget
+        query.save(update_fields=['is_swooper_widget'])
+    saved_queries = SavedQuery.objects.filter(user=request.user)
+    return render(request, 'logbook/partials/saved_queries_list.html', {
+        'saved_queries': saved_queries,
+    })
+
+
+@login_required
+def load_query(request, pk):
+    from urllib.parse import quote as _quote
+    query = get_object_or_404(SavedQuery, pk=pk, user=request.user)
+    params = query.params
+    if params.get('v') != 2:
+        params = _convert_v1_params(params)
+    return redirect(f"/logbook/query/?q={_quote(json.dumps(params))}")
 
 
 # ---------------------------------------------------------------------------

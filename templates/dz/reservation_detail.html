@@ -187,6 +187,55 @@
       </div>
     </div>
 
+    <!-- Pricing / payment -->
+    {% if res.quoted_price_display or res.charged_price_display %}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+      <h2 class="text-sm font-semibold text-gray-300">Payment</h2>
+      <div class="space-y-2 text-xs">
+        {% if res.quoted_price_display %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Quoted</span>
+          <span class="text-gray-300">{{ res.quoted_price_display }}</span>
+        </div>
+        {% endif %}
+        {% if res.charged_price_display %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Charged</span>
+          <span class="text-sky-400 font-semibold">{{ res.charged_price_display }}</span>
+        </div>
+        {% endif %}
+        {% if res.payment %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Provider</span>
+          <span class="text-gray-300">{{ res.payment.get_provider_display }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Status</span>
+          <span class="{% if res.payment.status == 'captured' %}text-emerald-400{% elif res.payment.status == 'failed' %}text-red-400{% else %}text-gray-400{% endif %}">
+            {{ res.payment.get_status_display }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Manifest promotion -->
+    {% if res.status == 'confirmed' or res.status == 'checked_in' %}
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-gray-300 mb-3">Manifest</h2>
+      {% if load_slot_count %}
+      <p class="text-xs text-emerald-400 mb-3">On {{ load_slot_count }} load slot{{ load_slot_count|pluralize }}.</p>
+      {% else %}
+      <p class="text-xs text-gray-500 mb-3">Not yet on a load.</p>
+      {% endif %}
+      <a href="{% url 'dz_reservation_manifest' dz_id=dz.pk reservation_id=res.pk %}"
+         class="block text-center py-2 bg-sky-700 hover:bg-sky-600 text-white text-xs font-medium rounded-lg transition-colors">
+        Add to Load
+      </a>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 
