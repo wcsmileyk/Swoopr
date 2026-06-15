@@ -84,6 +84,12 @@ def _extract_straight_line_canopy_points(flight):
 
     df['h_speed'] = np.sqrt(df['velocity_north'] ** 2 + df['velocity_east'] ** 2)
 
+    # Primary phase boundary: use the detected canopy start timestamp when available.
+    # This eliminates the exit shuffle and freefall entirely regardless of speed.
+    # Fall back to velocity-only filtering for flights processed before this feature.
+    if flight.canopy_start_timestamp:
+        df = df[df['timestamp'] >= flight.canopy_start_timestamp].copy().reset_index(drop=True)
+
     canopy = df[
         (df['altitude_agl'] >= MIN_ALT_AGL_M) &
         (df['velocity_down'] > MIN_CANOPY_VSPEED_MS) &
