@@ -753,66 +753,88 @@ class FlightManager:
         """
         Find the DataFrame index where canopy flight is established after deployment.
 
-        Follows the freefall acceleration signature: after exit (max AGL), velD
-        increases continuously under gravity until the canopy opens and arrests it.
-        The end of that sustained positive acceleration — regardless of peak speed —
-        is the deployment point. Works for all pull altitudes.
-
         Steps:
-          1. Find exit_idx at max smoothed AGL.
-          2. Smooth velD over 3s to suppress noise.
-          3. Wait for velD to exceed a small onset threshold (5 m/s) to skip the
-             exit shuffle when horizontal plane speed is still bleeding off.
-          4. Find the first 2s window where the smoothed velD derivative is
-             consistently negative — that is the opening.
-          5. Return opening_idx + 5s stabilization buffer.
+          1. Rough exit bound: max smoothed AGL (may sit anywhere in the jump-run
+             plateau — cannot be relied on as the precise exit point).
+          2. Freefall onset: first point AFTER max AGL where smoothed velD exceeds
+             10 m/s (~22 mph). A jump-run aircraft descends at 0-3 m/s, so 10 m/s
+             is only reachable after the jumper has left the aircraft (typically
+             within 1-2 seconds of exit). Works for all pull altitudes including
+             HNPs because even 1 second of freefall produces ~10 m/s.
+          3. Hard minimum wait: freefall_onset + 5s. This puts the earliest
+             possible canopy search 5+ seconds into confirmed freefall, well clear
+             of the exit shuffle and initial deployment transient.
+          4a. HNP / fast open: if smooth velD at the 5s mark is already below
+              70 mph (31.3 m/s), the canopy opened during the wait window.
+              Return that point + stabilisation buffer.
+          4b. Normal freefall: velD is still high. Find the first sustained 2s
+              window where the velD derivative turns consistently negative — the
+              end of the freefall acceleration phase marks the canopy opening.
+          5. Add 5s stabilisation buffer after the detected opening.
         """
+        FREEFALL_ONSET_MS = 10.0            # m/s — above any jump-run descent rate
+        MAX_CANOPY_VSPEED_MS = 70 * 0.44704 # 70 mph → m/s
+
         t_s = df['t_s'].to_numpy(dtype=float)
         vspeed = df['velD'].to_numpy(dtype=float)
 
         dt = float(np.nanmedian(np.diff(t_s))) if len(t_s) > 1 else 0.2
         fs = 1.0 / dt if dt > 0 else 5.0
         smooth_win = max(3, int(round(3.0 * fs)))
-        neg_win = max(2, int(round(2.0 * fs)))
+        min_wait_n = int(round(5.0 * fs))
         stabilize_n = int(round(5.0 * fs))
+        neg_win = max(2, int(round(2.0 * fs)))
 
-        # Step 1: exit index = max smoothed AGL
-        smooth_agl = df['AGL'].rolling(smooth_win, center=True, min_periods=1).median()
-        exit_idx = int(smooth_agl.idxmax())
-        if exit_idx >= landing_idx - stabilize_n:
-            return exit_idx
-
-        # Step 2: smooth velD
+        smooth_agl = df['AGL'].rolling(smooth_win, center=True, min_periods=1).median().to_numpy()
         smooth_vspeed = (
             pd.Series(vspeed)
             .rolling(smooth_win, center=True, min_periods=1)
             .mean()
             .to_numpy()
         )
+
+        # Step 1: rough exit bound = max smoothed AGL
+        rough_exit_idx = int(np.argmax(smooth_agl))
+
+        # Step 2: freefall onset — first sample after max AGL where velD >= 10 m/s.
+        # Guaranteed to be after the jumper has left the aircraft.
+        post_exit = np.arange(rough_exit_idx, landing_idx)
+        ff_mask = smooth_vspeed[post_exit] >= FREEFALL_ONSET_MS
+        if ff_mask.any():
+            freefall_onset_idx = int(post_exit[np.argmax(ff_mask)])
+        else:
+            # Track never shows meaningful freefall (HNP at ultra-low altitude,
+            # or track starts mid-canopy). Fall back to max-AGL point.
+            freefall_onset_idx = rough_exit_idx
+
+        # Step 3: hard minimum wait from freefall onset
+        earliest_search = min(freefall_onset_idx + min_wait_n, landing_idx)
+
+        # Step 4a: HNP / fast open — velD already below canopy threshold at 5s mark
+        if smooth_vspeed[earliest_search] < MAX_CANOPY_VSPEED_MS:
+            return min(earliest_search + stabilize_n, landing_idx)
+
+        # Step 4b: still in freefall — first sustained 2s negative velD derivative
         dvspeed = np.diff(smooth_vspeed, prepend=smooth_vspeed[0])
+        post = np.arange(earliest_search, landing_idx)
 
-        # Step 3: find onset (velD first exceeds 5 m/s after exit)
-        search = np.arange(exit_idx, landing_idx)
-        onset_mask = smooth_vspeed[search] >= 5.0
-        if not onset_mask.any():
-            return min(exit_idx + stabilize_n, landing_idx)
-        onset_idx = int(search[np.argmax(onset_mask)])
+        if len(post) == 0:
+            return min(earliest_search + stabilize_n, landing_idx)
 
-        # Step 4: first sustained negative derivative (2s window all negative)
-        post = np.arange(onset_idx, landing_idx)
         neg = (dvspeed[post] < 0).astype(int)
         neg_roll = pd.Series(neg).rolling(neg_win, min_periods=neg_win).sum().to_numpy()
         hits = np.where(neg_roll >= neg_win)[0]
-        if hits.size == 0:
-            # No clear inflection — fall back to velD peak
-            peak_rel = int(np.argmax(smooth_vspeed[search]))
-            return min(int(search[peak_rel]) + stabilize_n, landing_idx)
 
-        # Roll window reports at the END of the window; walk back to the start
+        if hits.size == 0:
+            # Fallback: velD peak is the best proxy for deployment
+            peak_idx = int(post[0]) + int(np.argmax(smooth_vspeed[post]))
+            return min(peak_idx + stabilize_n, landing_idx)
+
+        # Roll reports at window end; walk back to the start of the negative run
         drop_start_rel = max(0, int(hits[0]) - neg_win + 1)
         drop_start_idx = int(post[drop_start_rel])
 
-        # Step 5: add stabilization buffer
+        # Step 5: stabilisation buffer
         return min(drop_start_idx + stabilize_n, landing_idx)
 
     def get_landing(self, df):

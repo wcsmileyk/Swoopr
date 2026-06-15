@@ -26,6 +26,7 @@ MIN_ALT_AGL_M = 1000 * 0.3048          # 1000ft -> meters
 HEADING_THRESHOLD_DEG = 10.0
 MIN_SEGMENT_DURATION_S = 2.0
 MAX_GAP_S = 1.0
+MAX_HSPEED_CHANGE_MS = 10 * 0.44704    # 10 mph -> m/s; rejects diving/accelerating segments
 MPS_TO_MPH = 1.0 / 0.44704
 
 
@@ -39,24 +40,37 @@ def _circular_range(angles):
     return 360 - max(gaps)
 
 
-def _find_straight_segments(times, headings):
-    """Return list of (start_idx, end_idx) inclusive for qualifying straight segments."""
+def _find_straight_segments(times, headings, h_speeds):
+    """
+    Return list of (start_idx, end_idx) inclusive for qualifying straight segments.
+
+    A segment qualifies when:
+    - heading stays within HEADING_THRESHOLD_DEG (10°) for MIN_SEGMENT_DURATION_S (2s)
+    - no internal data gap exceeds MAX_GAP_S
+    - h_speed range across the segment is <= MAX_HSPEED_CHANGE_MS (15 mph)
+      — rejects swoop dives where speed builds rapidly through an otherwise
+        straight heading window
+    """
     n = len(times)
     segments = []
     i = 0
     while i < n:
         j = i
         head_window = [headings[j]]
+        spd_window = [h_speeds[j]]
         while j + 1 < n:
             if times[j + 1] - times[j] > MAX_GAP_S:
                 break
-            candidate = head_window + [headings[j + 1]]
-            if _circular_range(candidate) <= HEADING_THRESHOLD_DEG:
+            candidate_h = head_window + [headings[j + 1]]
+            if _circular_range(candidate_h) <= HEADING_THRESHOLD_DEG:
                 head_window.append(headings[j + 1])
+                spd_window.append(h_speeds[j + 1])
                 j += 1
             else:
                 break
-        if times[j] - times[i] >= MIN_SEGMENT_DURATION_S:
+        duration = times[j] - times[i]
+        spd_range = max(spd_window) - min(spd_window)
+        if duration >= MIN_SEGMENT_DURATION_S and spd_range <= MAX_HSPEED_CHANGE_MS:
             segments.append((i, j))
             i = j + 1
         else:
@@ -103,6 +117,7 @@ def _extract_straight_line_canopy_points(flight):
     segments = _find_straight_segments(
         canopy['timestamp'].tolist(),
         canopy['heading'].tolist(),
+        canopy['h_speed'].tolist(),
     )
     if not segments:
         return None

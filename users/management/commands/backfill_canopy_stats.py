@@ -74,6 +74,10 @@ class Command(BaseCommand):
                 df['t_s'] = df['timestamp'] - df['timestamp'].iloc[0]
                 df['AGL'] = pd.to_numeric(df['altitude_agl'], errors='coerce')
                 df['velD'] = pd.to_numeric(df['velocity_down'], errors='coerce')
+                if 'velocity_north' in df.columns:
+                    df['velN'] = pd.to_numeric(df['velocity_north'], errors='coerce')
+                if 'velocity_east' in df.columns:
+                    df['velE'] = pd.to_numeric(df['velocity_east'], errors='coerce')
                 df = df.dropna(subset=['t_s', 'AGL', 'velD']).reset_index(drop=True)
 
                 if len(df) < 20:
