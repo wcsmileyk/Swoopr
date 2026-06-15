@@ -2,7 +2,7 @@
 Straight-line canopy performance stats computed from GPS tracks.
 
 Canopy phase detection:
-  - velocity_down > 0 (descending, not climbing with aircraft)
+  - velocity_down > 11 ft/s (3.353 m/s) — excludes level airplane flight on jump run
   - velocity_down < 70 mph (31.3 m/s) — post-deployment; XRW loads may have high descent
   - h_speed < 100 mph (44.7 m/s) — excludes freefall horizontal component
   - altitude_agl >= 1000ft (304.8m) — above swoop initiation zone
@@ -21,6 +21,7 @@ logger = logging.getLogger('users.canopy_stats')
 
 MAX_CANOPY_VSPEED_MS = 70 * 0.44704    # 70 mph -> m/s
 MAX_CANOPY_HSPEED_MS = 100 * 0.44704   # 100 mph -> m/s
+MIN_CANOPY_VSPEED_MS = 11 * 0.3048     # 11 ft/s -> m/s — excludes level airplane flight
 MIN_ALT_AGL_M = 1000 * 0.3048          # 1000ft -> meters
 HEADING_THRESHOLD_DEG = 10.0
 MIN_SEGMENT_DURATION_S = 2.0
@@ -85,7 +86,7 @@ def _extract_straight_line_canopy_points(flight):
 
     canopy = df[
         (df['altitude_agl'] >= MIN_ALT_AGL_M) &
-        (df['velocity_down'] > 0) &
+        (df['velocity_down'] > MIN_CANOPY_VSPEED_MS) &
         (df['velocity_down'] < MAX_CANOPY_VSPEED_MS) &
         (df['h_speed'] < MAX_CANOPY_HSPEED_MS)
     ].copy().reset_index(drop=True)
@@ -109,14 +110,18 @@ def _extract_straight_line_canopy_points(flight):
 
 def _compute_glide_ratios(df):
     """
-    Compute per-interval glide ratios from altitude differences between consecutive points.
+    Compute per-segment glide ratios: total horizontal distance / total altitude lost.
 
-    glide_ratio = (h_speed * dt) / alt_loss = horizontal_distance / altitude_lost
+    Per-interval ratios are biased high because GPS altitude noise is large relative to
+    the altitude change in a single 0.2s sample. Using segment totals makes the noise on
+    the two endpoint measurements negligible relative to several metres of true descent.
 
-    Skips:
-      - intervals where dt > MAX_GAP_S (segment boundary or data gap)
-      - intervals where altitude is not being lost (climbing or level)
-      - point pairs where either point fails the vAcc MAD-based threshold
+    Splits the straight-line DataFrame into segments at time gaps > MAX_GAP_S, then for
+    each segment computes:
+        glide_ratio = sum(h_speed * dt) / (alt_start - alt_end)
+
+    The vAcc gate (same MAD-based threshold as flight_manager) is applied to segment
+    endpoints — those altitude readings drive the denominator.
     """
     if len(df) < 2:
         return []
@@ -125,7 +130,7 @@ def _compute_glide_ratios(df):
     alt_agl = df['altitude_agl'].to_numpy(dtype=float)
     h_spd = df['h_speed'].to_numpy(dtype=float)
 
-    # Build vAcc gate using the same MAD approach as the flight_manager
+    # vAcc gate — same MAD approach as flight_manager
     v_acc_raw = df['v_acc'].to_numpy() if 'v_acc' in df.columns else np.full(len(df), np.nan)
     v_acc = pd.to_numeric(pd.Series(v_acc_raw), errors='coerce').to_numpy(dtype=float)
     valid = ~np.isnan(v_acc)
@@ -137,17 +142,30 @@ def _compute_glide_ratios(df):
     else:
         vacc_ok = np.ones(len(df), dtype=bool)
 
+    # Identify segment boundaries (gaps in the straight-line data)
+    seg_starts = [0]
+    for i in range(1, len(df)):
+        if timestamps[i] - timestamps[i - 1] > MAX_GAP_S:
+            seg_starts.append(i)
+    seg_starts.append(len(df))  # sentinel
+
     ratios = []
-    for i in range(len(df) - 1):
-        dt = timestamps[i + 1] - timestamps[i]
-        if dt <= 0 or dt > MAX_GAP_S:
+    for k in range(len(seg_starts) - 1):
+        s = seg_starts[k]
+        e = seg_starts[k + 1]  # exclusive
+
+        if e - s < 2:
             continue
-        if not vacc_ok[i] or not vacc_ok[i + 1]:
+        if not vacc_ok[s] or not vacc_ok[e - 1]:
             continue
-        alt_loss = alt_agl[i] - alt_agl[i + 1]
+
+        alt_loss = alt_agl[s] - alt_agl[e - 1]
         if alt_loss <= 0:
             continue
-        ratios.append(h_spd[i] * dt / alt_loss)
+
+        h_dist = float(np.sum(h_spd[s:e - 1] * np.diff(timestamps[s:e])))
+        if h_dist > 0:
+            ratios.append(h_dist / alt_loss)
 
     return ratios
 
