@@ -107,6 +107,51 @@ def _extract_straight_line_canopy_points(flight):
     return canopy.iloc[sorted(straight_idx)].copy()
 
 
+def _compute_glide_ratios(df):
+    """
+    Compute per-interval glide ratios from altitude differences between consecutive points.
+
+    glide_ratio = (h_speed * dt) / alt_loss = horizontal_distance / altitude_lost
+
+    Skips:
+      - intervals where dt > MAX_GAP_S (segment boundary or data gap)
+      - intervals where altitude is not being lost (climbing or level)
+      - point pairs where either point fails the vAcc MAD-based threshold
+    """
+    if len(df) < 2:
+        return []
+
+    timestamps = df['timestamp'].to_numpy(dtype=float)
+    alt_agl = df['altitude_agl'].to_numpy(dtype=float)
+    h_spd = df['h_speed'].to_numpy(dtype=float)
+
+    # Build vAcc gate using the same MAD approach as the flight_manager
+    v_acc_raw = df['v_acc'].to_numpy() if 'v_acc' in df.columns else np.full(len(df), np.nan)
+    v_acc = pd.to_numeric(pd.Series(v_acc_raw), errors='coerce').to_numpy(dtype=float)
+    valid = ~np.isnan(v_acc)
+    if valid.sum() > 2:
+        med = float(np.median(v_acc[valid]))
+        mad = float(np.median(np.abs(v_acc[valid] - med))) or 1.0
+        vacc_thr = med + 2.5 * mad
+        vacc_ok = np.where(valid, v_acc <= vacc_thr, True)
+    else:
+        vacc_ok = np.ones(len(df), dtype=bool)
+
+    ratios = []
+    for i in range(len(df) - 1):
+        dt = timestamps[i + 1] - timestamps[i]
+        if dt <= 0 or dt > MAX_GAP_S:
+            continue
+        if not vacc_ok[i] or not vacc_ok[i + 1]:
+            continue
+        alt_loss = alt_agl[i] - alt_agl[i + 1]
+        if alt_loss <= 0:
+            continue
+        ratios.append(h_spd[i] * dt / alt_loss)
+
+    return ratios
+
+
 def update_canopy_stats(canopy):
     """
     Recompute and save straight-line canopy performance stats from all valid GPS flights.
@@ -140,10 +185,7 @@ def update_canopy_stats(canopy):
         flight_count += 1
         all_vspeed.extend(straight['velocity_down'].tolist())
         all_hspeed.extend(straight['h_speed'].tolist())
-
-        glide_rows = straight[straight['velocity_down'] > 0.5]
-        if not glide_rows.empty:
-            all_glide.extend((glide_rows['h_speed'] / glide_rows['velocity_down']).tolist())
+        all_glide.extend(_compute_glide_ratios(straight))
 
     if all_vspeed:
         canopy.stats_avg_vertical_speed_mph = round(float(np.mean(all_vspeed)) * MPS_TO_MPH, 2)
