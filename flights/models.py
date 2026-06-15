@@ -274,6 +274,12 @@ class Flight(models.Model):
     swoop_start_time = models.DateTimeField(null=True, blank=True)
     swoop_end_time = models.DateTimeField(null=True, blank=True)
 
+    # Canopy phase detection
+    canopy_start_timestamp = models.FloatField(
+        null=True, blank=True,
+        help_text="Unix timestamp of canopy deployment + stabilization point (start of valid canopy data)"
+    )
+
     # Analysis metadata
     analysis_version = models.CharField(max_length=20, default='enhanced_v1')
     analyzed_at = models.DateTimeField(null=True, blank=True)

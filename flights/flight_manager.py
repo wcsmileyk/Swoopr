@@ -528,6 +528,20 @@ class FlightManager:
             landing_time = df.iloc[landing_idx]['t_s']
             logger.debug(f"Flight {flight.id}: Landing detected at index {landing_idx} | Time: {landing_time:.2f}s")
 
+            # Detect canopy deployment point
+            try:
+                canopy_start_idx = self.find_canopy_start_idx(df, landing_idx)
+                canopy_row_time = df.iloc[canopy_start_idx]['time']
+                flight.canopy_start_timestamp = (
+                    float(canopy_row_time.timestamp())
+                    if hasattr(canopy_row_time, 'timestamp')
+                    else None
+                )
+                logger.debug(f"Flight {flight.id}: Canopy start detected at index {canopy_start_idx}")
+            except Exception as e:
+                logger.warning(f"Flight {flight.id}: Canopy start detection failed: {e}")
+                flight.canopy_start_timestamp = None
+
             # Try traditional flare detection first
             try:
                 logger.debug(f"Flight {flight.id}: Attempting traditional flare detection...")
@@ -734,6 +748,72 @@ class FlightManager:
 
     # ============== SWOOP ANALYSIS METHODS ==============
     # These are adapted from the original track_manager.py
+
+    def find_canopy_start_idx(self, df, landing_idx):
+        """
+        Find the DataFrame index where canopy flight is established after deployment.
+
+        Follows the freefall acceleration signature: after exit (max AGL), velD
+        increases continuously under gravity until the canopy opens and arrests it.
+        The end of that sustained positive acceleration — regardless of peak speed —
+        is the deployment point. Works for all pull altitudes.
+
+        Steps:
+          1. Find exit_idx at max smoothed AGL.
+          2. Smooth velD over 3s to suppress noise.
+          3. Wait for velD to exceed a small onset threshold (5 m/s) to skip the
+             exit shuffle when horizontal plane speed is still bleeding off.
+          4. Find the first 2s window where the smoothed velD derivative is
+             consistently negative — that is the opening.
+          5. Return opening_idx + 5s stabilization buffer.
+        """
+        t_s = df['t_s'].to_numpy(dtype=float)
+        vspeed = df['velD'].to_numpy(dtype=float)
+
+        dt = float(np.nanmedian(np.diff(t_s))) if len(t_s) > 1 else 0.2
+        fs = 1.0 / dt if dt > 0 else 5.0
+        smooth_win = max(3, int(round(3.0 * fs)))
+        neg_win = max(2, int(round(2.0 * fs)))
+        stabilize_n = int(round(5.0 * fs))
+
+        # Step 1: exit index = max smoothed AGL
+        smooth_agl = df['AGL'].rolling(smooth_win, center=True, min_periods=1).median()
+        exit_idx = int(smooth_agl.idxmax())
+        if exit_idx >= landing_idx - stabilize_n:
+            return exit_idx
+
+        # Step 2: smooth velD
+        smooth_vspeed = (
+            pd.Series(vspeed)
+            .rolling(smooth_win, center=True, min_periods=1)
+            .mean()
+            .to_numpy()
+        )
+        dvspeed = np.diff(smooth_vspeed, prepend=smooth_vspeed[0])
+
+        # Step 3: find onset (velD first exceeds 5 m/s after exit)
+        search = np.arange(exit_idx, landing_idx)
+        onset_mask = smooth_vspeed[search] >= 5.0
+        if not onset_mask.any():
+            return min(exit_idx + stabilize_n, landing_idx)
+        onset_idx = int(search[np.argmax(onset_mask)])
+
+        # Step 4: first sustained negative derivative (2s window all negative)
+        post = np.arange(onset_idx, landing_idx)
+        neg = (dvspeed[post] < 0).astype(int)
+        neg_roll = pd.Series(neg).rolling(neg_win, min_periods=neg_win).sum().to_numpy()
+        hits = np.where(neg_roll >= neg_win)[0]
+        if hits.size == 0:
+            # No clear inflection — fall back to velD peak
+            peak_rel = int(np.argmax(smooth_vspeed[search]))
+            return min(int(search[peak_rel]) + stabilize_n, landing_idx)
+
+        # Roll window reports at the END of the window; walk back to the start
+        drop_start_rel = max(0, int(hits[0]) - neg_win + 1)
+        drop_start_idx = int(post[drop_start_rel])
+
+        # Step 5: add stabilization buffer
+        return min(drop_start_idx + stabilize_n, landing_idx)
 
     def get_landing(self, df):
         """Detect landing point using original algorithm"""
