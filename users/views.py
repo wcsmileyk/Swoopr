@@ -422,6 +422,13 @@ def delete_canopy_view(request, canopy_id):
 
 
 @login_required
+def canopy_dashboard_view(request):
+    """Per-canopy performance stats derived from straight-line GPS segments."""
+    canopies = request.user.canopies.order_by('-is_primary', '-created_at')
+    return render(request, 'users/canopy_dashboard.html', {'canopies': canopies})
+
+
+@login_required
 def flights_view(request):
     """View user's flight history with filtering, sorting, and pagination"""
     from django.core.paginator import Paginator

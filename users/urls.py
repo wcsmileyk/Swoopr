@@ -27,6 +27,7 @@ urlpatterns = [
     path('flights/bulk-delete/', views.bulk_delete_flights_view, name='bulk_delete_flights'),
 
     # Canopy management
+    path('canopies/', views.canopy_dashboard_view, name='canopy_dashboard'),
     path('canopy/add/', views.add_canopy_view, name='add_canopy'),
     path('canopy/<int:canopy_id>/edit/', views.edit_canopy_view, name='edit_canopy'),
     path('canopy/<int:canopy_id>/delete/', views.delete_canopy_view, name='delete_canopy'),

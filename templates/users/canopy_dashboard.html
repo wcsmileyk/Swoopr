@@ -1,0 +1,144 @@
+{% extends 'base.html' %}
+{% block title %}Canopies — Flare{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-white">Canopies</h1>
+    <p class="text-sm text-gray-500 mt-0.5">Straight-line flight stats above 1000ft AGL — excludes turns and freefall</p>
+  </div>
+  <a href="{% url 'add_canopy' %}"
+     class="text-sm text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 px-3 py-1.5 rounded-lg transition-colors">
+    Add Canopy
+  </a>
+</div>
+
+{% if not canopies %}
+<div class="bg-gray-900 rounded-xl border border-gray-800 px-6 py-14 text-center">
+  <p class="text-gray-400 mb-4">No canopies added yet.</p>
+  <a href="{% url 'add_canopy' %}"
+     class="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+    Add Canopy
+  </a>
+</div>
+{% else %}
+
+{% for canopy in canopies %}
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-5">
+
+  <!-- Canopy header -->
+  <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center gap-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <h2 class="text-base font-semibold text-white">{{ canopy.manufacturer }} {{ canopy.model }} {{ canopy.size }}sq ft</h2>
+          {% if canopy.is_primary %}
+          <span class="text-[10px] uppercase tracking-widest text-sky-400 border border-sky-800 px-1.5 py-0.5 rounded">Primary</span>
+          {% endif %}
+          {% if not canopy.is_active %}
+          <span class="text-[10px] uppercase tracking-widest text-gray-500 border border-gray-700 px-1.5 py-0.5 rounded">Retired</span>
+          {% endif %}
+        </div>
+        <p class="text-xs text-gray-500 mt-0.5">
+          {% if canopy.wing_loading %}WL {{ canopy.wing_loading }} lb/sq ft &nbsp;&middot;&nbsp; {% endif %}
+          {% if canopy.stats_flight_count > 0 %}
+            {{ canopy.stats_flight_count }} GPS flight{{ canopy.stats_flight_count|pluralize }} analyzed
+          {% else %}
+            No GPS data
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    <a href="{% url 'edit_canopy' canopy.id %}"
+       class="text-xs text-gray-500 hover:text-gray-300 transition-colors">Edit</a>
+  </div>
+
+  {% if canopy.stats_flight_count > 0 %}
+  <!-- Stats grid -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+
+    <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
+      {% if canopy.stats_avg_glide_ratio %}
+      <p class="text-xl font-bold text-sky-400">{{ canopy.stats_avg_glide_ratio|floatformat:2 }}</p>
+      {% else %}
+      <p class="text-xl font-bold text-gray-600">—</p>
+      {% endif %}
+      <p class="text-[11px] text-gray-500 mt-1 leading-tight">Avg Glide Ratio</p>
+    </div>
+
+    <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
+      {% if canopy.stats_avg_horizontal_speed_mph %}
+      <p class="text-xl font-bold text-sky-300">{{ canopy.stats_avg_horizontal_speed_mph|floatformat:1 }}</p>
+      {% else %}
+      <p class="text-xl font-bold text-gray-600">—</p>
+      {% endif %}
+      <p class="text-[11px] text-gray-500 mt-1 leading-tight">Avg Horizontal<br>Speed (mph)</p>
+    </div>
+
+    <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
+      {% if canopy.stats_avg_vertical_speed_mph %}
+      <p class="text-xl font-bold text-emerald-400">{{ canopy.stats_avg_vertical_speed_mph|floatformat:1 }}</p>
+      {% else %}
+      <p class="text-xl font-bold text-gray-600">—</p>
+      {% endif %}
+      <p class="text-[11px] text-gray-500 mt-1 leading-tight">Avg Vertical<br>Speed (mph)</p>
+    </div>
+
+    <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
+      {% if canopy.stats_max_horizontal_speed_mph %}
+      <p class="text-xl font-bold text-amber-400">{{ canopy.stats_max_horizontal_speed_mph|floatformat:1 }}</p>
+      {% else %}
+      <p class="text-xl font-bold text-gray-600">—</p>
+      {% endif %}
+      <p class="text-[11px] text-gray-500 mt-1 leading-tight">Max Horizontal<br>Speed (mph)</p>
+    </div>
+
+    <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
+      {% if canopy.stats_min_horizontal_speed_mph %}
+      <p class="text-xl font-bold text-amber-300">{{ canopy.stats_min_horizontal_speed_mph|floatformat:1 }}</p>
+      {% else %}
+      <p class="text-xl font-bold text-gray-600">—</p>
+      {% endif %}
+      <p class="text-[11px] text-gray-500 mt-1 leading-tight">Min Horizontal<br>Speed (mph)</p>
+    </div>
+
+    <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
+      {% if canopy.stats_max_vertical_speed_mph %}
+      <p class="text-xl font-bold text-purple-400">{{ canopy.stats_max_vertical_speed_mph|floatformat:1 }}</p>
+      {% else %}
+      <p class="text-xl font-bold text-gray-600">—</p>
+      {% endif %}
+      <p class="text-[11px] text-gray-500 mt-1 leading-tight">Max Vertical<br>Speed (mph)</p>
+    </div>
+
+    <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
+      {% if canopy.stats_min_vertical_speed_mph %}
+      <p class="text-xl font-bold text-purple-300">{{ canopy.stats_min_vertical_speed_mph|floatformat:1 }}</p>
+      {% else %}
+      <p class="text-xl font-bold text-gray-600">—</p>
+      {% endif %}
+      <p class="text-[11px] text-gray-500 mt-1 leading-tight">Min Vertical<br>Speed (mph)</p>
+    </div>
+
+  </div>
+
+  {% if canopy.stats_updated_at %}
+  <p class="text-[10px] text-gray-700 mt-3 text-right">Updated {{ canopy.stats_updated_at|date:"M j, Y" }}</p>
+  {% endif %}
+
+  {% else %}
+  <!-- No GPS data state -->
+  <div class="border border-dashed border-gray-800 rounded-lg px-5 py-8 text-center">
+    <p class="text-sm text-gray-500">No GPS flights recorded for this canopy yet.</p>
+    <a href="{% url 'logbook_upload' %}"
+       class="inline-block mt-3 text-xs text-sky-400 hover:text-sky-300 transition-colors">
+      Upload a GPS file
+    </a>
+  </div>
+  {% endif %}
+
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}

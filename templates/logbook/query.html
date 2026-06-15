@@ -60,13 +60,15 @@
       <template x-for="(rule, idx) in rules" :key="rule._id">
         <div>
           <!-- AND / OR connector between rules -->
-          <div x-show="idx > 0" class="flex items-center gap-3 my-2.5">
-            <button @click="toggleJoin(idx)"
-                    :class="rule.join === 'OR'
-                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30'
-                      : 'bg-sky-500/20 text-sky-400 border-sky-500/40 hover:bg-sky-500/30'"
-                    class="text-xs font-bold px-3 py-1 rounded border transition-colors w-12 text-center"
-                    x-text="rule.join"></button>
+          <div x-show="idx > 0" class="flex items-center gap-2 my-3">
+            <div class="flex rounded border border-gray-700 overflow-hidden text-xs font-bold shrink-0">
+              <button @click="setJoin(idx, 'AND')"
+                      :class="rule.join !== 'OR' ? 'bg-sky-600 text-white' : 'bg-gray-800 text-gray-500 hover:text-gray-300'"
+                      class="px-3 py-1 transition-colors">AND</button>
+              <button @click="setJoin(idx, 'OR')"
+                      :class="rule.join === 'OR' ? 'bg-amber-500 text-gray-900' : 'bg-gray-800 text-gray-500 hover:text-gray-300'"
+                      class="px-3 py-1 transition-colors border-l border-gray-700">OR</button>
+            </div>
             <div class="flex-1 h-px bg-gray-800"></div>
           </div>
 
@@ -74,7 +76,7 @@
           <div class="flex items-center gap-2 flex-wrap">
 
             <!-- NOT toggle -->
-            <button @click="rule.negate = !rule.negate"
+            <button @click="toggleNegate(idx)"
                     :class="rule.negate
                       ? 'text-rose-400 bg-rose-900/30 border-rose-700/50'
                       : 'text-gray-600 bg-gray-800 border-gray-700 hover:text-gray-400'"
@@ -83,42 +85,47 @@
             </button>
 
             <!-- Field selector -->
-            <select x-model="rule.field" @change="onFieldChange(idx)"
+            <select :value="rule.field"
+                    @change="onFieldChange(idx, $event.target.value)"
                     class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
               <template x-for="fd in fieldList" :key="fd.key">
-                <option :value="fd.key" x-text="fd.label"></option>
+                <option :value="fd.key" :selected="rule.field === fd.key" x-text="fd.label"></option>
               </template>
             </select>
 
             <!-- Operator selector -->
-            <select x-model="rule.op"
+            <select :value="rule.op"
+                    @change="_patchRule(idx, {op: $event.target.value})"
                     class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
               <template x-for="op in (fieldDefs[rule.field] || fieldDefs.dropzone).ops" :key="op[0]">
-                <option :value="op[0]" x-text="op[1]"></option>
+                <option :value="op[0]" :selected="rule.op === op[0]" x-text="op[1]"></option>
               </template>
             </select>
 
             <!-- Value: FK select -->
             <template x-if="(fieldDefs[rule.field] || {}).valueType === 'select'">
-              <select x-model="rule.value"
+              <select :value="rule.value"
+                      @change="_patchRule(idx, {value: $event.target.value})"
                       class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-sky-500">
                 <option value="">Choose...</option>
                 <template x-for="opt in (choices[(fieldDefs[rule.field] || {}).choicesKey] || [])" :key="opt.id">
-                  <option :value="String(opt.id)" x-text="opt.label"></option>
+                  <option :value="String(opt.id)" :selected="rule.value === String(opt.id)" x-text="opt.label"></option>
                 </template>
               </select>
             </template>
 
             <!-- Value: number -->
             <template x-if="(fieldDefs[rule.field] || {}).valueType === 'number'">
-              <input type="number" x-model="rule.value"
+              <input type="number" :value="rule.value"
+                     @input="_patchRule(idx, {value: $event.target.value})"
                      class="w-28 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-sky-500"
                      placeholder="Value">
             </template>
 
             <!-- Value: text -->
             <template x-if="(fieldDefs[rule.field] || {}).valueType === 'text'">
-              <input type="text" x-model="rule.value"
+              <input type="text" :value="rule.value"
+                     @input="_patchRule(idx, {value: $event.target.value})"
                      class="w-48 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-sky-500"
                      placeholder="Search text...">
             </template>
@@ -284,6 +291,11 @@
         if (preset !== 'custom') { this.dateFrom = ''; this.dateTo = ''; }
       },
 
+      _patchRule(idx, patch) {
+        const updated = Object.assign({}, this.rules[idx], patch);
+        this.rules.splice(idx, 1, updated);
+      },
+
       addRule() {
         this.rules.push({_id: Date.now() + Math.random(), field: 'dropzone', op: 'is', value: '', negate: false, join: 'AND'});
       },
@@ -292,14 +304,17 @@
         this.rules.splice(idx, 1);
       },
 
-      onFieldChange(idx) {
-        const rule = this.rules[idx];
-        const def = this.fieldDefs[rule.field];
-        if (def) { rule.op = def.ops[0][0]; rule.value = ''; }
+      onFieldChange(idx, newField) {
+        const def = this.fieldDefs[newField];
+        if (def) this._patchRule(idx, {field: newField, op: def.ops[0][0], value: ''});
       },
 
-      toggleJoin(idx) {
-        this.rules[idx].join = this.rules[idx].join === 'AND' ? 'OR' : 'AND';
+      toggleNegate(idx) {
+        this._patchRule(idx, {negate: !this.rules[idx].negate});
+      },
+
+      setJoin(idx, join) {
+        this._patchRule(idx, {join});
       },
 
       _computeDates() {

@@ -139,6 +139,17 @@ class Canopy(models.Model):
     retired_date = models.DateField(null=True, blank=True)
     retirement_reason = models.CharField(max_length=100, blank=True)
 
+    # Straight-line canopy performance stats (computed from GPS tracks on flight save)
+    stats_avg_glide_ratio = models.FloatField(null=True, blank=True)
+    stats_avg_horizontal_speed_mph = models.FloatField(null=True, blank=True)
+    stats_avg_vertical_speed_mph = models.FloatField(null=True, blank=True)
+    stats_max_vertical_speed_mph = models.FloatField(null=True, blank=True)
+    stats_min_vertical_speed_mph = models.FloatField(null=True, blank=True)
+    stats_max_horizontal_speed_mph = models.FloatField(null=True, blank=True)
+    stats_min_horizontal_speed_mph = models.FloatField(null=True, blank=True)
+    stats_flight_count = models.PositiveIntegerField(default=0)
+    stats_updated_at = models.DateTimeField(null=True, blank=True)
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

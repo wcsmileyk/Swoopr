@@ -12,9 +12,16 @@
 
   <a href="{% url 'jump_list' %}"
      class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-       {% if active_section == 'logbook' and url != 'dashboard' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+       {% if active_section == 'logbook' and url != 'dashboard' and url != 'canopy_dashboard' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
     <i class="bi bi-list-ul text-base w-4 text-center shrink-0"></i>
     Jump Log
+  </a>
+
+  <a href="{% url 'canopy_dashboard' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'canopy_dashboard' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-wind text-base w-4 text-center shrink-0"></i>
+    Canopies
   </a>
 
   {% if show_student or show_swooper or show_instructor %}
