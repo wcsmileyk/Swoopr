@@ -87,6 +87,9 @@
     <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
       {% if canopy.stats_max_horizontal_speed_mph %}
       <p class="text-xl font-bold text-amber-400">{{ canopy.stats_max_horizontal_speed_mph|floatformat:1 }}</p>
+      {% if canopy.stats_max_horizontal_speed_flight_id %}
+      <a href="{% url 'flight_detail' canopy.stats_max_horizontal_speed_flight_id %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+      {% endif %}
       {% else %}
       <p class="text-xl font-bold text-gray-600">—</p>
       {% endif %}
@@ -96,6 +99,9 @@
     <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
       {% if canopy.stats_min_horizontal_speed_mph %}
       <p class="text-xl font-bold text-amber-300">{{ canopy.stats_min_horizontal_speed_mph|floatformat:1 }}</p>
+      {% if canopy.stats_min_horizontal_speed_flight_id %}
+      <a href="{% url 'flight_detail' canopy.stats_min_horizontal_speed_flight_id %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+      {% endif %}
       {% else %}
       <p class="text-xl font-bold text-gray-600">—</p>
       {% endif %}
@@ -105,6 +111,9 @@
     <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
       {% if canopy.stats_max_vertical_speed_mph %}
       <p class="text-xl font-bold text-purple-400">{{ canopy.stats_max_vertical_speed_mph|floatformat:1 }}</p>
+      {% if canopy.stats_max_vertical_speed_flight_id %}
+      <a href="{% url 'flight_detail' canopy.stats_max_vertical_speed_flight_id %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+      {% endif %}
       {% else %}
       <p class="text-xl font-bold text-gray-600">—</p>
       {% endif %}
@@ -114,6 +123,9 @@
     <div class="bg-gray-950 rounded-lg border border-gray-800 p-3 text-center">
       {% if canopy.stats_min_vertical_speed_mph %}
       <p class="text-xl font-bold text-purple-300">{{ canopy.stats_min_vertical_speed_mph|floatformat:1 }}</p>
+      {% if canopy.stats_min_vertical_speed_flight_id %}
+      <a href="{% url 'flight_detail' canopy.stats_min_vertical_speed_flight_id %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+      {% endif %}
       {% else %}
       <p class="text-xl font-bold text-gray-600">—</p>
       {% endif %}

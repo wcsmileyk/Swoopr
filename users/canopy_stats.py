@@ -189,6 +189,12 @@ def update_canopy_stats(canopy):
     all_glide = []
     flight_count = 0
 
+    # Track (value, flight_id) for max/min so we can link back to the source flight
+    max_h = (None, None)
+    min_h = (None, None)
+    max_v = (None, None)
+    min_v = (None, None)
+
     for flight in flights_qs:
         if not flight.gps_data_compressed:
             continue
@@ -201,25 +207,49 @@ def update_canopy_stats(canopy):
             continue
 
         flight_count += 1
-        all_vspeed.extend(straight['velocity_down'].tolist())
-        all_hspeed.extend(straight['h_speed'].tolist())
+        h_vals = straight['h_speed'].to_numpy(dtype=float)
+        v_vals = straight['velocity_down'].to_numpy(dtype=float)
+        all_hspeed.extend(h_vals.tolist())
+        all_vspeed.extend(v_vals.tolist())
         all_glide.extend(_compute_glide_ratios(straight))
+
+        fmax_h = float(np.max(h_vals))
+        fmin_h = float(np.min(h_vals))
+        fmax_v = float(np.max(v_vals))
+        fmin_v = float(np.min(v_vals))
+
+        if max_h[0] is None or fmax_h > max_h[0]:
+            max_h = (fmax_h, flight.id)
+        if min_h[0] is None or fmin_h < min_h[0]:
+            min_h = (fmin_h, flight.id)
+        if max_v[0] is None or fmax_v > max_v[0]:
+            max_v = (fmax_v, flight.id)
+        if min_v[0] is None or fmin_v < min_v[0]:
+            min_v = (fmin_v, flight.id)
 
     if all_vspeed:
         canopy.stats_avg_vertical_speed_mph = round(float(np.mean(all_vspeed)) * MPS_TO_MPH, 2)
-        canopy.stats_max_vertical_speed_mph = round(float(np.max(all_vspeed)) * MPS_TO_MPH, 2)
-        canopy.stats_min_vertical_speed_mph = round(float(np.min(all_vspeed)) * MPS_TO_MPH, 2)
+        canopy.stats_max_vertical_speed_mph = round(max_v[0] * MPS_TO_MPH, 2)
+        canopy.stats_max_vertical_speed_flight_id = max_v[1]
+        canopy.stats_min_vertical_speed_mph = round(min_v[0] * MPS_TO_MPH, 2)
+        canopy.stats_min_vertical_speed_flight_id = min_v[1]
         canopy.stats_avg_horizontal_speed_mph = round(float(np.mean(all_hspeed)) * MPS_TO_MPH, 2)
-        canopy.stats_max_horizontal_speed_mph = round(float(np.max(all_hspeed)) * MPS_TO_MPH, 2)
-        canopy.stats_min_horizontal_speed_mph = round(float(np.min(all_hspeed)) * MPS_TO_MPH, 2)
+        canopy.stats_max_horizontal_speed_mph = round(max_h[0] * MPS_TO_MPH, 2)
+        canopy.stats_max_horizontal_speed_flight_id = max_h[1]
+        canopy.stats_min_horizontal_speed_mph = round(min_h[0] * MPS_TO_MPH, 2)
+        canopy.stats_min_horizontal_speed_flight_id = min_h[1]
         canopy.stats_avg_glide_ratio = round(float(np.mean(all_glide)), 2) if all_glide else None
     else:
         canopy.stats_avg_vertical_speed_mph = None
         canopy.stats_max_vertical_speed_mph = None
+        canopy.stats_max_vertical_speed_flight_id = None
         canopy.stats_min_vertical_speed_mph = None
+        canopy.stats_min_vertical_speed_flight_id = None
         canopy.stats_avg_horizontal_speed_mph = None
         canopy.stats_max_horizontal_speed_mph = None
+        canopy.stats_max_horizontal_speed_flight_id = None
         canopy.stats_min_horizontal_speed_mph = None
+        canopy.stats_min_horizontal_speed_flight_id = None
         canopy.stats_avg_glide_ratio = None
 
     canopy.stats_flight_count = flight_count
@@ -229,9 +259,13 @@ def update_canopy_stats(canopy):
         'stats_avg_horizontal_speed_mph',
         'stats_avg_vertical_speed_mph',
         'stats_max_vertical_speed_mph',
+        'stats_max_vertical_speed_flight',
         'stats_min_vertical_speed_mph',
+        'stats_min_vertical_speed_flight',
         'stats_max_horizontal_speed_mph',
+        'stats_max_horizontal_speed_flight',
         'stats_min_horizontal_speed_mph',
+        'stats_min_horizontal_speed_flight',
         'stats_flight_count',
         'stats_updated_at',
     ])

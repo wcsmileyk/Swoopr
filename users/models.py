@@ -144,9 +144,25 @@ class Canopy(models.Model):
     stats_avg_horizontal_speed_mph = models.FloatField(null=True, blank=True)
     stats_avg_vertical_speed_mph = models.FloatField(null=True, blank=True)
     stats_max_vertical_speed_mph = models.FloatField(null=True, blank=True)
+    stats_max_vertical_speed_flight = models.ForeignKey(
+        'flights.Flight', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+',
+    )
     stats_min_vertical_speed_mph = models.FloatField(null=True, blank=True)
+    stats_min_vertical_speed_flight = models.ForeignKey(
+        'flights.Flight', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+',
+    )
     stats_max_horizontal_speed_mph = models.FloatField(null=True, blank=True)
+    stats_max_horizontal_speed_flight = models.ForeignKey(
+        'flights.Flight', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+',
+    )
     stats_min_horizontal_speed_mph = models.FloatField(null=True, blank=True)
+    stats_min_horizontal_speed_flight = models.ForeignKey(
+        'flights.Flight', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+',
+    )
     stats_flight_count = models.PositiveIntegerField(default=0)
     stats_updated_at = models.DateTimeField(null=True, blank=True)
 
