@@ -80,8 +80,7 @@ class SignUpForm(UserCreationForm):
         if commit:
             user.save()
 
-            # Update the UserProfile that was automatically created
-            profile = user.profile
+            profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.license_number = self.cleaned_data['license_number']
             profile.uspa_number = self.cleaned_data['uspa_number']
             profile.license_level = self.cleaned_data['license_level']
