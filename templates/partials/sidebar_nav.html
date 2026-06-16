@@ -24,6 +24,27 @@
     Canopies
   </a>
 
+  <div class="pt-3 pb-1">
+    <div class="border-t border-gray-800"></div>
+  </div>
+  <p class="text-[10px] uppercase tracking-widest text-gray-600 px-3 pb-1.5">Community</p>
+
+  <a href="{% url 'public_swoops' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'public_swoops' or url == 'user_search' or url == 'public_profile' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-people text-base w-4 text-center shrink-0"></i>
+    Pilots
+  </a>
+
+  {% if user.is_authenticated %}
+  <a href="{% url 'privacy_settings' %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'privacy_settings' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-shield-check text-base w-4 text-center shrink-0"></i>
+    Privacy
+  </a>
+  {% endif %}
+
   {% if show_student or show_swooper or show_instructor %}
   <div class="pt-3 pb-1">
     <div class="border-t border-gray-800"></div>
