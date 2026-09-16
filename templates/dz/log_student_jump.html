@@ -145,6 +145,21 @@
 
   </div>
 
+  <!-- Instructor e-signature -->
+  <div class="mt-6 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-800">
+      <h2 class="text-sm font-semibold text-gray-200">Instructor sign-off</h2>
+      <p class="text-xs text-gray-500 mt-0.5">
+        Type your full name to certify this record as {{ request.user.get_full_name|default:request.user.username }}.
+      </p>
+    </div>
+    <div class="px-5 py-4">
+      <input type="text" name="signature_name" required
+             placeholder="Type full name to sign"
+             class="w-full text-sm bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-3 py-2 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-sky-600">
+    </div>
+  </div>
+
   <div class="mt-6 flex items-center justify-end gap-3">
     <a href="{% url 'dz_student_detail' dz_id=dz.pk enrollment_id=enrollment.pk %}"
        class="text-sm text-gray-400 hover:text-gray-200 transition-colors px-4 py-2">
@@ -152,7 +167,7 @@
     </a>
     <button type="submit"
             class="text-sm bg-sky-600 hover:bg-sky-500 text-white px-6 py-2 rounded-lg font-medium transition-colors">
-      Save jump
+      Sign &amp; Save
     </button>
   </div>
 </form>

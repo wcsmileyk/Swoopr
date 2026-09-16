@@ -7,7 +7,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 
 from organizations.models import Dropzone, DropzoneMembership
-from .models import DailyRoster, JumpRunConditions, Load, LoadSlot
+from .models import DailyAircraftStats, DailyRoster, JumpRunConditions, Load, LoadSlot
 from .services import load_service
 from .views import _check_access, _get_user_op_dzs, _parse_date
 
@@ -26,7 +26,7 @@ def _loads_for_date(dz, date):
     return (
         Load.objects
         .filter(dropzone=dz, date=date)
-        .select_related('aircraft', 'created_by')
+        .select_related('aircraft', 'created_by', 'call_time_override')
         .prefetch_related('slots__user', 'slots__added_by', 'slots__reservation', 'slots__jump')
         .order_by('load_number')
     )
@@ -54,6 +54,14 @@ def _available_roster(dz, date):
 
 def _board_context(dz, date):
     loads = list(_loads_for_date(dz, date))
+
+    # Prefetch today's aircraft stats for the DZ in one query rather than
+    # one lookup per load card.
+    stats_by_aircraft_id = {
+        s.aircraft_id: s
+        for s in DailyAircraftStats.objects.filter(dropzone=dz, date=date)
+    }
+
     # Group slots by group_key within each load
     for load in loads:
         slots = list(load.slots.all())
@@ -69,6 +77,13 @@ def _board_context(dz, date):
             else:
                 slot.group_label = None
         load.annotated_slots = slots
+        load.aircraft_stats = stats_by_aircraft_id.get(load.aircraft_id) if load.aircraft_id else None
+        load.has_call_time_override = hasattr(load, 'call_time_override')
+        load.call_time_estimate_has_data = bool(
+            load.aircraft_stats and (
+                load.aircraft_stats.rolling_avg_turn_min or load.aircraft_stats.avg_turn_min
+            )
+        )
     return loads
 
 
@@ -97,6 +112,7 @@ def _render_board(request, dz, date):
         'available_roster': roster,
         'role_choices': LoadSlot.ROLE_CHOICES,
         'jump_type_choices': LoadSlot.JUMP_TYPE_CHOICES,
+        'is_admin': _check_access(request.user, dz, min_role='admin'),
     }
     return render(request, 'dz/partials/manifest_board.html', ctx)
 
@@ -307,12 +323,53 @@ def dz_manifest_jump_run(request, dz_id):
     date = _parse_date(request)
     exit_altitude = request.POST.get('exit_altitude', '').strip()
     spot_notes = request.POST.get('spot_notes', '').strip()
+    wind_speed_raw = request.POST.get('wind_speed_kts', '').strip()
+    hold_called = bool(request.POST.get('hold_called'))
     if exit_altitude.isdigit():
         JumpRunConditions.objects.create(
             dropzone=dz,
             date=date,
             exit_altitude=int(exit_altitude),
             spot_notes=spot_notes,
+            wind_speed_kts=int(wind_speed_raw) if wind_speed_raw.isdigit() else None,
+            hold_called=hold_called,
             set_by=request.user,
         )
+    return _render_board(request, dz, date)
+
+
+# ---------------------------------------------------------------------------
+# Call time override (admin only)
+# ---------------------------------------------------------------------------
+
+@login_required
+def dz_manifest_load_call_time_override(request, dz_id, load_id):
+    if request.method != 'POST':
+        return redirect('dz_manifest', dz_id=dz_id)
+    dz, err = _get_dz_or_403(request, dz_id, min_role='admin')
+    if err:
+        return err
+    date = _parse_date(request)
+    load = get_object_or_404(Load, pk=load_id, dropzone=dz)
+
+    call_time_raw = request.POST.get('call_time', '').strip()
+    reason = request.POST.get('reason', '').strip()
+    if call_time_raw:
+        parsed = timezone.datetime.fromisoformat(call_time_raw)
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed)
+        load_service.set_call_time_override(load, user=request.user, new_time=parsed, reason=reason)
+    return _render_board(request, dz, date)
+
+
+@login_required
+def dz_manifest_load_call_time_clear(request, dz_id, load_id):
+    if request.method != 'POST':
+        return redirect('dz_manifest', dz_id=dz_id)
+    dz, err = _get_dz_or_403(request, dz_id, min_role='admin')
+    if err:
+        return err
+    date = _parse_date(request)
+    load = get_object_or_404(Load, pk=load_id, dropzone=dz)
+    load_service.clear_call_time_override(load)
     return _render_board(request, dz, date)

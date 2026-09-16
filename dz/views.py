@@ -19,6 +19,7 @@ from training.models import (
     StudentEnrollment,
     StudentJump,
 )
+from training.services import progression
 
 User = get_user_model()
 
@@ -465,6 +466,7 @@ def dz_student_detail(request, dz_id, enrollment_id):
         'student_jumps': student_jumps,
         'program_jumps': program_jumps,
         'status_choices': StudentEnrollment.STATUS_CHOICES,
+        'progression': progression.get_eligible_next_jumps(enrollment),
         'user_dzs': _get_user_op_dzs(request.user),
         'in_dz_ops': True,
     })
@@ -498,6 +500,8 @@ def dz_log_student_jump(request, dz_id, enrollment_id):
     if request.method == 'POST':
         program_jump = get_object_or_404(ProgramJump, pk=request.POST.get('program_jump_id'), dropzone=dz)
         outcome = request.POST.get('outcome') or None
+        jump_date_raw = request.POST.get('jump_date')
+        jump_method = request.POST.get('jump_method')
 
         criteria_passed = {}
         for group in ('ground', 'freefall', 'canopy', 'AFF'):
@@ -505,42 +509,39 @@ def dz_log_student_jump(request, dz_id, enrollment_id):
             if items:
                 criteria_passed[group] = items
 
-        StudentJump.objects.create(
-            enrollment=enrollment,
-            program_jump=program_jump,
-            instructor=request.user,
-            jump_method=request.POST.get('jump_method'),
-            jump_date=request.POST.get('jump_date'),
-            outcome=outcome,
-            criteria_passed=criteria_passed,
-            notes=request.POST.get('notes', ''),
+        signature_name = request.POST.get('signature_name', '').strip()
+        e_signature_data = {
+            'typed_name': signature_name,
+            'timestamp': timezone.now().isoformat(),
+            'ip_address': request.META.get('REMOTE_ADDR', ''),
+        } if signature_name else {}
+
+        # Reuse a draft Jump already auto-created by the manifest sync
+        # (Phase 1) for this student's slot, if one exists for this date.
+        from logbook.models import Jump
+        existing_jump = (
+            Jump.objects
+            .filter(load_slot__enrollment=enrollment, date=jump_date_raw, student_jump__isnull=True)
+            .first()
         )
 
-        if outcome == 'pass':
-            next_jump = (
-                ProgramJump.objects
-                .filter(
-                    dropzone=dz,
-                    category__program_type=enrollment.program_type,
-                    is_active=True,
-                )
-                .exclude(pk=program_jump.pk)
-                .filter(
-                    models.Q(category__order__gt=program_jump.category.order) |
-                    models.Q(
-                        category__order=program_jump.category.order,
-                        method_group=program_jump.method_group,
-                        jump_number__gt=program_jump.jump_number,
-                    )
-                )
-                .order_by('category__order', 'method_group', 'jump_number')
-                .first()
+        try:
+            progression.log_and_sign_student_jump(
+                enrollment=enrollment,
+                program_jump=program_jump,
+                instructor=request.user,
+                jump_method=jump_method,
+                jump_date=jump_date_raw,
+                outcome=outcome,
+                criteria_passed=criteria_passed,
+                notes=request.POST.get('notes', ''),
+                e_signature_data=e_signature_data,
+                jump=existing_jump,
             )
-            if next_jump:
-                enrollment.current_jump = next_jump
-                enrollment.save()
+            messages.success(request, "Student jump logged and signed off.")
+        except progression.SignOffNotAuthorized as e:
+            messages.error(request, str(e))
 
-        messages.success(request, "Student jump logged.")
         return redirect('dz_student_detail', dz_id=dz_id, enrollment_id=enrollment_id)
 
     return render(request, 'dz/log_student_jump.html', {
@@ -550,6 +551,36 @@ def dz_log_student_jump(request, dz_id, enrollment_id):
         'selected_jump': selected_jump,
         'jump_method_choices': STUDENT_JUMP_METHOD_CHOICES,
         'outcome_choices': StudentJump.OUTCOME_CHOICES,
+        'user_dzs': _get_user_op_dzs(request.user),
+        'in_dz_ops': True,
+    })
+
+
+@login_required
+def dz_instructor_dashboard(request, dz_id):
+    """Pending sign-offs and recent activity for the logged-in instructor at this DZ."""
+    dz = get_object_or_404(Dropzone, pk=dz_id)
+    if not _check_access(request.user, dz):
+        messages.error(request, "You don't have access to this DZ.")
+        return redirect('dashboard')
+
+    pending = (
+        StudentJump.objects
+        .filter(enrollment__dropzone=dz, instructor=request.user, signed_off_at__isnull=True)
+        .select_related('enrollment__student', 'program_jump__category')
+        .order_by('-jump_date')
+    )
+    recent_signed = (
+        StudentJump.objects
+        .filter(enrollment__dropzone=dz, signed_off_by=request.user)
+        .select_related('enrollment__student', 'program_jump__category')
+        .order_by('-signed_off_at')[:15]
+    )
+
+    return render(request, 'dz/instructor_dashboard.html', {
+        'dz': dz,
+        'pending': pending,
+        'recent_signed': recent_signed,
         'user_dzs': _get_user_op_dzs(request.user),
         'in_dz_ops': True,
     })

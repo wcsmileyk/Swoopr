@@ -139,6 +139,13 @@
                 <span class="text-sm text-gray-200">{{ item.text }}</span>
               </a>
               {% endfor %}
+              <form method="post" action="{% url 'mark_notifications_read' %}" class="border-t border-gray-700 mt-1">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="w-full text-center px-4 py-2 text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                  Mark all read
+                </button>
+              </form>
             {% else %}
               <p class="px-4 py-4 text-sm text-gray-500 text-center">No notifications</p>
             {% endif %}

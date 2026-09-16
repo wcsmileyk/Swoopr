@@ -23,6 +23,15 @@ class JumpRunConditions(models.Model):
         blank=True,
         help_text='Spot description, heading, landmarks, etc.',
     )
+    wind_speed_kts = models.IntegerField(
+        null=True, blank=True,
+        help_text='Surface wind speed in knots, if known. Used to add a hold '
+                   'buffer to call time estimates in high-wind conditions.',
+    )
+    hold_called = models.BooleanField(
+        default=False,
+        help_text='Weather/wind hold currently in effect for this DZ.',
+    )
     set_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='jump_run_entries',
@@ -117,6 +126,25 @@ class Load(models.Model):
     def jumper_count(self):
         """Filled slots — excludes reserved_student_slots."""
         return self.slots.count()
+
+
+class CallTimeOverride(models.Model):
+    """
+    Manual override of a load's computed call time. Takes priority over the
+    compute_call_time() cascade. Kept as its own audited row (who/why/when)
+    rather than just editing Load.call_time directly.
+    """
+    load = models.OneToOneField(Load, on_delete=models.CASCADE, related_name='call_time_override')
+    overridden_call_time = models.DateTimeField()
+    reason = models.TextField(blank=True)
+    set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='call_time_overrides',
+    )
+    set_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'Override for {self.load}: {self.overridden_call_time}'
 
 
 class LoadSlot(models.Model):
@@ -216,20 +244,45 @@ class DailyAircraftStats(models.Model):
     aircraft = models.ForeignKey(
         'aircraft.Aircraft', on_delete=models.CASCADE, related_name='daily_stats',
     )
+    dropzone = models.ForeignKey(
+        Dropzone, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='daily_aircraft_stats',
+        help_text='DZ this day of stats was recorded at. Keeps stats separate '
+                   'when the same aircraft flies at more than one DZ.',
+    )
     date = models.DateField()
     load_count = models.IntegerField(default=0)
     avg_altitude_min = models.FloatField(
         null=True, blank=True,
-        help_text='Average minutes from takeoff to exit altitude.',
+        help_text='Average minutes from takeoff to exit altitude (same-day only).',
     )
     avg_turn_min = models.FloatField(
         null=True, blank=True,
-        help_text='Average minutes from landing to next takeoff.',
+        help_text='Average minutes from landing to next takeoff (same-day only).',
+    )
+    rolling_avg_altitude_min = models.FloatField(
+        null=True, blank=True,
+        help_text='Trailing multi-day average minutes from takeoff to exit altitude.',
+    )
+    rolling_avg_turn_min = models.FloatField(
+        null=True, blank=True,
+        help_text='Trailing multi-day average minutes from landing to next takeoff.',
+    )
+    sample_weight_lbs_total = models.IntegerField(
+        null=True, blank=True,
+        help_text='Total jumper weight (lbs) across loads sampled for this day, if known.',
+    )
+    sample_jumper_count = models.IntegerField(
+        null=True, blank=True,
+        help_text='Total jumper count across loads sampled for this day.',
     )
 
     class Meta:
-        unique_together = [('aircraft', 'date')]
+        unique_together = [('aircraft', 'dropzone', 'date')]
         ordering = ['-date', 'aircraft']
+        indexes = [
+            models.Index(fields=['aircraft', '-date']),
+        ]
 
     def __str__(self):
         return f'{self.aircraft} stats — {self.date}'

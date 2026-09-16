@@ -31,6 +31,13 @@
     Manifest
   </a>
 
+  <a href="{% url 'dz_instructor_dashboard' dz_id=dz.pk %}"
+     class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+       {% if url == 'dz_instructor_dashboard' %}bg-sky-900/30 text-sky-400{% else %}text-gray-400 hover:text-gray-200 hover:bg-gray-800/60{% endif %}">
+    <i class="bi bi-clipboard2-check text-base w-4 text-center shrink-0"></i>
+    Instructor
+  </a>
+
   <div class="pt-2 pb-1">
     <p class="text-[10px] uppercase tracking-widest text-gray-600 px-3 pt-2 pb-1">Daily Ops</p>
   </div>

@@ -230,10 +230,11 @@ def swooper_dashboard_view(request):
 
     stats = {}
     if total_swoops_gps > 0:
+        from collections import Counter
         from logbook.views import normalize_rotation as _norm_rot
-        rot = swoops.filter(turn_rotation__isnull=False).aggregate(
-            avg=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
-            best=Max(models.Func(models.F('turn_rotation'), function='ABS')),
+        rot_values = list(
+            swoops.filter(turn_rotation__isnull=False)
+            .values_list('turn_rotation', flat=True)
         )
         spd = swoops.filter(max_vertical_speed_mph__isnull=False).aggregate(
             avg=Avg('max_vertical_speed_mph'),
@@ -246,17 +247,55 @@ def swooper_dashboard_view(request):
             swoop_distance_ft__isnull=False,
             swoop_avg_altitude_agl__lte=5.0,
         ).aggregate(best=Max('swoop_distance_ft'))
-        avg_rot_raw  = rot['avg']
-        best_rot_raw = rot['best']
+
+        avg_rot_mode = avg_rot_count = best_rot = best_rot_raw = None
+        best_rot_flight_id = None
+        if rot_values:
+            buckets = Counter(_norm_rot(round(abs(r))) for r in rot_values)
+            avg_rot_mode, avg_rot_count = buckets.most_common(1)[0]
+            best_rot_raw = round(max(abs(r) for r in rot_values))
+            best_rot = _norm_rot(best_rot_raw)
+            best_rot_flight = (
+                swoops.filter(turn_rotation__isnull=False)
+                .order_by(models.Func(models.F('turn_rotation'), function='ABS').desc())
+                .values_list('id', flat=True)
+                .first()
+            )
+            best_rot_flight_id = best_rot_flight
+
+        best_spd_flight_id = (
+            swoops.filter(max_vertical_speed_mph__isnull=False)
+            .order_by('-max_vertical_speed_mph')
+            .values_list('id', flat=True)
+            .first()
+        )
+        best_gnd_flight_id = (
+            swoops.filter(max_ground_speed_mph__isnull=False)
+            .order_by('-max_ground_speed_mph')
+            .values_list('id', flat=True)
+            .first()
+        )
+        best_dist_flight_id = (
+            swoops.filter(swoop_distance_ft__isnull=False, swoop_avg_altitude_agl__lte=5.0)
+            .order_by('-swoop_distance_ft')
+            .values_list('id', flat=True)
+            .first()
+        )
+
         stats = {
-            'avg_rotation':      _norm_rot(round(avg_rot_raw))  if avg_rot_raw  else None,
-            'best_rotation':     _norm_rot(round(best_rot_raw)) if best_rot_raw else None,
-            'avg_rotation_raw':  round(avg_rot_raw)             if avg_rot_raw  else None,
-            'best_rotation_raw': round(best_rot_raw)            if best_rot_raw else None,
-            'avg_speed': spd['avg'],
-            'best_speed': spd['best'],
-            'best_ground_speed': gnd['best'],
-            'best_distance': dist['best'],
+            'avg_rotation':         avg_rot_mode,
+            'avg_rotation_count':   avg_rot_count,
+            'avg_rotation_total':   len(rot_values),
+            'best_rotation':        best_rot,
+            'best_rotation_raw':    best_rot_raw,
+            'best_rotation_flight': best_rot_flight_id,
+            'avg_speed':            spd['avg'],
+            'best_speed':           spd['best'],
+            'best_speed_flight':    best_spd_flight_id,
+            'best_ground_speed':    gnd['best'],
+            'best_ground_flight':   best_gnd_flight_id,
+            'best_distance':        dist['best'],
+            'best_distance_flight': best_dist_flight_id,
         }
 
     # Canopy breakdown — only canopies with swoop jumps
@@ -265,17 +304,23 @@ def swooper_dashboard_view(request):
         swoop_count = Jump.objects.filter(user=user, canopy=canopy, swoop=True).count()
         if swoop_count == 0:
             continue
-        gps_agg = swoops.filter(jump__canopy=canopy).aggregate(
-            avg_rot=Avg(models.Func(models.F('turn_rotation'), function='ABS')),
-            best_spd=Max('max_vertical_speed_mph'),
+        canopy_rot_values = list(
+            swoops.filter(jump__canopy=canopy, turn_rotation__isnull=False)
+            .values_list('turn_rotation', flat=True)
         )
-        avg_rot_raw = round(gps_agg['avg_rot']) if gps_agg['avg_rot'] else None
+        best_spd = swoops.filter(jump__canopy=canopy, max_vertical_speed_mph__isnull=False).aggregate(
+            best=Max('max_vertical_speed_mph'),
+        )['best']
+        c_avg_rot = None
+        if canopy_rot_values:
+            c_buckets = Counter(_norm_rot(round(abs(r))) for r in canopy_rot_values)
+            c_avg_rot = c_buckets.most_common(1)[0][0]
         canopy_breakdown.append({
             'canopy': canopy,
             'swoops': swoop_count,
-            'avg_rotation': _norm_rot(avg_rot_raw) if avg_rot_raw else None,
-            'avg_rotation_raw': avg_rot_raw,
-            'best_speed': round(gps_agg['best_spd'], 1) if gps_agg['best_spd'] else None,
+            'avg_rotation': c_avg_rot,
+            'avg_rotation_raw': None,
+            'best_speed': round(best_spd, 1) if best_spd else None,
             'wing_loading': canopy.wing_loading,
         })
 

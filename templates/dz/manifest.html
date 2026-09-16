@@ -72,6 +72,15 @@
             <span class="text-gray-400">Exit Alt</span>
             <span class="text-white font-medium">{{ jump_run.exit_altitude|floatformat:0 }} ft</span>
           </div>
+          {% if jump_run.wind_speed_kts %}
+          <div class="flex items-center justify-between">
+            <span class="text-gray-400">Wind</span>
+            <span class="text-white font-medium">{{ jump_run.wind_speed_kts }} kts</span>
+          </div>
+          {% endif %}
+          {% if jump_run.hold_called %}
+          <div class="text-red-400 text-xs font-medium">Hold called</div>
+          {% endif %}
           {% if jump_run.spot_notes %}
           <p class="text-gray-400 text-xs leading-relaxed">{{ jump_run.spot_notes }}</p>
           {% endif %}
@@ -105,6 +114,17 @@
             <textarea name="spot_notes" rows="2"
                       class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 resize-none">{{ jump_run.spot_notes|default:'' }}</textarea>
           </div>
+          <div>
+            <label class="text-[10px] uppercase text-gray-500 block mb-1">Wind Speed (kts)</label>
+            <input type="number" name="wind_speed_kts" min="0" max="60"
+                   value="{{ jump_run.wind_speed_kts|default:'' }}"
+                   class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-sky-500">
+          </div>
+          <label class="flex items-center gap-2 text-xs text-gray-400">
+            <input type="checkbox" name="hold_called" {% if jump_run.hold_called %}checked{% endif %}
+                   class="accent-red-500">
+            Weather/wind hold in effect
+          </label>
           <button type="submit"
                   class="w-full py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition-colors">
             Set Conditions

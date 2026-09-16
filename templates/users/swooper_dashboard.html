@@ -14,9 +14,9 @@
   {% if stats.avg_rotation %}
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
     <p class="text-2xl font-bold text-sky-400">{{ stats.avg_rotation }}°</p>
-    <p class="text-xs text-gray-500 mt-1">Avg Rotation</p>
-    {% if stats.avg_rotation_raw and stats.avg_rotation_raw != stats.avg_rotation %}
-    <p class="text-xs text-gray-700 mt-0.5">{{ stats.avg_rotation_raw }}° raw</p>
+    <p class="text-xs text-gray-500 mt-1">Typical Rotation</p>
+    {% if stats.avg_rotation_count and stats.avg_rotation_total %}
+    <p class="text-xs text-gray-700 mt-0.5">{{ stats.avg_rotation_count }} of {{ stats.avg_rotation_total }}</p>
     {% endif %}
   </div>
   {% endif %}
@@ -27,24 +27,42 @@
     {% if stats.best_rotation_raw and stats.best_rotation_raw != stats.best_rotation %}
     <p class="text-xs text-gray-700 mt-0.5">{{ stats.best_rotation_raw }}° raw</p>
     {% endif %}
+    {% if stats.best_rotation_flight %}
+    <a href="{% url 'flight_detail' stats.best_rotation_flight %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+    {% endif %}
   </div>
   {% endif %}
   {% if stats.avg_speed %}
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
     <p class="text-2xl font-bold text-amber-400">{{ stats.avg_speed|floatformat:1 }}</p>
-    <p class="text-xs text-gray-500 mt-1">Avg Speed (mph)</p>
+    <p class="text-xs text-gray-500 mt-1">Avg V-Speed (mph)</p>
   </div>
   {% endif %}
   {% if stats.best_speed %}
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
     <p class="text-2xl font-bold text-purple-400">{{ stats.best_speed|floatformat:1 }}</p>
-    <p class="text-xs text-gray-500 mt-1">Best Speed (mph)</p>
+    <p class="text-xs text-gray-500 mt-1">Best V-Speed (mph)</p>
+    {% if stats.best_speed_flight %}
+    <a href="{% url 'flight_detail' stats.best_speed_flight %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if stats.best_ground_speed %}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
+    <p class="text-2xl font-bold text-cyan-400">{{ stats.best_ground_speed|floatformat:1 }}</p>
+    <p class="text-xs text-gray-500 mt-1">Best G-Speed (mph)</p>
+    {% if stats.best_ground_flight %}
+    <a href="{% url 'flight_detail' stats.best_ground_flight %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+    {% endif %}
   </div>
   {% endif %}
   {% if stats.best_distance %}
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 text-center">
     <p class="text-2xl font-bold text-rose-400">{{ stats.best_distance|floatformat:0 }}</p>
     <p class="text-xs text-gray-500 mt-1">Best Distance (ft)</p>
+    {% if stats.best_distance_flight %}
+    <a href="{% url 'flight_detail' stats.best_distance_flight %}" class="text-[10px] text-gray-600 hover:text-sky-400 transition-colors">view flight</a>
+    {% endif %}
   </div>
   {% endif %}
 </div>

@@ -20,8 +20,15 @@
   <!-- Tab nav -->
   <div class="flex items-center gap-1 mb-6 border-b border-gray-800">
     <a href="{% url 'jump_list' %}"
-       class="px-4 py-2.5 text-sm font-medium text-white border-b-2 border-sky-500 -mb-px">
+       class="px-4 py-2.5 text-sm font-medium {% if not needs_review %}text-white border-sky-500{% else %}text-gray-500 hover:text-gray-300 border-transparent{% endif %} transition-colors border-b-2 -mb-px">
       Jump Log
+    </a>
+    <a href="{% url 'jump_list' %}?needs_review=1"
+       class="px-4 py-2.5 text-sm font-medium {% if needs_review %}text-white border-sky-500{% else %}text-gray-500 hover:text-gray-300 border-transparent{% endif %} transition-colors border-b-2 -mb-px">
+      Needs Review
+      {% if needs_review_count %}
+      <span class="ml-1 inline-flex items-center justify-center text-xs bg-amber-500/20 text-amber-400 rounded-full px-1.5 py-0.5">{{ needs_review_count }}</span>
+      {% endif %}
     </a>
     <a href="{% url 'logbook_query' %}"
        class="px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-300 transition-colors border-b-2 border-transparent -mb-px">
@@ -66,6 +73,7 @@
 
       <input type="hidden" name="sort" :value="sort">
       <input type="hidden" name="dir"  :value="dir">
+      {% if needs_review %}<input type="hidden" name="needs_review" value="1">{% endif %}
 
       <div>
         <label class="block text-xs text-gray-500 mb-1">From</label>

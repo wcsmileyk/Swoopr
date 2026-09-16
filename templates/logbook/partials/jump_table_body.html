@@ -40,6 +40,9 @@
         {% if jump.load_slot_id %}
           <span class="text-xs text-violet-400" title="Manifested on Load {{ jump.load_slot.load.load_number }}">L{{ jump.load_slot.load.load_number }}</span>
         {% endif %}
+        {% if jump.is_draft %}
+          <span class="text-xs text-amber-400" title="Auto-logged from manifest — needs review">draft</span>
+        {% endif %}
         {% if not jump.flight_id and not jump.load_slot_id %}
           <span class="text-gray-600">—</span>
         {% endif %}
@@ -69,6 +72,16 @@
           </a>
         {% endif %}
         {% endwith %}
+      {% endif %}
+      {% if jump.is_draft %}
+      <form method="post" action="{% url 'confirm_jump' jump.pk %}" class="inline">
+        {% csrf_token %}
+        <button type="submit"
+                class="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors mr-2"
+                title="Confirm this auto-logged jump">
+          Confirm
+        </button>
+      </form>
       {% endif %}
       <a href="{% url 'edit_jump' jump.pk %}"
          class="text-gray-600 hover:text-sky-400 transition-colors opacity-0 group-hover:opacity-100"

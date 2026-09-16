@@ -98,6 +98,11 @@ class Jump(models.Model):
         help_text='DZ manifest slot this jump corresponds to.',
     )
 
+    # Set when this Jump was auto-created from a landed manifest slot.
+    # Stays True until the jumper reviews and confirms the details.
+    is_draft = models.BooleanField(default=False)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

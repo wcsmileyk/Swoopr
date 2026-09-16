@@ -1,5 +1,6 @@
 from django.urls import reverse
 
+from accounts.models import Notification
 from training.models import PendingInstructorRequest, StudentSignoff
 
 _STUDENT_URLS = {
@@ -53,6 +54,14 @@ def notifications(request):
             'url': reverse('jump_list'),
         })
 
+    unread_notification_qs = Notification.objects.filter(user=request.user, read_at__isnull=True)
+    unread_notification_count = unread_notification_qs.count()
+    for n in unread_notification_qs.order_by('-created_at')[:10]:
+        items.append({
+            'text': n.title,
+            'url': n.link_url or reverse('jump_list'),
+        })
+
     # ── Sidebar visibility ───────────────────────────────────────────────
     from logbook.models import Jump
     from flights.models import Flight
@@ -99,7 +108,7 @@ def notifications(request):
     )
 
     return {
-        'notif_count': pending_count + unread_count,
+        'notif_count': pending_count + unread_count + unread_notification_count,
         'notif_items': items,
         'show_student': show_student,
         'show_swooper': show_swooper,

@@ -97,6 +97,45 @@
   <!-- Sidebar: current jump + program overview -->
   <div class="space-y-4">
 
+    <!-- Progression -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-800">
+        <h2 class="text-sm font-semibold text-gray-200">Progression</h2>
+      </div>
+      <div class="px-5 py-4">
+        {% if progression.is_cleared %}
+          {% if progression.next_jump %}
+          <p class="text-sm text-emerald-400 font-medium flex items-center gap-1.5">
+            <i class="bi bi-check-circle"></i> Cleared for next jump
+          </p>
+          <p class="text-xs text-gray-400 mt-1">
+            {{ progression.next_jump.category.name }}
+            {% if progression.next_jump.name %} — {{ progression.next_jump.name }}{% endif %}
+          </p>
+          {% else %}
+          <p class="text-sm text-gray-400">No further jumps defined in this program.</p>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-amber-400 font-medium flex items-center gap-1.5">
+            <i class="bi bi-exclamation-circle"></i> Not yet cleared
+          </p>
+          <p class="text-xs text-gray-500 mt-1 mb-2">Outstanding criteria on the current jump:</p>
+          <div class="space-y-2">
+            {% for section, items in progression.blocking.missing.items %}
+            <div>
+              <p class="text-[11px] uppercase tracking-wide text-gray-600">{{ section }}</p>
+              <ul class="text-xs text-gray-400 list-disc list-inside">
+                {% for item in items %}
+                <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
     <!-- Current jump -->
     <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
       <div class="px-5 py-4 border-b border-gray-800">

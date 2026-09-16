@@ -20,6 +20,19 @@ class Aircraft(models.Model):
         null=True, blank=True,
         help_text='Max jumpers per load.',
     )
+    climb_rate_fpm = models.IntegerField(
+        null=True, blank=True,
+        help_text='Baseline climb rate in feet/min at a typical load. '
+                   'Used to estimate time-to-altitude before per-day stats exist.',
+    )
+    fuel_burn_gph = models.FloatField(
+        null=True, blank=True,
+        help_text='Fuel burn in gallons/hour.',
+    )
+    fuel_capacity_gal = models.FloatField(
+        null=True, blank=True,
+        help_text='Usable fuel capacity in gallons.',
+    )
 
     class Meta:
         ordering = ['manufacturer', 'model']

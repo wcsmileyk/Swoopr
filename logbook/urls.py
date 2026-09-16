@@ -16,6 +16,7 @@ urlpatterns = [
     path('<int:pk>/unlink-flight/', views.unlink_flight, name='unlink_flight'),
     path('<int:pk>/link-slot/', views.link_slot, name='link_slot'),
     path('<int:pk>/unlink-slot/', views.unlink_slot, name='unlink_slot'),
+    path('<int:pk>/confirm/', views.confirm_jump, name='confirm_jump'),
     path('bulk-delete/', views.bulk_delete_jumps, name='bulk_delete_jumps'),
     path('query/', views.query_view, name='logbook_query'),
     path('query/save/', views.save_query, name='logbook_query_save'),
@@ -32,4 +33,5 @@ urlpatterns = [
     path('instructor/', views.instructor_hub, name='instructor_hub'),
     path('instructor/queue/', views.instructor_queue, name='instructor_queue'),
     path('instructor/sign/<int:pk>/', views.signoff_form, name='signoff_form'),
+    path('notifications/mark-read/', views.mark_notifications_read, name='mark_notifications_read'),
 ]

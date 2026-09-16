@@ -33,11 +33,14 @@ urlpatterns = [
     path('<int:dz_id>/manifest/loads/<int:load_id>/slots/add/', manifest_views.dz_manifest_slot_add, name='dz_manifest_slot_add'),
     path('<int:dz_id>/manifest/loads/<int:load_id>/slots/<int:slot_id>/remove/', manifest_views.dz_manifest_slot_remove, name='dz_manifest_slot_remove'),
     path('<int:dz_id>/manifest/jump-run/', manifest_views.dz_manifest_jump_run, name='dz_manifest_jump_run'),
+    path('<int:dz_id>/manifest/loads/<int:load_id>/call-time-override/', manifest_views.dz_manifest_load_call_time_override, name='dz_manifest_load_call_time_override'),
+    path('<int:dz_id>/manifest/loads/<int:load_id>/call-time-override/clear/', manifest_views.dz_manifest_load_call_time_clear, name='dz_manifest_load_call_time_clear'),
     # Students
     path('<int:dz_id>/students/', views.dz_student_list, name='dz_student_list'),
     path('<int:dz_id>/students/enroll/', views.dz_enroll_student, name='dz_enroll_student'),
     path('<int:dz_id>/students/<int:enrollment_id>/', views.dz_student_detail, name='dz_student_detail'),
     path('<int:dz_id>/students/<int:enrollment_id>/log/', views.dz_log_student_jump, name='dz_log_student_jump'),
+    path('<int:dz_id>/instructor/', views.dz_instructor_dashboard, name='dz_instructor_dashboard'),
     # Public booking
     path('book/<int:dz_id>/', booking_views.booking_home, name='booking_home'),
     path('book/<int:dz_id>/confirm/', booking_views.booking_confirm, name='booking_confirm'),

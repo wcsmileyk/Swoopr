@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Avg, Count, Max, Min, Q
 from django.db.models.functions import ExtractYear
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from flights.flight_manager import process_flysight_file
 from flights.models import Flight
@@ -301,6 +302,7 @@ def jump_list(request):
     jump_type_id = request.GET.get('jump_type')
     canopy_id    = request.GET.get('canopy')
     swoop_only   = request.GET.get('swoop_only')
+    needs_review = request.GET.get('needs_review')
 
     if date_from:    jumps = jumps.filter(date__gte=date_from)
     if date_to:      jumps = jumps.filter(date__lte=date_to)
@@ -308,6 +310,7 @@ def jump_list(request):
     if jump_type_id: jumps = jumps.filter(jump_type_id=jump_type_id)
     if canopy_id:    jumps = jumps.filter(canopy_id=canopy_id)
     if swoop_only:   jumps = jumps.filter(swoop=True)
+    if needs_review: jumps = jumps.filter(is_draft=True)
 
     # Sorting
     sort_key = request.GET.get('sort', 'jump_num')
@@ -331,6 +334,8 @@ def jump_list(request):
         'total_count': jumps.count(),
         'current_sort': sort_key,
         'current_dir': sort_dir,
+        'needs_review': needs_review,
+        'needs_review_count': Jump.objects.filter(user=request.user, is_draft=True).count(),
     }
 
     if request.headers.get('HX-Request'):
@@ -622,6 +627,31 @@ def unlink_slot(request, pk):
     return redirect('edit_jump', pk=pk)
 
 
+@login_required
+def mark_notifications_read(request):
+    """Mark all of the current user's accounts.Notification rows as read."""
+    if request.method == 'POST':
+        from accounts.models import Notification
+        Notification.objects.filter(user=request.user, read_at__isnull=True).update(read_at=timezone.now())
+
+    from django.utils.http import url_has_allowed_host_and_scheme
+    next_url = request.POST.get('next') or request.GET.get('next') or ''
+    if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(next_url)
+    return redirect('jump_list')
+
+
+@login_required
+def confirm_jump(request, pk):
+    """Confirm a draft Jump that was auto-created from a landed manifest slot."""
+    jump = get_object_or_404(Jump, pk=pk, user=request.user)
+    if request.method == 'POST' and jump.is_draft:
+        jump.is_draft = False
+        jump.confirmed_at = timezone.now()
+        jump.save(update_fields=['is_draft', 'confirmed_at'])
+    return redirect('jump_list')
+
+
 # ---------------------------------------------------------------------------
 # GPS Upload Wizard
 # ---------------------------------------------------------------------------
@@ -716,6 +746,7 @@ def upload_wizard_step2(request):
             return redirect('logbook_upload')
 
         jumps_to_create = []
+        matched_draft_ids = set()
 
         with transaction.atomic():
             for i, entry in enumerate(pending):
@@ -761,6 +792,33 @@ def upload_wizard_step2(request):
                         # Analysis failed — still create the jump without GPS
                         if os.path.exists(entry['temp_path']):
                             os.unlink(entry['temp_path'])
+
+                # A load landing may already have auto-drafted a Jump for this
+                # date (Phase 1 manifest sync) before the jumper got to this
+                # wizard. Attach the GPS file to that draft instead of creating
+                # a second, duplicate Jump for the same physical skydive.
+                draft = (
+                    Jump.objects
+                    .filter(user=request.user, date=jump_date_raw, is_draft=True, flight__isnull=True)
+                    .exclude(pk__in=matched_draft_ids)
+                    .order_by('id')
+                    .first()
+                )
+                if draft:
+                    matched_draft_ids.add(draft.pk)
+                    draft.dropzone_id = shared_dz_id
+                    draft.aircraft_id = aircraft_id
+                    draft.canopy_id = resolved['canopy_id']
+                    draft.jump_type_id = resolved['jump_type_id']
+                    draft.altitude = int(altitude_raw) if altitude_raw else None
+                    draft.swoop = user_swoop
+                    draft.turn_rotation = turn_rotation_val
+                    draft.notes = request.POST.get(f'{i}_notes', '').strip()
+                    draft.flight_id = flight_id
+                    draft.is_draft = False
+                    draft.confirmed_at = timezone.now()
+                    draft.save()
+                    continue
 
                 jumps_to_create.append(Jump(
                     user=request.user,

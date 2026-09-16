@@ -9,17 +9,36 @@ Public API
 ----------
 create_load(dz, date, created_by, aircraft=None)
 call_load(load, called_by)
-send_load(load, user)          — building → on_call shortcut with time computation
 depart_load(load, user)        — on_call → in_air
-land_load(load, user)          — in_air → landed  (also updates DailyAircraftStats)
+land_load(load, user)          — in_air → landed  (also updates DailyAircraftStats and syncs draft Jumps)
 uncall_load(load, user)        — on_call → building
 compute_call_time(dz, aircraft, date)
+set_call_time_override(load, user, new_time, reason='')
+clear_call_time_override(load)
 """
 
 import datetime
 
 from django.db import transaction
+from django.db.models import Count, Sum
 from django.utils import timezone
+
+# Rolling window for cross-day aircraft performance stats.
+ROLLING_STATS_WINDOW_DAYS = 14
+
+# DZ default call-time gap used only when there's no usable history at all.
+DEFAULT_CALL_GAP = datetime.timedelta(minutes=30)
+
+# Assumed per-jumper weight (lbs) baseline a load's climb performance is
+# implicitly calibrated against; heavier-than-baseline loads get a climb
+# time penalty.
+BASELINE_WEIGHT_PER_JUMPER_LBS = 200
+WEIGHT_PENALTY_PCT_PER_100_LBS_OVER = 0.03
+
+# Simple weather hold buffers, added on top of the computed estimate.
+WIND_HOLD_THRESHOLD_KTS = 20
+WIND_HOLD_BUFFER = datetime.timedelta(minutes=10)
+ACTIVE_HOLD_BUFFER = datetime.timedelta(minutes=20)
 
 
 # ---------------------------------------------------------------------------
@@ -55,9 +74,13 @@ def create_load(dz, date, created_by, aircraft=None):
 def call_load(load, called_by):
     """
     Move load building → on_call.
-    Computes and stores call_time via the cascade logic.
+    Uses a manual CallTimeOverride if one is set for this load; otherwise
+    computes call_time via the cascade logic.
     """
-    call_time = compute_call_time(load.dropzone, load.aircraft, load.date)
+    if hasattr(load, 'call_time_override'):
+        call_time = load.call_time_override.overridden_call_time
+    else:
+        call_time = compute_call_time(load.dropzone, load.aircraft, load.date)
     load.call_time = call_time
     load.transition_to('on_call')   # saves
     return load
@@ -83,6 +106,7 @@ def land_load(load, user):
     Move load in_air → landed.
     Updates DailyAircraftStats rolling averages if aircraft is set.
     Wires landed_at timestamp.
+    Syncs completed slots into draft personal logbook entries.
     """
     load.landed_at = timezone.now()
     load.transition_to('landed')
@@ -90,7 +114,42 @@ def land_load(load, user):
     if load.aircraft and load.took_off_at and load.landed_at:
         _update_aircraft_stats(load)
 
+    from logbook.services.manifest_sync import sync_slots_for_load
+    sync_slots_for_load(load)
+
     return load
+
+
+# ---------------------------------------------------------------------------
+# Manual call-time override
+# ---------------------------------------------------------------------------
+
+def set_call_time_override(load, user, new_time, reason=''):
+    """
+    Set (or replace) a manual call-time override for a load.
+    Audited — records who set it, when, and why.
+    If the load is already on_call, updates its stored call_time immediately.
+    """
+    from dz.models import CallTimeOverride
+
+    override, _ = CallTimeOverride.objects.update_or_create(
+        load=load,
+        defaults={
+            'overridden_call_time': new_time,
+            'reason': reason,
+            'set_by': user,
+        },
+    )
+    if load.status == 'on_call':
+        load.call_time = new_time
+        load.save(update_fields=['call_time'])
+    return override
+
+
+def clear_call_time_override(load):
+    """Remove a manual override, reverting to the cascade on the next call."""
+    from dz.models import CallTimeOverride
+    CallTimeOverride.objects.filter(load=load).delete()
 
 
 # ---------------------------------------------------------------------------
@@ -102,16 +161,18 @@ def compute_call_time(dz, aircraft, date):
     Estimate when a newly called load will be ready to board.
 
     Cascade order:
-    1. If an aircraft is currently in_air, estimate its landing + avg turn time.
-    2. If the most recent landed load has stats, use last land time + avg turn time.
-    3. Fall back to now + DZ default (30 minutes).
+    1. If an aircraft is currently in_air, estimate its landing (using rolling
+       multi-day stats, adjusted for that in-air load's jumper weight) + avg
+       turn time, plus a weather hold buffer if conditions call for one.
+    2. If the most recent landed load today has stats, use last land time +
+       avg turn time.
+    3. Fall back to now + DZ default (30 minutes) — a "no data" estimate.
 
     Returns a datetime.
     """
-    from dz.models import DailyAircraftStats, Load
+    from dz.models import Load
 
     now = timezone.now()
-    default_gap = datetime.timedelta(minutes=30)
 
     # 1. Aircraft currently in air
     if aircraft:
@@ -122,12 +183,19 @@ def compute_call_time(dz, aircraft, date):
             .first()
         )
         if in_air_load and in_air_load.took_off_at:
-            stats = _get_stats(aircraft, date)
-            if stats and stats.avg_altitude_min and stats.avg_turn_min:
-                flight_duration = datetime.timedelta(minutes=stats.avg_altitude_min * 2)
-                turn_time = datetime.timedelta(minutes=stats.avg_turn_min)
+            stats = _get_stats(aircraft, dz, date)
+            altitude_min = _best_altitude_min(stats)
+            turn_min = _best_turn_min(stats)
+            if altitude_min and turn_min:
+                total_weight, jumper_count = _load_weight_stats(in_air_load)
+                flight_duration_min = _adjust_for_load_weight(
+                    aircraft, altitude_min * 2, jumper_count, total_weight,
+                )
+                flight_duration = datetime.timedelta(minutes=flight_duration_min)
+                turn_time = datetime.timedelta(minutes=turn_min)
                 estimated_land = in_air_load.took_off_at + flight_duration
-                return max(now, estimated_land) + turn_time
+                estimate = max(now, estimated_land) + turn_time
+                return estimate + _weather_delay(dz, date)
 
     # 2. Most recently landed load today
     last_landed = (
@@ -137,28 +205,91 @@ def compute_call_time(dz, aircraft, date):
         .first()
     )
     if last_landed and last_landed.aircraft:
-        stats = _get_stats(last_landed.aircraft, date)
-        if stats and stats.avg_turn_min:
-            turn_time = datetime.timedelta(minutes=stats.avg_turn_min)
-            return max(now, last_landed.landed_at) + turn_time
+        stats = _get_stats(last_landed.aircraft, dz, date)
+        turn_min = _best_turn_min(stats)
+        if turn_min:
+            turn_time = datetime.timedelta(minutes=turn_min)
+            estimate = max(now, last_landed.landed_at) + turn_time
+            return estimate + _weather_delay(dz, date)
 
-    # 3. DZ default
-    return now + default_gap
+    # 3. DZ default — no usable history at all.
+    return now + DEFAULT_CALL_GAP + _weather_delay(dz, date)
+
+
+def _best_altitude_min(stats):
+    """Prefer the rolling multi-day average; fall back to same-day only."""
+    if not stats:
+        return None
+    return stats.rolling_avg_altitude_min or stats.avg_altitude_min
+
+
+def _best_turn_min(stats):
+    if not stats:
+        return None
+    return stats.rolling_avg_turn_min or stats.avg_turn_min
+
+
+def _load_weight_stats(load):
+    """(total_weight_lbs, jumper_count) for a load's filled slots, ignoring slots with no weight entered."""
+    agg = load.slots.aggregate(total_weight=Sum('weight_lbs'), count=Count('id'))
+    return agg['total_weight'], agg['count']
+
+
+def _adjust_for_load_weight(aircraft, base_climb_min, jumper_count, total_weight_lbs):
+    """
+    Scale a baseline climb-time estimate for a heavier-than-typical load.
+    No-op unless the aircraft has a configured climb_rate_fpm and we have
+    both a jumper count and a total weight to compare against baseline.
+    """
+    if not aircraft.climb_rate_fpm or not jumper_count or not total_weight_lbs:
+        return base_climb_min
+
+    baseline_weight = jumper_count * BASELINE_WEIGHT_PER_JUMPER_LBS
+    over = total_weight_lbs - baseline_weight
+    if over <= 0:
+        return base_climb_min
+
+    penalty = (over / 100.0) * WEIGHT_PENALTY_PCT_PER_100_LBS_OVER
+    return base_climb_min * (1 + penalty)
+
+
+def _weather_delay(dz, date):
+    """
+    Extra buffer to add to a call-time estimate based on the most recently
+    logged JumpRunConditions for this DZ/date. Returns a timedelta (zero if
+    no conditions logged, or conditions don't call for a hold).
+    """
+    from dz.models import JumpRunConditions
+
+    latest = (
+        JumpRunConditions.objects
+        .filter(dropzone=dz, date=date)
+        .order_by('-set_at')
+        .first()
+    )
+    if not latest:
+        return datetime.timedelta(0)
+    if latest.hold_called:
+        return ACTIVE_HOLD_BUFFER
+    if latest.wind_speed_kts and latest.wind_speed_kts >= WIND_HOLD_THRESHOLD_KTS:
+        return WIND_HOLD_BUFFER
+    return datetime.timedelta(0)
 
 
 # ---------------------------------------------------------------------------
 # Stats helpers
 # ---------------------------------------------------------------------------
 
-def _get_stats(aircraft, date):
+def _get_stats(aircraft, dz, date):
     from dz.models import DailyAircraftStats
-    return DailyAircraftStats.objects.filter(aircraft=aircraft, date=date).first()
+    return DailyAircraftStats.objects.filter(aircraft=aircraft, dropzone=dz, date=date).first()
 
 
 def _update_aircraft_stats(load):
     """
-    Recompute rolling averages for this aircraft on this date
-    using all completed loads (those with both took_off_at and landed_at).
+    Recompute same-day averages for this aircraft/dropzone/date, plus a
+    trailing ROLLING_STATS_WINDOW_DAYS-day rolling average across dates, and
+    capture jumper-count/weight sample data for this day.
     Called inside land_load's transaction.
     """
     from dz.models import DailyAircraftStats, Load
@@ -167,6 +298,7 @@ def _update_aircraft_stats(load):
         Load.objects
         .filter(
             aircraft=load.aircraft,
+            dropzone=load.dropzone,
             date=load.date,
             status='landed',
             took_off_at__isnull=False,
@@ -195,12 +327,48 @@ def _update_aircraft_stats(load):
     avg_altitude = sum(altitude_mins) / len(altitude_mins) if altitude_mins else None
     avg_turn = sum(turn_mins) / len(turn_mins) if turn_mins else None
 
-    DailyAircraftStats.objects.update_or_create(
+    weight_total, jumper_count = _load_weight_stats(load)
+
+    stats, _ = DailyAircraftStats.objects.update_or_create(
         aircraft=load.aircraft,
+        dropzone=load.dropzone,
         date=load.date,
         defaults={
             'load_count': len(completed),
             'avg_altitude_min': round(avg_altitude, 1) if avg_altitude else None,
             'avg_turn_min': round(avg_turn, 1) if avg_turn else None,
+            'sample_weight_lbs_total': weight_total,
+            'sample_jumper_count': jumper_count,
         },
     )
+
+    _update_rolling_stats(load.aircraft, load.dropzone, load.date, stats)
+
+
+def _update_rolling_stats(aircraft, dz, date, today_stats):
+    """
+    Recompute rolling_avg_altitude_min/rolling_avg_turn_min as a simple
+    trailing-window average of same-day averages across the last
+    ROLLING_STATS_WINDOW_DAYS days (including today).
+    """
+    from dz.models import DailyAircraftStats
+
+    window_start = date - datetime.timedelta(days=ROLLING_STATS_WINDOW_DAYS - 1)
+    window_days = (
+        DailyAircraftStats.objects
+        .filter(aircraft=aircraft, dropzone=dz, date__gte=window_start, date__lte=date)
+        .exclude(pk=today_stats.pk)
+        .values_list('avg_altitude_min', 'avg_turn_min')
+    )
+
+    altitude_vals = [today_stats.avg_altitude_min] if today_stats.avg_altitude_min else []
+    turn_vals = [today_stats.avg_turn_min] if today_stats.avg_turn_min else []
+    for alt, turn in window_days:
+        if alt:
+            altitude_vals.append(alt)
+        if turn:
+            turn_vals.append(turn)
+
+    today_stats.rolling_avg_altitude_min = round(sum(altitude_vals) / len(altitude_vals), 1) if altitude_vals else None
+    today_stats.rolling_avg_turn_min = round(sum(turn_vals) / len(turn_vals), 1) if turn_vals else None
+    today_stats.save(update_fields=['rolling_avg_altitude_min', 'rolling_avg_turn_min'])

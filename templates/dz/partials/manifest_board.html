@@ -15,7 +15,20 @@
               {% elif load.status == 'in_air' %}border-l-sky-400
               {% else %}border-l-emerald-500{% endif %}
               flex flex-col overflow-hidden"
-       x-data="{ addOpen: false }">
+       x-data="{
+         addOpen: false,
+         overrideOpen: false,
+         callTime: {{ load.call_time|date:'U'|default:'null' }},
+         nowTs: Date.now() / 1000,
+         get countdownLabel() {
+           if (this.callTime === null) return null;
+           const mins = Math.round((this.callTime - this.nowTs) / 60);
+           if (mins > 1) return 'in ' + mins + ' min';
+           if (mins >= -1) return 'now';
+           return Math.abs(mins) + ' min late';
+         }
+       }"
+       x-init="setInterval(() => nowTs = Date.now() / 1000, 1000)">
 
     {# Header #}
     <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-800">
@@ -34,12 +47,74 @@
       </span>
     </div>
 
-    {# Timestamps #}
+    {# Timestamps + live countdown #}
     {% if load.call_time %}
-    <div class="px-3 py-1.5 border-b border-gray-800/60 text-[11px] text-gray-500 flex gap-3">
-      <span>Call {{ load.call_time|time:"g:i A" }}</span>
-      {% if load.took_off_at %}<span>Up {{ load.took_off_at|time:"g:i A" }}</span>{% endif %}
-      {% if load.landed_at %}<span>Down {{ load.landed_at|time:"g:i A" }}</span>{% endif %}
+    <div class="px-3 py-1.5 border-b border-gray-800/60 text-[11px] text-gray-500">
+      <div class="flex gap-3 items-center flex-wrap">
+        <span>Call {{ load.call_time|time:"g:i A" }}</span>
+        {% if load.status == 'on_call' %}
+        <span class="font-medium" :class="countdownLabel && countdownLabel.includes('late') ? 'text-red-400' : 'text-sky-400'" x-text="countdownLabel"></span>
+        {% endif %}
+        {% if load.took_off_at %}<span>Up {{ load.took_off_at|time:"g:i A" }}</span>{% endif %}
+        {% if load.landed_at %}<span>Down {{ load.landed_at|time:"g:i A" }}</span>{% endif %}
+      </div>
+      {% if load.has_call_time_override %}
+      <div class="mt-0.5 text-amber-400" title="{{ load.call_time_override.reason }}">
+        Manual override{% if load.call_time_override.set_by %} by {{ load.call_time_override.set_by.get_full_name|default:load.call_time_override.set_by.username }}{% endif %}
+      </div>
+      {% elif not load.call_time_estimate_has_data %}
+      <div class="mt-0.5 text-gray-600">Estimate — no aircraft history yet</div>
+      {% elif load.aircraft_stats %}
+      <div class="mt-0.5 text-gray-600">
+        Based on {{ load.aircraft_stats.rolling_avg_turn_min|default:load.aircraft_stats.avg_turn_min|floatformat:0 }}m avg turn
+        {% if load.aircraft_stats.rolling_avg_altitude_min or load.aircraft_stats.avg_altitude_min %}
+        &middot; {{ load.aircraft_stats.rolling_avg_altitude_min|default:load.aircraft_stats.avg_altitude_min|floatformat:0 }}m to altitude
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if is_admin and load.status != 'in_air' and load.status != 'landed' %}
+    <div class="px-3 py-1 border-b border-gray-800/60">
+      <button type="button" @click="overrideOpen = !overrideOpen"
+              class="text-[10px] text-gray-600 hover:text-amber-400 transition-colors">
+        <span x-text="overrideOpen ? 'Cancel' : '{% if load.has_call_time_override %}Edit call-time override{% else %}Set call-time override{% endif %}'"></span>
+      </button>
+      <form x-show="overrideOpen" x-cloak
+            method="post"
+            action="{% url 'dz_manifest_load_call_time_override' dz_id=dz.pk load_id=load.pk %}"
+            hx-post="{% url 'dz_manifest_load_call_time_override' dz_id=dz.pk load_id=load.pk %}?date={{ date|date:'Y-m-d' }}"
+            hx-target="#manifest-board"
+            hx-swap="innerHTML"
+            class="mt-1.5 space-y-1.5">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
+        <input type="datetime-local" name="call_time"
+               class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500">
+        <input type="text" name="reason" placeholder="Reason (optional)"
+               class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500">
+        <div class="flex gap-1.5">
+          <button type="submit" class="flex-1 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white text-[11px] font-medium transition-colors">
+            Set Override
+          </button>
+        </div>
+      </form>
+      {% if load.has_call_time_override %}
+      <form x-show="overrideOpen" x-cloak
+            method="post"
+            action="{% url 'dz_manifest_load_call_time_clear' dz_id=dz.pk load_id=load.pk %}"
+            hx-post="{% url 'dz_manifest_load_call_time_clear' dz_id=dz.pk load_id=load.pk %}?date={{ date|date:'Y-m-d' }}"
+            hx-target="#manifest-board"
+            hx-swap="innerHTML"
+            class="mt-1">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ date|date:'Y-m-d' }}">
+        <button type="submit" class="w-full py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 text-[11px] transition-colors">
+          Clear Override
+        </button>
+      </form>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -59,7 +134,13 @@
               <p class="text-[10px] text-gray-500 truncate">
                 {{ slot.get_role_display }}<span class="text-gray-700 mx-1">·</span>{{ slot.get_jump_type_display }}
                 {% if slot.media_status != 'none' %}<span class="ml-1 px-1 rounded bg-gray-800 text-gray-400">{{ slot.get_media_status_display }}</span>{% endif %}
-                {% if slot.jump %}<span class="ml-1 px-1 rounded bg-emerald-900/60 text-emerald-400">Logged</span>{% endif %}
+                {% if slot.jump %}
+                  {% if slot.jump.is_draft %}
+                  <span class="ml-1 px-1 rounded bg-amber-900/60 text-amber-400" title="Auto-logged, awaiting jumper confirmation">Logged (draft)</span>
+                  {% else %}
+                  <span class="ml-1 px-1 rounded bg-emerald-900/60 text-emerald-400">Logged</span>
+                  {% endif %}
+                {% endif %}
               </p>
             </div>
           </div>

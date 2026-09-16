@@ -372,6 +372,10 @@ class StudentJump(models.Model):
         null=True, blank=True, related_name='student_jumps_signed'
     )
     signed_off_at = models.DateTimeField(null=True, blank=True)
+    e_signature_data = models.JSONField(
+        default=dict, blank=True,
+        help_text='Captured signature metadata: typed name, timestamp, IP address.',
+    )
 
     class Meta:
         ordering = ['-jump_date']
