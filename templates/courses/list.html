@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block title %}Courses — Flare{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-xl font-semibold text-gray-100">Courses</h1>
+    <a href="{% url 'courses:import_upload' %}"
+       class="bg-sky-700 hover:bg-sky-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+      <i class="bi bi-upload"></i> Import course
+    </a>
+  </div>
+
+  <section class="mb-8">
+    <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">My Courses</h2>
+    {% if my_sets %}
+      <div class="grid gap-3 md:grid-cols-2">
+        {% for cs in my_sets %}
+          {% include 'courses/_course_set_card.html' with course_set=cs %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-sm text-gray-500">No courses yet. <a href="{% url 'courses:import_upload' %}" class="text-sky-400 hover:underline">Import one from a KML file</a>.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Public Courses</h2>
+    {% if public_sets %}
+      <div class="grid gap-3 md:grid-cols-2">
+        {% for cs in public_sets %}
+          {% include 'courses/_course_set_card.html' with course_set=cs %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-sm text-gray-500">No public courses yet.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

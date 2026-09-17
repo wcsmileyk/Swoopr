@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}Apply Course — Flare{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <h1 class="text-xl font-semibold text-gray-100 mb-1">Apply a course</h1>
+  <p class="text-sm text-gray-500 mb-6">
+    Evaluates this flight's GPS track against the course's gates. This is a separate,
+    course-specific analysis -- it doesn't change the flight's own flare/turn/rollout results.
+  </p>
+
+  {% if error %}
+    <div class="bg-red-900/40 border border-red-800 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{{ error }}</div>
+  {% endif %}
+
+  {% if available_courses %}
+    <form method="post" class="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
+      {% csrf_token %}
+      <div class="space-y-2">
+        {% for course in available_courses %}
+          <label class="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 cursor-pointer hover:border-sky-700">
+            <input type="radio" name="course_id" value="{{ course.id }}" required class="text-sky-500">
+            <div>
+              <p class="text-sm text-gray-200">{{ course.course_set.name }} — {{ course.get_discipline_display }}</p>
+              <p class="text-xs text-gray-500">rev {{ course.current_revision.revision_number }}</p>
+            </div>
+          </label>
+        {% endfor %}
+      </div>
+      <button type="submit"
+              class="bg-sky-700 hover:bg-sky-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+        Analyze
+      </button>
+    </form>
+  {% else %}
+    <p class="text-sm text-gray-500">
+      No courses available yet. <a href="{% url 'courses:import_upload' %}" class="text-sky-400 hover:underline">Import one</a> first.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

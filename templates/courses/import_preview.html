@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+
+{% block title %}Preview Import — Flare{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>#previewMap { height: 420px; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <h1 class="text-xl font-semibold text-gray-100 mb-1">Preview import</h1>
+
+  {% if error %}
+    <div class="bg-red-900/40 border border-red-800 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{{ error }}</div>
+  {% endif %}
+
+  {% if course_import.status == 'failed' %}
+    <div class="bg-red-900/40 border border-red-800 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">
+      <p class="font-semibold mb-1">Import failed</p>
+      {% for e in course_import.validation_report.errors %}<p>{{ e }}</p>{% endfor %}
+    </div>
+    <a href="{% url 'courses:import_upload' %}" class="text-sky-400 hover:underline text-sm">Try another file</a>
+
+  {% elif course_import.status == 'preview_ready' %}
+    {% with preview=course_import.extracted %}
+    <p class="text-sm text-gray-400 mb-4">
+      Detected <span class="text-gray-200">{{ preview.detected_discipline|default:"unknown" }}</span> geometry
+      from <span class="text-gray-200">{{ preview.course_name|default:"unnamed course" }}</span>.
+      Building: {% for d in preview.disciplines %}<span class="text-gray-200">{{ d }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}.
+    </p>
+
+    {% if preview.warnings %}
+      <div class="bg-amber-900/30 border border-amber-800 text-amber-300 text-sm rounded-lg px-4 py-3 mb-4">
+        <p class="font-semibold mb-1">Warnings</p>
+        <ul class="list-disc list-inside space-y-0.5">
+          {% for w in preview.warnings %}<li>{{ w }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div id="previewMap" class="rounded-lg border border-gray-800 mb-4"></div>
+
+    <form method="post" class="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
+      {% csrf_token %}
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Course name</label>
+        <input type="text" name="name" required value="{{ preview.course_name }}"
+               class="w-full text-sm text-gray-100 bg-gray-800 border border-gray-700 rounded px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Site (optional)</label>
+        <input type="text" name="site_name"
+               class="w-full text-sm text-gray-100 bg-gray-800 border border-gray-700 rounded px-3 py-2">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Visibility</label>
+        <select name="visibility" class="w-full text-sm text-gray-100 bg-gray-800 border border-gray-700 rounded px-3 py-2">
+          <option value="private" selected>Private</option>
+          <option value="public">Public</option>
+        </select>
+      </div>
+      <button type="submit"
+              class="bg-sky-700 hover:bg-sky-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+        Save course
+      </button>
+    </form>
+
+    <script>
+    (function() {
+      const geometry = {{ preview_geometry_json|safe }};
+      const map = L.map('previewMap');
+
+      const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri', maxZoom: 21,
+      });
+      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors', maxZoom: 21,
+      });
+      satLayer.addTo(map);
+      L.control.layers({ 'Satellite': satLayer, 'Street': osmLayer }).addTo(map);
+
+      const bounds = [];
+      const colors = { distance: '#38bdf8', speed: '#a78bfa', accuracy: '#34d399' };
+
+      Object.entries(geometry).forEach(([discipline, geo]) => {
+        const color = colors[discipline] || '#eee';
+
+        if (geo.boundary) {
+          ['left', 'right'].forEach(side => {
+            const latlngs = (geo.boundary[side] || []).map(pt => [pt.lat, pt.lon]);
+            L.polyline(latlngs, { color: color, weight: 2, opacity: 0.85 }).addTo(map);
+            bounds.push(...latlngs);
+          });
+        }
+
+        (geo.gates || []).forEach(gate => {
+          const left = [gate.left_endpoint.lat, gate.left_endpoint.lon];
+          const right = [gate.right_endpoint.lat, gate.right_endpoint.lon];
+          L.polyline([left, right], { color: color, weight: 3 })
+            .addTo(map).bindPopup(`${discipline} ${gate.id}`);
+          bounds.push(left, right);
+        });
+      });
+
+      if (bounds.length) {
+        map.fitBounds(bounds, { padding: [30, 30] });
+      } else {
+        map.setView([0, 0], 2);
+      }
+    })();
+    </script>
+    {% endwith %}
+  {% else %}
+    <p class="text-sm text-gray-500">Import is {{ course_import.status }}.</p>
+  {% endif %}
+</div>
+{% endblock %}

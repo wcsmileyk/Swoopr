@@ -772,7 +772,14 @@ def flight_detail_view(request, flight_id):
     from flights.models import CompetitionGate
     available_gates = None
     if is_owner:
-        available_gates = CompetitionGate.objects.filter(is_parsed=True).order_by('name')
+        available_gates = CompetitionGate.objects.visible_to(request.user).filter(is_parsed=True).order_by('name')
+
+    # New course-system analyses (separate from the legacy gate system above)
+    course_analyses = None
+    if is_owner:
+        course_analyses = flight.course_analyses.filter(is_primary=True).select_related(
+            'course', 'course__course_set', 'course_revision'
+        )
 
     # Generate overhead view data if flight has swoop analysis
     overhead_data = None
@@ -836,6 +843,7 @@ def flight_detail_view(request, flight_id):
         'available_gates': available_gates,
         'overhead_data': overhead_data_json,
         'is_owner': is_owner,
+        'course_analyses': course_analyses,
     }
 
     return render(request, 'users/flight_detail.html', context)
@@ -930,8 +938,17 @@ def update_flight_gate_view(request, flight_id):
         from flights.models import CompetitionGate
 
         if gate_id:
-            # Validate gate exists and is parsed
-            gate = get_object_or_404(CompetitionGate, id=gate_id, is_parsed=True)
+            # Validate gate exists, is parsed, and is visible to this user.
+            # Look this up without get_object_or_404 -- its Http404 would
+            # otherwise be swallowed by the broad except below and reported
+            # as a 200 success:false instead of an actual 404.
+            gate = CompetitionGate.objects.visible_to(request.user).filter(
+                id=gate_id, is_parsed=True
+            ).first()
+            if gate is None:
+                return JsonResponse(
+                    {'success': False, 'error': 'Gate not found'}, status=404
+                )
             flight.competition_gate = gate
         else:
             # Remove gate assignment
@@ -1280,9 +1297,11 @@ def upload_gate_file(request):
                     'error': 'No gate positions found in file'
                 }, status=400)
 
-            # Create or update CompetitionGate
+            # Create or update CompetitionGate, scoped to this user so a
+            # shared name can't overwrite another user's course
             gate, created = CompetitionGate.objects.get_or_create(
                 name=gate_name,
+                created_by=request.user,
                 defaults={
                     'gate_type': gate_type,
                     'gate_positions': gate_positions,

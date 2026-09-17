@@ -7,8 +7,19 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     """
-    Registers accounts.User in the migration state pointing at the existing
-    auth_user table. No database operations are performed.
+    Registers accounts.User pointing at the auth_user table.
+
+    On the real dev/prod database this migration was applied back when it
+    was database_operations=[] (state-only), because auth_user already
+    existed from before the swap to a custom user model — Django doesn't
+    replay already-applied migrations, so that history is untouched.
+
+    On any freshly created database (e.g. the test database), Django's own
+    auth.0001_initial skips creating auth_user because AUTH_USER_MODEL is
+    swapped, so this migration must actually create the table itself or
+    auth_user never exists at all. Making this a real CreateModel (instead
+    of state-only) fixes that without affecting the already-applied history
+    above.
     """
 
     initial = True
@@ -18,15 +29,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.SeparateDatabaseAndState(
-            # Nothing changes in the database — auth_user table already exists.
-            database_operations=[],
-            # Register accounts.User in the migration state so that all FKs
-            # using settings.AUTH_USER_MODEL resolve correctly.
-            state_operations=[
-                migrations.CreateModel(
-                    name='User',
-                    fields=[
+        migrations.CreateModel(
+            name='User',
+            fields=[
                         ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                         ('password', models.CharField(max_length=128, verbose_name='password')),
                         ('last_login', models.DateTimeField(blank=True, null=True, verbose_name='last login')),
@@ -73,17 +78,15 @@ class Migration(migrations.Migration):
                             to='auth.permission',
                             verbose_name='user permissions',
                         )),
-                    ],
-                    options={
-                        'verbose_name': 'user',
-                        'verbose_name_plural': 'users',
-                        'db_table': 'auth_user',
-                        'abstract': False,
-                    },
-                    managers=[
-                        ('objects', django.contrib.auth.models.UserManager()),
-                    ],
-                ),
+            ],
+            options={
+                'verbose_name': 'user',
+                'verbose_name_plural': 'users',
+                'db_table': 'auth_user',
+                'abstract': False,
+            },
+            managers=[
+                ('objects', django.contrib.auth.models.UserManager()),
             ],
         ),
     ]

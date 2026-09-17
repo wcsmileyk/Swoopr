@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'flights',
     'logbook',
     'dz',
+    'courses',
     'analysis',
     'api',
     'visualization',

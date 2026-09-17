@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block title %}Import Course — Flare{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <h1 class="text-xl font-semibold text-gray-100 mb-1">Import a course from KML</h1>
+  <p class="text-sm text-gray-500 mb-6">
+    Upload a KML file with explicit gate geometry (like the Mile-Hi eastern Speed/Distance layouts).
+    You'll get a preview before anything is saved.
+  </p>
+
+  {% if error %}
+    <div class="bg-red-900/40 border border-red-800 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="bg-gray-900 border border-gray-800 rounded-lg p-5 space-y-4">
+    {% csrf_token %}
+
+    <div>
+      <label class="block text-xs text-gray-500 mb-1">KML file</label>
+      <input type="file" name="source_file" accept=".kml" required
+             class="w-full text-sm text-gray-300 bg-gray-800 border border-gray-700 rounded px-3 py-2">
+    </div>
+
+    <div>
+      <label class="block text-xs text-gray-500 mb-1">Carve direction</label>
+      <p class="text-xs text-gray-600 mb-2">
+        The inside of a left-hand turn is the pilot's left; needed to interpret Inside/Outside
+        markers and derive entry heading, even for a straight Distance course sharing the same G1.
+      </p>
+      <select name="carve_direction" required
+              class="w-full text-sm text-gray-100 bg-gray-800 border border-gray-700 rounded px-3 py-2">
+        <option value="left">Left carve</option>
+        <option value="right">Right carve</option>
+      </select>
+    </div>
+
+    <div class="border-t border-gray-800 pt-4">
+      <p class="text-xs text-gray-500 mb-2">
+        Only if your file has a G1 marker but no full gate layout (a "seed" file) --
+        needed to derive the rest of the course:
+      </p>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Entry heading (true, degrees)</label>
+          <input type="number" step="any" name="entry_heading_deg_true"
+                 class="w-full text-sm text-gray-100 bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                 placeholder="e.g. 129.65">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Course width, meters (default 10)</label>
+          <input type="number" step="any" name="course_width_m"
+                 class="w-full text-sm text-gray-100 bg-gray-800 border border-gray-700 rounded px-3 py-2"
+                 placeholder="10">
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-xs text-gray-500 mb-1">Disciplines to build</label>
+      <p class="text-xs text-gray-600 mb-2">
+        Leave unchecked to auto-detect from a full gate layout. Required for a G1-seed file --
+        pick any combination to build from that single G1 (a Speed file's own G2-G4 are never reused
+        for another discipline; those are always generated fresh from G1).
+      </p>
+      <div class="flex gap-4">
+        {% for value, label in discipline_choices %}
+          <label class="flex items-center gap-1.5 text-sm text-gray-300">
+            <input type="checkbox" name="disciplines" value="{{ value }}" class="rounded border-gray-700 bg-gray-800">
+            {{ label }}
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit"
+            class="bg-sky-700 hover:bg-sky-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+      Upload and preview
+    </button>
+  </form>
+</div>
+{% endblock %}

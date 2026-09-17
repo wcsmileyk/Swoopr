@@ -26,4 +26,5 @@ urlpatterns = [
     path('logbook/', include('logbook.urls')),
     path('dz/', include('dz.urls')),
     path('api/dz/', include('dz.api.urls')),
+    path('courses/', include('courses.urls')),
 ]

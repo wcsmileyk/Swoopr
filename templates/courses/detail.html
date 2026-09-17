@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ course_set.name }} — Flare{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>#courseMap { height: 480px; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <div class="flex items-start justify-between mb-4">
+    <div>
+      <h1 class="text-xl font-semibold text-gray-100">{{ course_set.name }}</h1>
+      {% if course_set.site_name %}<p class="text-sm text-gray-500">{{ course_set.site_name }}</p>{% endif %}
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-xs px-2 py-0.5 rounded-full border
+        {% if course_set.visibility == 'public' %}bg-emerald-900/60 text-emerald-300 border-emerald-800
+        {% else %}bg-gray-800 text-gray-400 border-gray-700{% endif %}">
+        {{ course_set.get_visibility_display }}
+      </span>
+      {% if is_editable %}
+        <button onclick="toggleVisibility()"
+                class="bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+          Make {% if course_set.visibility == 'public' %}private{% else %}public{% endif %}
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="flex gap-1.5 mb-4">
+    {% for course in courses %}
+      <span class="text-xs bg-gray-800 text-gray-300 rounded px-2 py-0.5">
+        {{ course.get_discipline_display }}
+        {% if course.current_revision %}(rev {{ course.current_revision.revision_number }}){% endif %}
+      </span>
+    {% endfor %}
+  </div>
+
+  <div id="courseMap" class="rounded-lg border border-gray-800"></div>
+</div>
+
+<script>
+function toggleVisibility() {
+  const current = '{{ course_set.visibility }}';
+  const next = current === 'public' ? 'private' : 'public';
+  fetch('{% url "courses:visibility" course_set.id %}', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'visibility=' + next,
+  }).then(r => r.json()).then(data => { if (data.success) location.reload(); });
+}
+
+(function() {
+  const geometry = {{ geometry_json|safe }};
+  const map = L.map('courseMap');
+
+  const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri', maxZoom: 21,
+  });
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 21,
+  });
+  satLayer.addTo(map);
+  L.control.layers({ 'Satellite': satLayer, 'Street': osmLayer }).addTo(map);
+
+  const bounds = [];
+  const colors = { distance: '#38bdf8', speed: '#a78bfa', accuracy: '#34d399' };
+
+  Object.entries(geometry).forEach(([discipline, geo]) => {
+    const color = colors[discipline] || '#eee';
+
+    if (geo.boundary) {
+      ['left', 'right'].forEach(side => {
+        const latlngs = (geo.boundary[side] || []).map(pt => [pt.lat, pt.lon]);
+        L.polyline(latlngs, { color: color, weight: 2, opacity: 0.85 }).addTo(map);
+        bounds.push(...latlngs);
+      });
+      if (geo.boundary.centerline) {
+        const cl = geo.boundary.centerline.map(pt => [pt.lat, pt.lon]);
+        L.polyline(cl, { color: color, weight: 1, opacity: 0.5, dashArray: '4,6' }).addTo(map);
+      }
+    }
+
+    (geo.gates || []).forEach(gate => {
+      const left = [gate.left_endpoint.lat, gate.left_endpoint.lon];
+      const right = [gate.right_endpoint.lat, gate.right_endpoint.lon];
+      L.polyline([left, right], { color: color, weight: 3 })
+        .addTo(map).bindPopup(`${discipline} ${gate.id}`);
+      bounds.push(left, right);
+    });
+    (geo.zones || []).forEach(zone => {
+      (zone.polygon || []).forEach(ring => {
+        const latlngs = ring.map(pt => [pt.lat, pt.lon]);
+        L.polygon(latlngs, { color: '#34d399', weight: 1, fillOpacity: 0.08 })
+          .addTo(map).bindPopup(`${zone.id} (${zone.points} pts)`);
+      });
+    });
+  });
+
+  if (bounds.length) {
+    map.fitBounds(bounds, { padding: [30, 30] });
+  } else {
+    map.setView([0, 0], 2);
+  }
+})();
+</script>
+{% endblock %}

@@ -24,6 +24,11 @@ class Migration(migrations.Migration):
         ('organizations', '0001_initial'),
         ('aircraft', '0001_initial'),
         ('training', '0001_initial'),
+        # users.UserProfile.home_dropzone must stop pointing at
+        # logbook.dropzone (repointed to organizations.dropzone here) before
+        # this migration deletes logbook.Dropzone from state, or any
+        # state-rendering migration in between sees a dangling FK reference.
+        ('users', '0008_update_dropzone_fk'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

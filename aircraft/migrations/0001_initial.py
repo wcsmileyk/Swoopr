@@ -10,7 +10,11 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = []
+    dependencies = [
+        # logbook.0001_initial is what actually creates logbook_aircraft on a
+        # fresh database; this migration only repoints its Django state.
+        ('logbook', '0001_initial'),
+    ]
 
     operations = [
         migrations.SeparateDatabaseAndState(

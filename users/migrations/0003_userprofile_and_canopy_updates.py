@@ -9,6 +9,16 @@ class Migration(migrations.Migration):
         ('users', '0002_add_auto_public_flights'),
     ]
 
+    # This migration's home_dropzone FK targets 'logbook.dropzone', a label
+    # that logbook.0005_move_to_domain_apps removes from migration state
+    # (Dropzone's state moves to organizations.Dropzone; see
+    # users.0008_update_dropzone_fk for the later repoint). Nothing else
+    # orders these two relative to each other, so a fresh database's
+    # migration graph could legally apply 0005 first and break this FK.
+    run_before = [
+        ('logbook', '0005_move_to_domain_apps'),
+    ]
+
     operations = [
         # UserProfile: instructor/rating flags
         migrations.AddField(

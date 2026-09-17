@@ -144,12 +144,38 @@
       {% endif %}
     </div>
   </div>
+  {% if is_owner %}
+  <div class="mt-4 pt-4 border-t border-gray-800">
+    <p class="text-xs text-gray-500 mb-3">Courses</p>
+    <div class="space-y-2 mb-3">
+      {% for analysis in course_analyses %}
+        <a href="{% url 'courses:flight_analysis' flight.id analysis.id %}"
+           class="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 hover:border-sky-700 transition-colors">
+          <span class="text-sm text-gray-200">
+            {{ analysis.course.course_set.name }} — {{ analysis.course.get_discipline_display }}
+          </span>
+          <span class="text-xs px-2 py-0.5 rounded-full border
+            {% if analysis.entry_status == 'crossed' %}bg-emerald-900/60 text-emerald-300 border-emerald-800
+            {% else %}bg-amber-900/60 text-amber-300 border-amber-800{% endif %}">
+            {{ analysis.get_entry_status_display }}
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+    <a href="{% url 'courses:apply_to_flight' flight.id %}"
+       class="inline-block bg-sky-700 hover:bg-sky-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+      <i class="bi bi-flag"></i> Apply Course
+    </a>
+  </div>
+  {% endif %}
+
   {% if is_owner and flight.competition_gate %}
   <div class="mt-4 pt-4 border-t border-gray-800">
     <p class="text-xs text-gray-500 mb-3">
       Gate Metrics
       {% if flight.gate_speed_mps %}<span class="text-xs bg-emerald-900/60 text-emerald-300 border border-emerald-800 rounded-full px-2 py-0.5 ml-1">Calculated</span>
       {% else %}<span class="text-xs bg-amber-900/60 text-amber-300 border border-amber-800 rounded-full px-2 py-0.5 ml-1">Not Calculated</span>{% endif %}
+      <span class="text-xs bg-gray-800 text-gray-400 border border-gray-700 rounded-full px-2 py-0.5 ml-1" title="This engine tests the infinite gate line rather than the finite gate span and has a known width-check bug; treat 'Passed Between Gates' as unverified until the course system rebuild lands">Legacy — unverified</span>
     </p>
     {% if flight.gate_speed_mps %}
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -286,7 +312,7 @@
       <p class="text-xs font-semibold text-sky-300 mb-2">Additional Metrics</p>
       <div class="grid grid-cols-2 gap-3 text-sm mb-3">
         <div><p class="text-xs text-gray-500">Avg Swoop Altitude</p><p class="text-gray-200">{% flight_altitude flight 'swoop_avg_altitude_agl' user_units %}</p></div>
-        <div><p class="text-xs text-gray-500">Entry Gate Speed</p><p class="text-gray-200">{% flight_entry_gate_speed flight user_units %}</p></div>
+        <div><p class="text-xs text-gray-500" title="Speed at flare initiation, not a measured course-gate crossing">Flare Speed</p><p class="text-gray-200">{% flight_entry_gate_speed flight user_units %}</p></div>
       </div>
       <p class="text-xs font-semibold text-gray-400 mb-2">GPS Accuracy</p>
       <div class="grid grid-cols-3 gap-2 text-xs">

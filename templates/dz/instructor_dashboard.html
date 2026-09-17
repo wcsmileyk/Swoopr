@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Instructor Dashboard — {{ dz.name }}{% endblock %}
+
+{% block sidebar_nav %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+{% block sidebar_nav_mobile %}{% include 'partials/dz_sidebar_nav.html' %}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white">Instructor Dashboard</h1>
+  <p class="text-sm text-gray-500 mt-0.5">{{ dz.name }}</p>
+</div>
+
+<div class="grid lg:grid-cols-2 gap-6">
+
+  <!-- Pending sign-offs -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-gray-200">Pending sign-offs</h2>
+      <span class="text-xs text-gray-500">{{ pending|length }}</span>
+    </div>
+    {% if pending %}
+    <div class="divide-y divide-gray-800">
+      {% for sj in pending %}
+      <a href="{% url 'dz_student_detail' dz_id=dz.pk enrollment_id=sj.enrollment_id %}"
+         class="block px-5 py-3 hover:bg-gray-800/50 transition-colors">
+        <p class="text-sm text-gray-200">
+          {{ sj.enrollment.student.get_full_name|default:sj.enrollment.student.username }}
+          <span class="text-gray-600">&mdash; {{ sj.program_jump.category.name }}</span>
+        </p>
+        <p class="text-xs text-gray-500 mt-0.5">{{ sj.jump_date|date:"M j, Y" }}</p>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="px-5 py-8 text-sm text-gray-500 text-center">Nothing awaiting your sign-off.</p>
+    {% endif %}
+  </div>
+
+  <!-- Recently signed -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-gray-200">Recently signed by you</h2>
+      <span class="text-xs text-gray-500">{{ recent_signed|length }}</span>
+    </div>
+    {% if recent_signed %}
+    <div class="divide-y divide-gray-800">
+      {% for sj in recent_signed %}
+      <a href="{% url 'dz_student_detail' dz_id=dz.pk enrollment_id=sj.enrollment_id %}"
+         class="block px-5 py-3 hover:bg-gray-800/50 transition-colors">
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-sm text-gray-200">
+            {{ sj.enrollment.student.get_full_name|default:sj.enrollment.student.username }}
+            <span class="text-gray-600">&mdash; {{ sj.program_jump.category.name }}</span>
+          </p>
+          {% if sj.outcome %}
+          <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0
+            {% if sj.outcome == 'pass' %}bg-emerald-900/30 text-emerald-400
+            {% elif sj.outcome == 'partial' %}bg-amber-900/30 text-amber-400
+            {% elif sj.outcome == 'repeat' %}bg-red-900/30 text-red-400
+            {% else %}bg-gray-800 text-gray-500{% endif %}">
+            {{ sj.get_outcome_display }}
+          </span>
+          {% endif %}
+        </div>
+        <p class="text-xs text-gray-500 mt-0.5">Signed {{ sj.signed_off_at|date:"M j, g:i A" }}</p>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="px-5 py-8 text-sm text-gray-500 text-center">No sign-offs yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

@@ -9,6 +9,24 @@ import base64
 from .units import *
 
 
+class CompetitionGateManager(models.Manager):
+    def visible_to(self, user):
+        """Interim visibility rule pending the real course-permission system.
+
+        No public/private flag exists yet on this legacy model, so treat a
+        gate as visible if the requesting user owns it or if it was created
+        by a staff member (today's stand-in for a "global" course). Ownerless
+        legacy rows are intentionally excluded here rather than shown to
+        everyone, since we cannot tell whether they were a leaked private
+        upload from the pre-fix get_or_create bug.
+        """
+        if not user or not user.is_authenticated:
+            return self.none()
+        return self.filter(
+            models.Q(created_by=user) | models.Q(created_by__is_staff=True)
+        )
+
+
 class CompetitionGate(models.Model):
     """Model to store competition gate files and parsed gate positions"""
     GATE_TYPE_CHOICES = [
@@ -46,6 +64,8 @@ class CompetitionGate(models.Model):
     # Status
     is_parsed = models.BooleanField(default=False, help_text="Whether the gate file has been successfully parsed")
     parse_error = models.TextField(blank=True, help_text="Error message if parsing failed")
+
+    objects = CompetitionGateManager()
 
     class Meta:
         ordering = ['-created_at']

@@ -1,0 +1,19 @@
+<a href="{% url 'courses:detail' course_set.id %}"
+   class="block bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-sky-700 transition-colors">
+  <div class="flex items-start justify-between">
+    <div>
+      <p class="text-gray-100 font-medium">{{ course_set.name }}</p>
+      {% if course_set.site_name %}<p class="text-xs text-gray-500">{{ course_set.site_name }}</p>{% endif %}
+    </div>
+    <span class="text-xs px-2 py-0.5 rounded-full border
+      {% if course_set.visibility == 'public' %}bg-emerald-900/60 text-emerald-300 border-emerald-800
+      {% else %}bg-gray-800 text-gray-400 border-gray-700{% endif %}">
+      {{ course_set.get_visibility_display }}
+    </span>
+  </div>
+  <div class="mt-2 flex gap-1.5">
+    {% for course in course_set.courses.all %}
+      <span class="text-xs bg-gray-800 text-gray-300 rounded px-2 py-0.5">{{ course.get_discipline_display }}</span>
+    {% endfor %}
+  </div>
+</a>
