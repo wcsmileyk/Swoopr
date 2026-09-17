@@ -59,7 +59,13 @@ class ErrorLoggingMiddleware(MiddlewareMixin):
 
         # Add POST data info (not content for security)
         if request.method == 'POST':
-            request_data['post_data_size'] = len(request.body) if hasattr(request, 'body') else 0
+            try:
+                request_data['post_data_size'] = len(request.body)
+            except Exception:
+                # request.body is unreadable once a multipart upload has
+                # already been parsed into request.POST/request.FILES --
+                # that's normal, not itself an error worth logging.
+                request_data['post_data_size'] = 'unavailable (multipart already parsed)'
             request_data['files_uploaded'] = len(request.FILES) if hasattr(request, 'FILES') else 0
             # Log file names if any (for debugging upload issues)
             if request.FILES:
