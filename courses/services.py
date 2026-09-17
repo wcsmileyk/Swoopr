@@ -153,19 +153,28 @@ def _default_analysis_window(flight):
     """Restrict to the terminal canopy approach, not the whole flight
     (design doc section 9) -- a generous buffer before the detected flare
     point through landing, so a pre-flare G1 drag entry is still included.
-    Callers can override with explicit window indices when this default is
-    wrong (e.g. automatic swoop classification failed)."""
+
+    Requires both flare_idx and landing_idx to be set. Without them there
+    is no reliable way to bound the window, and silently scanning the
+    entire flight (aircraft ride, freefall, pattern flying) risks matching
+    a completely unrelated horizontal crossing of the gate's plane at
+    altitude -- exactly the "picks up any pass through the gate anywhere
+    in the file" failure mode this must not produce. Callers needing a
+    result anyway must pass explicit window_start_idx/window_end_idx.
+    """
     points = flight.get_gps_data()
     if not points:
         raise ApplyCourseError('Flight has no GPS data')
+    if flight.flare_idx is None or flight.landing_idx is None:
+        raise ApplyCourseError(
+            'Flight has no detected flare/landing point, so a default analysis window '
+            'cannot be determined safely; provide window_start_idx/window_end_idx explicitly'
+        )
 
-    if flight.flare_idx is not None:
-        start = max(0, flight.flare_idx - DEFAULT_PRE_FLARE_BUFFER_SAMPLES)
-    else:
-        start = 0
-    end = (flight.landing_idx + 1) if flight.landing_idx is not None else len(points)
+    start = max(0, flight.flare_idx - DEFAULT_PRE_FLARE_BUFFER_SAMPLES)
+    end = min(flight.landing_idx + 1, len(points))
     end = max(end, start + 2)
-    return points, start, min(end, len(points))
+    return points, start, end
 
 
 @transaction.atomic
@@ -177,15 +186,27 @@ def apply_course_to_flight(flight, course, *, actor, window_start_idx=None, wind
     if revision is None:
         raise ApplyCourseError(f'{course} has no revision to analyze against')
 
-    all_points, default_start, default_end = _default_analysis_window(flight)
-    start = window_start_idx if window_start_idx is not None else default_start
-    end = window_end_idx if window_end_idx is not None else default_end
+    if window_start_idx is not None and window_end_idx is not None:
+        all_points = flight.get_gps_data()
+        if not all_points:
+            raise ApplyCourseError('Flight has no GPS data')
+        start, end = window_start_idx, window_end_idx
+    else:
+        all_points, start, end = _default_analysis_window(flight)
     window_points = all_points[start:end]
 
     if len(window_points) < 2:
         raise ApplyCourseError('Analysis window has fewer than 2 GPS points')
 
-    gate_results = analyze_course_crossings(window_points, revision.geometry.get('gates', []))
+    # Prefer crossings near the actual flare event over an earlier,
+    # incidental pass through the gate's plane (e.g. DZ pattern flying) --
+    # a context-based tiebreak, not a score-maximizing one. See
+    # analyze_course_crossings/analyze_gate_crossing.
+    reference_index = (flight.flare_idx - start) if flight.flare_idx is not None else None
+
+    gate_results = analyze_course_crossings(
+        window_points, revision.geometry.get('gates', []), reference_index=reference_index
+    )
 
     entry_gate_id = entry_gate_id_for(course.discipline)
     entry_result = gate_results.get(entry_gate_id)

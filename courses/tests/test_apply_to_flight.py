@@ -136,6 +136,70 @@ class ApplyDistanceCourseTests(TestCase):
         with self.assertRaises(ApplyCourseError):
             apply_course_to_flight(self.flight, self.course, actor=self.user)
 
+    def test_missing_flare_idx_raises_instead_of_scanning_whole_flight(self):
+        # Regression guard: previously falling back to start=0 when
+        # flare_idx was None let an unrelated horizontal crossing anywhere
+        # in the flight (aircraft ride, pattern flying) masquerade as a
+        # gate entry.
+        points = self._build_track(0, 0)
+        self.flight.flare_idx = None
+        self.flight.landing_idx = len(points) - 1
+        self.flight.store_gps_data(points)
+        with self.assertRaises(ApplyCourseError):
+            apply_course_to_flight(self.flight, self.course, actor=self.user)
+
+    def test_missing_landing_idx_raises_instead_of_scanning_to_end(self):
+        points = self._build_track(0, 0)
+        self.flight.flare_idx = 1
+        self.flight.landing_idx = None
+        self.flight.store_gps_data(points)
+        with self.assertRaises(ApplyCourseError):
+            apply_course_to_flight(self.flight, self.course, actor=self.user)
+
+    def test_explicit_window_override_works_without_flare_or_landing_idx(self):
+        points = self._build_track(0, 0)
+        self.flight.flare_idx = None
+        self.flight.landing_idx = None
+        self.flight.store_gps_data(points)
+        analysis = apply_course_to_flight(
+            self.flight, self.course, actor=self.user,
+            window_start_idx=0, window_end_idx=len(points),
+        )
+        self.assertEqual(analysis.entry_status, 'crossed')
+
+    def test_decoy_crossing_far_from_flare_is_not_selected(self):
+        # A spurious early pass through G1's plane (e.g. pattern flying at
+        # altitude) followed by the real swoop entry near flare -- the
+        # engine must prefer the crossing near flare_idx, not the first
+        # chronologically.
+        g1, g5 = self.geometry['gates']
+        t0 = 1_757_000_000.0
+        points = [
+            _point_relative_to_gate(g1, -50.0, 500.0, t0),           # 0: nowhere near the gate
+            _point_relative_to_gate(g1, -1.0, 0.0, t0 + 60),         # 1: decoy crossing start (far from flare)
+            _point_relative_to_gate(g1, 1.0, 0.0, t0 + 60.25),       # 2: decoy crossing lands here
+            _point_relative_to_gate(g1, -30.0, 0.0, t0 + 90),        # 3: back upstream (flare is here)
+            _point_relative_to_gate(g1, -1.0, 0.0, t0 + 91.75),      # 4: real approach
+            _point_relative_to_gate(g1, 1.0, 0.0, t0 + 92.0),        # 5: real G1 crossing
+            _point_relative_to_gate(g5, -1.0, 0.0, t0 + 93.5),       # 6
+            _point_relative_to_gate(g5, 1.0, 0.0, t0 + 93.75),       # 7: landing
+        ]
+        # flare_idx=4 (right before the real approach) is index-closer to
+        # the real crossing (5) than to the decoy (2) -- reference_index
+        # compares list-index proximity, which tracks time proximity only
+        # when samples are roughly evenly spaced, as real GPS data is.
+        self.flight.flare_idx = 4
+        self.flight.landing_idx = 7
+        self.flight.store_gps_data(points)
+
+        analysis = apply_course_to_flight(self.flight, self.course, actor=self.user)
+
+        self.assertEqual(analysis.entry_status, 'crossed')
+        # window starts at flare_idx - buffer = max(0, 4-120) = 0, so both
+        # the decoy (index 2) and the real crossing (index 5) are in range;
+        # the real one (closer to flare_idx=4) must be selected.
+        self.assertEqual(analysis.gate_results['distance:G1']['crossing_index'], 5)
+
     def test_course_without_revision_raises(self):
         course_set = CourseSet.objects.create(name='Empty', owner=self.user, visibility='private')
         empty_course = Course.objects.create(course_set=course_set, discipline='distance')

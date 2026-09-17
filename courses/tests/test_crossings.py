@@ -156,6 +156,23 @@ class ExactOnLineTests(SimpleTestCase):
         self.assertAlmostEqual(result.alpha, 1.0, places=6)
         self.assertEqual(result.all_forward_crossing_indices, [1])
 
+    def test_reference_index_selects_nearest_crossing_not_first(self):
+        gate = _distance_g1_gate()
+        points = [
+            _point_relative_to_gate(gate, -1.0, 0.0, BASE_TIME),                        # 0
+            _point_relative_to_gate(gate, 1.0, 0.0, BASE_TIME + timedelta(seconds=1)),  # 1: first crossing
+            _point_relative_to_gate(gate, -3.0, 0.0, BASE_TIME + timedelta(seconds=2)),  # 2
+            _point_relative_to_gate(gate, 7.0, 0.0, BASE_TIME + timedelta(seconds=3)),  # 3: second crossing
+        ]
+        # Without a reference, the first chronological crossing wins.
+        default_result = analyze_gate_crossing(points, gate)
+        self.assertEqual(default_result.crossing_index, 1)
+
+        # With a reference near the second crossing, that one wins instead.
+        referenced_result = analyze_gate_crossing(points, gate, reference_index=3)
+        self.assertEqual(referenced_result.crossing_index, 3)
+        self.assertTrue(any('closest to the reference index' in w for w in referenced_result.warnings))
+
     def test_multiple_forward_crossings_deduplicated_to_first(self):
         gate = _distance_g1_gate()
         points = [

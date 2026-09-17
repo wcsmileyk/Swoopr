@@ -116,7 +116,7 @@ def seconds_between(t0, t1) -> float:
     return delta.total_seconds() if hasattr(delta, 'total_seconds') else float(delta)
 
 
-def analyze_gate_crossing(points: List[Dict], gate: Dict) -> GateCrossingResult:
+def analyze_gate_crossing(points: List[Dict], gate: Dict, reference_index: Optional[int] = None) -> GateCrossingResult:
     """Find where a track crosses a gate's finite span, in the forward
     direction of travel, with time-interpolated position/speed/heading.
 
@@ -125,6 +125,14 @@ def analyze_gate_crossing(points: List[Dict], gate: Dict) -> GateCrossingResult:
     interpolation.
     gate: a gate record as produced by courses.geometry (needs
     'left_endpoint', 'right_endpoint'; 'id' optional).
+    reference_index: when the track crosses this gate's plane more than
+    once (e.g. a DZ landing pattern happens to cross the gate's extended
+    line at altitude, long before the actual swoop), pick the forward
+    crossing whose index is closest to this one -- typically the flight's
+    flare_idx, mapped into this points list -- instead of just the first
+    chronologically. This is a context-based tiebreak (design doc section
+    9: "ask for a selection rather than choosing the one with the best
+    score"), not a score-maximizing choice.
 
     Never substitutes a closest-approach for a real crossing -- that's
     reported separately and only as a diagnostic.
@@ -140,7 +148,7 @@ def analyze_gate_crossing(points: List[Dict], gate: Dict) -> GateCrossingResult:
 
     closest_m = None
     closest_idx = None
-    first_forward = None
+    forward_candidates = []  # list of (index, alpha, x0, y0, x1, y1)
 
     for i in range(1, len(points)):
         x0, y0 = local_xy[i - 1]
@@ -158,20 +166,18 @@ def analyze_gate_crossing(points: List[Dict], gate: Dict) -> GateCrossingResult:
             # avoid double-counting by only firing on the p1==0 case (the
             # next segment's p0==0 would otherwise double-report it).
             if x1 == 0.0 and x1 > x0:
-                result.all_forward_crossing_indices.append(i)
-                if first_forward is None:
-                    first_forward = (i, 0.0 if x0 == 0.0 else 1.0, x0, y0, x1, y1)
+                forward_candidates.append((i, 0.0 if x0 == 0.0 else 1.0, x0, y0, x1, y1))
             continue
 
         if x0 * x1 < 0:
             if x1 > x0:
                 # Forward crossing (upstream/negative -> downstream/positive)
-                result.all_forward_crossing_indices.append(i)
-                if first_forward is None:
-                    alpha = -x0 / (x1 - x0)
-                    first_forward = (i, alpha, x0, y0, x1, y1)
+                alpha = -x0 / (x1 - x0)
+                forward_candidates.append((i, alpha, x0, y0, x1, y1))
             else:
                 result.reverse_crossing_indices.append(i)
+
+    result.all_forward_crossing_indices = [c[0] for c in forward_candidates]
 
     # Closest approach on the last point too (loop only visits segments).
     x_last, y_last = local_xy[-1]
@@ -182,7 +188,7 @@ def analyze_gate_crossing(points: List[Dict], gate: Dict) -> GateCrossingResult:
     result.closest_approach_m = round(closest_m, 4) if closest_m is not None else None
     result.closest_approach_index = closest_idx
 
-    if first_forward is None:
+    if not forward_candidates:
         if result.reverse_crossing_indices:
             result.warnings.append(
                 f'Track crossed gate {frame.gate_id} only backwards '
@@ -190,7 +196,12 @@ def analyze_gate_crossing(points: List[Dict], gate: Dict) -> GateCrossingResult:
             )
         return result
 
-    i, alpha, x0, y0, x1, y1 = first_forward
+    if reference_index is not None and len(forward_candidates) > 1:
+        selected = min(forward_candidates, key=lambda c: abs(c[0] - reference_index))
+    else:
+        selected = forward_candidates[0]
+
+    i, alpha, x0, y0, x1, y1 = selected
     p0, p1 = points[i - 1], points[i]
 
     lateral_offset = _interp(y0, y1, alpha)
@@ -235,16 +246,29 @@ def analyze_gate_crossing(points: List[Dict], gate: Dict) -> GateCrossingResult:
         )
 
     if len(result.all_forward_crossing_indices) > 1:
+        selection_note = (
+            'closest to the reference index' if reference_index is not None
+            else 'the first chronologically'
+        )
         result.warnings.append(
             f'{len(result.all_forward_crossing_indices)} forward crossings found; '
-            f'reporting the first chronologically -- caller should confirm approach selection'
+            f'reporting {selection_note} -- caller should confirm approach selection'
         )
 
     return result
 
 
-def analyze_course_crossings(points: List[Dict], gates: List[Dict]) -> Dict[str, GateCrossingResult]:
+def analyze_course_crossings(points: List[Dict], gates: List[Dict],
+                              reference_index: Optional[int] = None) -> Dict[str, GateCrossingResult]:
     """Evaluate every gate in a course against the same track. Does not
     enforce gate order or eligibility -- that belongs to a rules profile,
-    layered on top of these raw geometric results (design doc section 9)."""
-    return {gate.get('id', str(i)): analyze_gate_crossing(points, gate) for i, gate in enumerate(gates)}
+    layered on top of these raw geometric results (design doc section 9).
+
+    reference_index is passed through to each gate's crossing selection
+    (see analyze_gate_crossing) -- typically the flight's flare_idx mapped
+    into this points list, so all gates prefer crossings near the actual
+    swoop rather than an earlier incidental pass near the course."""
+    return {
+        gate.get('id', str(i)): analyze_gate_crossing(points, gate, reference_index=reference_index)
+        for i, gate in enumerate(gates)
+    }
